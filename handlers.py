@@ -1262,33 +1262,81 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
             except Exception:
                 pass
 
-        # --- После всех категорий: одна общая картинка всех предметов (с header/footer) ---
+        # --- После всех категорий: одна общая картинка всех предметов (ограничение по высоте 8k) ---
         try:
             all_items: list[dict] = []
             for arr in by_cat.values():
                 all_items.extend(arr)
+
             if all_items:
-                img_all = await generate_full_inventory_grid(
-                    all_items,
-                    tile=150, pad=6,
-                    title='Все предметы',
-                    username=call.from_user.username,
-                    user_id=tg
-                )
-                os.makedirs('temp', exist_ok=True)
-                all_path = f'temp/inventory_all_{tg}_{roblox_id}.png'
-                with open(all_path, 'wb') as f:
-                    f.write(img_all)
-                total_sum_all = sum(((_price_value(it.get('priceInfo')) or 0) for it in all_items))
-                caption_all = f'📦 Все категории вместе\nВсего: {len(all_items)} шт · {total_sum_all:,} R$'.replace(',',
-                                                                                                                   ' ')
-                await call.message.answer_photo(FSInputFile(all_path), caption=caption_all)
-                try:
-                    os.remove(all_path)
-                except Exception:
-                    pass
+                MAX_H = 7800  # запас к 8000px по высоте
+                MAX_BYTES = 8_500_000  # подстраховка по размеру файла
+                tiles_try = [150, 120, 100, 90]
+
+                def chunk_size_for_tile(tile: int) -> int:
+                    max_rows = max(1, MAX_H // tile)  # rows * tile <= MAX_H
+                    return max_rows * max_rows  # квадратная сетка => n ~ rows^2
+
+                def chunks(seq, size):
+                    for i in range(0, len(seq), size):
+                        yield seq[i:i + size]
+
+                sent = False
+                for tile in tiles_try:
+                    size_per_page = chunk_size_for_tile(tile)
+                    pages = list(chunks(all_items, size_per_page))
+                    ok = True
+                    tmp_paths = []
+                    try:
+                        for i, part in enumerate(pages, 1):
+                            img = await generate_full_inventory_grid(
+                                part,
+                                tile=tile, pad=6,
+                                title=('Все предметы' if len(pages) == 1 else f'Все предметы (стр. {i}/{len(pages)})'),
+                                username=call.from_user.username,
+                                user_id=tg
+                            )
+                            if len(img) > MAX_BYTES:
+                                ok = False
+                                break
+                            import os
+                            os.makedirs('temp', exist_ok=True)
+                            p = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
+                            with open(p, 'wb') as f:
+                                f.write(img)
+                            tmp_paths.append(p)
+
+                        if ok:
+                            total_sum_all = sum(((_price_value(it.get('priceInfo')) or 0) for it in all_items))
+                            for i, p in enumerate(tmp_paths, 1):
+                                caption = (
+                                    "📦 Все категории вместе\n"
+                                    f"Всего: {len(all_items)} шт · {total_sum_all:,} R$"
+                                ).replace(',', ' ')
+                                if len(tmp_paths) > 1:
+                                    caption += f"\nСтраница {i}/{len(tmp_paths)}"
+                                await call.message.answer_photo(FSInputFile(p), caption=caption)
+                            sent = True
+                            for p in tmp_paths:
+                                try:
+                                    os.remove(p)
+                                except Exception:
+                                    pass
+                            break
+                    finally:
+                        if not ok:
+                            for p in tmp_paths:
+                                try:
+                                    os.remove(p)
+                                except Exception:
+                                    pass
+
+                if not sent:
+                    await call.message.answer(
+                        "📦 Все предметы: слишком большой рендер. Снизь качество или сократи набор.")
         except Exception as e:
             logger.warning(f'final all-items image failed: {e}')
+
         await call.message.answer(
             f'💰 Общая стоимость инвентаря: {grand_total_sum:,} R$\n📦 Всего предметов с ценой: {grand_total_count}'.replace(
                 ',', ' '))
