@@ -806,16 +806,8 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
 async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='Items', username: Optional[str]=None, user_id: Optional[int]=None) -> bytes:
     _build_image_index_cached()
     price_map = load_prices_csv_cached('prices.csv')
-    for it in items:
-        try:
-            aid = int(it.get('assetId'))
-        except Exception:
-            continue
-        rec = price_map.get(aid)
-        if rec:
-            if not it.get('name'):
-                it['name'] = rec.get('name')
-            it['priceInfo'] = rec.get('priceInfo')
+    # обогащаем КАЖДЫЙ айтем ценой из CSV (itemId/collectibleItemId/assetId)
+    items = [_enrich_with_csv(it, price_map) for it in items]
     n = len(items)
     if not KEEP_INPUT_ORDER:
         items = sorted(items, key=lambda x: x.get('priceInfo', {}).get('value') or 0, reverse=True)
