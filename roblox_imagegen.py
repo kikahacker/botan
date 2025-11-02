@@ -492,7 +492,7 @@ def _read_ready_item(aid: int) -> Optional[Image.Image]:  # type: ignore[func-ov
 _PRICES_CACHE: Optional[Dict[int, Dict[str, Any]]] = None
 _PRICES_TS: float = 0.0
 _PRICES_MTIME: float = -1.0
-_PRICES_TTL_SEC = 1800  # 30 min
+_PRICES_TTL_SEC = 0  # 30 min
 
 def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]]:
     global _PRICES_CACHE, _PRICES_TS, _PRICES_MTIME
