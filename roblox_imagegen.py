@@ -4,13 +4,6 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from PIL import Image, ImageDraw, ImageFont
-from concurrent.futures import ThreadPoolExecutor
-
-# Resample constant (Pillow 9/10 compat)
-try:
-    RESAMPLE_BILINEAR = Image.Resampling.BILINEAR
-except AttributeError:
-    RESAMPLE_BILINEAR = Image.BILINEAR
 
 # =========================
 # Config & Logging
@@ -59,8 +52,6 @@ HTTP_READ_TIMEOUT = float(os.getenv('HTTP_READ_TIMEOUT', '8.0'))
 THUMB_DL_CONCURRENCY = int(getattr(CFG, 'THUMB_DL_CONCURRENCY', 24))
 THUMB_BATCH_CONCURRENCY = int(getattr(CFG, 'THUMB_BATCH_CONCURRENCY', 8))
 RENDER_CONCURRENCY = int(os.getenv('RENDER_CONCURRENCY', '8'))
-RENDER_THREADS = int(os.getenv("RENDER_THREADS", str(os.cpu_count() or 4)))
-EXEC = ThreadPoolExecutor(max_workers=RENDER_THREADS)
 THUMB_REPOLL_DELAYS = [0.2, 0.5, 1.0, 1.6, 2.5]
 
 ASSETS_DIR = getattr(CFG, 'ASSETS_DIR', 'assets')
@@ -74,11 +65,12 @@ KEEP_INPUT_ORDER = str(os.getenv('KEEP_INPUT_ORDER', '0')).lower() in ("1","true
 THUMB_SIZE = os.getenv('THUMB_SIZE', '420x420')
 
 # Layout
-PADDING_CONTENT = int(os.getenv('PADDING_CONTENT', '0'))  # tiles butt together
+PADDING_CONTENT = int(os.getenv('PADDING_CONTENT', '0'))
 GAP_IMAGE_PRICE = int(os.getenv('GAP_IMAGE_PRICE', '6'))
-GAP_IMAGE_TEXT  = int(os.getenv('GAP_IMAGE_TEXT',  '6'))
+GAP_IMAGE_TEXT = int(os.getenv('GAP_IMAGE_TEXT', '6'))
 TITLE_SINGLE_LINE = str(os.getenv('TITLE_SINGLE_LINE', 'false')).strip().lower() in ('1','true','yes','y','on')
 THEME_CLASSIC_BLUE = str(os.getenv('THEME_CLASSIC_BLUE', 'false')).strip().lower() in ('1','true','yes','y','on')
+LINE_SCALE = float(os.getenv('LINE_SCALE', '1.0'))
 
 SHOW_HEADER = str(os.getenv('SHOW_HEADER', 'true')).strip().lower() in ('1','true','yes','y','on')
 SHOW_FOOTER = str(os.getenv('SHOW_FOOTER', 'true')).strip().lower() in ('1','true','yes','y','on')
@@ -91,7 +83,7 @@ FOOTER_BRAND = os.getenv('FOOTER_BRAND', 'raika.gg')
 TITLE_TEXT_COLOR = (0, 0, 0, 255)
 PRICE_TEXT_COLOR = (0, 0, 0, 255)
 
-# pill + colors via ENV (so you can tweak without touching code)
+# pill + colors via ENV
 def _rgba_env(key: str, default: str) -> tuple:
     raw = os.getenv(key, default)
     try:
@@ -108,20 +100,17 @@ def _rgba_env(key: str, default: str) -> tuple:
 
 PRICE_PILL_PAD_X = int(os.getenv('PRICE_PILL_PAD_X', '7'))
 PRICE_PILL_PAD_Y = int(os.getenv('PRICE_PILL_PAD_Y', '4'))
-PRICE_TOP_PAD_PX = int(os.getenv('PRICE_TOP_PAD_PX', '10'))  # a bit lower pill
+PRICE_TOP_PAD_PX = int(os.getenv('PRICE_TOP_PAD_PX', '6'))
 PRICE_PILL_OUTLINE_PX = int(os.getenv('PRICE_PILL_OUTLINE_PX', '1'))
 PRICE_PILL_FILL = _rgba_env('PRICE_PILL_FILL', '255,255,255,235')
 PRICE_PILL_OUTLINE = _rgba_env('PRICE_PILL_OUTLINE', '0,0,0,200')
-# radius from ENV; clamped to avoid perfect oval unless you later remove the clamp on purpose
+# 0 = авто (pill_h//2). Любое >0 — берём твоё, но клемпим, чтобы не стало овалом.
 PRICE_PILL_RADIUS_PX = int(os.getenv('PRICE_PILL_RADIUS_PX', '0'))
 
-TEXT_BOTTOM_PAD_PX = int(os.getenv('TEXT_BOTTOM_PAD_PX', '2'))  # title sits lower
-TITLE_FONT_TILE_DIV = int(os.getenv('TITLE_FONT_TILE_DIV', '7'))  # tile//7
-PRICE_FONT_TILE_DIV = int(os.getenv('PRICE_FONT_TILE_DIV', '8'))  # tile//8
+TEXT_BOTTOM_PAD_PX = 6
+TITLE_FONT_TILE_DIV = int(os.getenv('TITLE_FONT_TILE_DIV', '7'))
+PRICE_FONT_TILE_DIV = int(os.getenv('PRICE_FONT_TILE_DIV', '8'))
 
-# NEW: scale + vertical offset for thumbnails
-IMG_SCALE = float(os.getenv('IMG_SCALE', '0.9'))        # 0.9 = 90% of available box
-IMG_Y_OFFSET = int(os.getenv('IMG_Y_OFFSET', '0'))      # negative -> up, positive -> down
 
 # =========================
 # Pricing tiers (only for bg)
@@ -155,6 +144,7 @@ DEFAULT_TIER_BACKGROUNDS = {
     'common': os.path.join(ASSETS_DIR, 'bg_tier_common.png'),
 }
 
+
 def _tier_by_price(price: int) -> str:
     if RULES_JSON:
         for r in RULES_JSON:
@@ -165,6 +155,7 @@ def _tier_by_price(price: int) -> str:
         if price >= th:
             return nm
     return 'common'
+
 
 def _paths_for_tier(name: str):
     if RULES_JSON:
@@ -202,6 +193,7 @@ def _bold_font(sz):
     _BOLD_FONT[sz] = _font(sz)
     return _BOLD_FONT[sz]
 
+
 def _make_grad(w, h, c1, c2):
     im = Image.new('RGBA', (w, h))
     d = ImageDraw.Draw(im)
@@ -220,11 +212,14 @@ def _get_canvas_bg(W, H):
     im = _canvas_bg_cache.get(key)
     if im:
         return im
-    try:
-        base = Image.open(CANVAS_BG_PATH).convert('RGBA').resize((W, H), RESAMPLE_BILINEAR)
-        im = base
-    except Exception:
-        im = _make_grad(W, H, (180, 210, 235), (140, 175, 215))
+    if THEME_CLASSIC_BLUE:
+        im = _make_grad(W, H, (19, 120, 255), (15, 99, 255))
+    else:
+        try:
+            base = Image.open(CANVAS_BG_PATH).convert('RGBA').resize((W, H), Image.BILINEAR)
+            im = base
+        except Exception:
+            im = _make_grad(W, H, (180, 210, 235), (140, 175, 215))
     _canvas_bg_cache[key] = im
     return im
 
@@ -238,7 +233,7 @@ def _get_tier_bg(tier: str, tile: int):
     bg, _ = _paths_for_tier(tier)
     try:
         if bg and os.path.exists(bg):
-            im = Image.open(bg).convert('RGBA').resize((tile, tile), RESAMPLE_BILINEAR)
+            im = Image.open(bg).convert('RGBA').resize((tile, tile), Image.BILINEAR)
         else:
             raise FileNotFoundError
     except Exception:
@@ -254,10 +249,6 @@ def _get_tier_bg(tier: str, tile: int):
             im = _make_grad(tile, tile, (40, 150, 245), (20, 60, 130))
         else:
             im = _make_grad(tile, tile, (200, 200, 200), (120, 120, 120))
-    # optional: strip any baked-in borders from tier backgrounds
-    strip_px = int(os.getenv('STRIP_TILE_BORDER', '1'))
-    if strip_px > 0 and im.width > 2*strip_px and im.height > 2*strip_px:
-        im = im.crop((strip_px, strip_px, im.width - strip_px, im.height - strip_px)).resize((tile, tile), Image.LANCZOS)
     _bg_cache[key] = im
     return im
 
@@ -298,7 +289,7 @@ def _write_ready_item(aid: int, im: Image.Image):
 # Network fetch with cache (THUMB_SIZE enforced)
 # =========================
 async def _download_image_with_cache(url: str) -> Optional[Image.Image]:
-    key = 'thumb:' + os.getenv('THUMB_SIZE', THUMB_SIZE) + ':' + hashlib.sha1(url.encode()).hexdigest()
+    key = 'thumb:' + hashlib.sha1(url.encode()).hexdigest()
     b = await cache.get_bytes(key, THUMB_TTL)
     if b:
         try:
@@ -434,9 +425,11 @@ def _num(v):
     except Exception:
         return 0
 
+
 def _price_of(it: Dict[str, Any]) -> int:
     v = it.get('priceInfo', {}).get('value')
     return _num(v)
+
 
 def _tier_color(name: str):
     nm = name.lower()
@@ -451,32 +444,25 @@ def _tier_color(name: str):
     return (240, 240, 240)
 
 # =========================
-# Tile rendering (centered image, smaller scale)
+# Tile rendering (price pill top-right, title bottom, NO stripe)
 # =========================
 
 def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Image:
-    _tcache = {}
-    def _text_w(s, f):
-        key = (s, id(f))
-        if key in _tcache:
-            return _tcache[key]
-        w = int(ImageDraw.ImageDraw(Image.new("L", (1,1))).textlength(s, font=f))
-        _tcache[key] = w
-        return w
-
     price = _price_of(it)
     tier  = _tier_by_price(price)
-    name  = str(it.get('name') or it.get('assetId') or '').upper()
+    name  = str(it.get('name') or it.get('assetId') or '')
 
     out = Image.new('RGBA', (tile, tile), (0, 0, 0, 0))
     out.alpha_composite(_get_tier_bg(tier, tile), (0, 0))
     d = ImageDraw.Draw(out)
+    d.rectangle([1, 1, tile - 2, tile - 2], outline=(0, 0, 0, 255), width=3)
+
 
     # Fonts
     title_font = _bold_font(max(12, tile // max(1, TITLE_FONT_TILE_DIV)))
     price_font = _bold_font(max(10, tile // max(1, PRICE_FONT_TILE_DIV)))
 
-    # Title lines (1-2), bottom-aligned
+    # Bottom title (single or two lines)
     max_title_w = tile - 14
     max_lines = 1 if TITLE_SINGLE_LINE else 2
     words = name.split()
@@ -484,7 +470,7 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
     cur = ''
     for w in words:
         t = (cur + ' ' + w).strip()
-        if _text_w(t, title_font) <= max_title_w:
+        if int(d.textlength(t, font=title_font)) <= max_title_w:
             cur = t
         elif cur:
             lines.append(cur)
@@ -497,27 +483,30 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
         lines.append(cur)
     if lines:
         last = lines[-1]
-        while _text_w(last, title_font) > max_title_w and len(last) > 1:
+        while int(d.textlength(last, font=title_font)) > max_title_w and len(last) > 1:
             last = last[:-1]
-        if last != lines[-1] and _text_w(last + '…', title_font) <= max_title_w:
+        if last != lines[-1] and int(d.textlength(last + '…', font=title_font)) <= max_title_w:
             last = last + '…'
         lines[-1] = last
 
-    # compute title area baseline
     line_h = title_font.getbbox('Ag')[3]
     title_total_h = line_h * len(lines)
     y_bottom = tile - TEXT_BOTTOM_PAD_PX
     y_top = y_bottom - title_total_h
 
     for i, line in enumerate(lines):
-        tw = _text_w(line, title_font)
+        tw = int(d.textlength(line, font=title_font))
         x = (tile - tw) // 2
         y = y_top + i * line_h
-        d.text((x, y), line, fill=(255, 255, 255, 255), font=title_font)
+        if THEME_CLASSIC_BLUE:
+            d.text((x + 1, y + 1), line, fill=(0, 0, 0, 200), font=title_font)
+            d.text((x, y), line, fill=(255, 255, 255, 255), font=title_font)
+        else:
+            d.text((x, y), line, fill=TITLE_TEXT_COLOR, font=title_font)
 
     # Price pill (fixed top-right)
     price_text = f'{price} {ROBUX_PREFIX}'.strip()
-    w_text = _text_w(price_text, price_font)
+    w_text = int(d.textlength(price_text, font=price_font))
     pill_w = w_text + PRICE_PILL_PAD_X * 2
     pill_h = price_font.getbbox('Ag')[3] + PRICE_PILL_PAD_Y * 2 - 2
     right = tile - (PADDING_CONTENT + 2)
@@ -525,34 +514,30 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
     bottom= top + pill_h
     left  = right - pill_w
     radius_val = PRICE_PILL_RADIUS_PX if PRICE_PILL_RADIUS_PX > 0 else (pill_h // 2)
-    radius_val = min(radius_val, pill_h // 2)
+    radius_val = min(radius_val, pill_h // 2)  # не даём стать полным овалом
 
     d.rounded_rectangle([left, top, right, bottom],
                         radius=radius_val,
-                        fill=PRICE_PILL_FILL,
-                        outline=PRICE_PILL_OUTLINE,
-                        width=PRICE_PILL_OUTLINE_PX)
+                        fill=PRICE_PILL_FILL, outline=PRICE_PILL_OUTLINE, width=PRICE_PILL_OUTLINE_PX)
     d.text((left + (pill_w - w_text) // 2,
-            top + (pill_h - price_font.getbbox('Ag')[3]) // 2),
+            top + (pill_h - price_font.getbbox('Ag')[3]) // 2 - 1),
            price_text, fill=PRICE_TEXT_COLOR, font=price_font)
 
-    # Image box between pill and title
+    # Image box (between pill and title)
     box_top    = bottom + GAP_IMAGE_PRICE
     box_bottom = y_top - GAP_IMAGE_TEXT
     box_h      = max(1, box_bottom - box_top)
     box_w      = tile - PADDING_CONTENT * 2
 
-    # === shrink & center thumbnail ===
     iw, ih = thumb.size
     k0 = min(box_w / max(1, iw), box_h / max(1, ih))
-    k  = min(max(0.1, IMG_SCALE), k0)  # clamp scale to [0.1, k0]
+    k = min(1.0, k0)  # не увеличиваем
     nw, nh = (max(1, int(iw * k)), max(1, int(ih * k)))
-    im2 = thumb.resize((nw, nh), RESAMPLE_BILINEAR)
+    im2 = thumb.resize((nw, nh), Image.LANCZOS)  # лучший даунскейл
 
     im_x = PADDING_CONTENT + (box_w - im2.width) // 2
-    im_y = box_top + (box_h - im2.height) // 2 + IMG_Y_OFFSET
+    im_y = box_top + (box_h - im2.height) // 2
     out.alpha_composite(im2, (im_x, im_y))
-
     return out
 
 # =========================
@@ -574,6 +559,7 @@ def _draw_header(canvas: Image.Image, count: int, title: str):
     y2 = y + big.getbbox('Ag')[3] - 4
     d.text((x, y2), f'{title}', fill=(255, 255, 255, 220), font=small)
 
+
 def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional[int]):
     if not SHOW_FOOTER:
         return
@@ -585,7 +571,7 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
     base_y = H - FOOTER_H + 10
     try:
         if os.path.exists(FOOTER_ICON):
-            ic = Image.open(FOOTER_ICON).convert('RGBA').resize((FOOTER_H - 20, FOOTER_H - 20), RESAMPLE_BILINEAR)
+            ic = Image.open(FOOTER_ICON).convert('RGBA').resize((FOOTER_H - 20, FOOTER_H - 20), Image.BILINEAR)
         else:
             raise FileNotFoundError
     except Exception:
@@ -609,6 +595,7 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
     base1 = max(20, FOOTER_H // 3)
     base2 = max(16, FOOTER_H // 4)
     MIN = 10
+    SP12, SP23 = (6, 4)
 
     def get_font(sz, bold=False):
         return (_bold_font if bold else _font)(int(max(MIN, sz)))
@@ -657,28 +644,34 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
     s1 = fit_width(line1, base1, bold=True)
     s2 = fit_width(line2, base2, bold=False)
     s3 = fit_width(line3, base2, bold=False)
+    MAX_BRAND = int(max(12, FOOTER_H * 0.22))
+    if s3 > s2:
+        s3 = s2
+    if s3 > MAX_BRAND:
+        s3 = MAX_BRAND
 
-    def total_h(a, b, c):
-        return text_h(get_font(a, True)) + 6 + text_h(get_font(b)) + 4 + text_h(get_font(c))
+    def total_height(a, b, c):
+        return text_h(get_font(a, True)) + SP12 + text_h(get_font(b)) + SP23 + text_h(get_font(c))
 
-    while total_h(s1, s2, s3) > max_h and (s1 > MIN or s2 > MIN or s3 > MIN):
+    while total_height(s1, s2, s3) > max_h and (s1 > MIN or s2 > MIN or s3 > MIN):
         if s1 > MIN: s1 -= 1
         if s2 > MIN: s2 -= 1
         if s3 > MIN: s3 -= 1
 
     font1, font2a, font2b = (get_font(s1, True), get_font(s2), get_font(s3))
-    l1 = ellipsize(line1, font1)
-    l2 = ellipsize(line2, font2a)
-    l3 = ellipsize(line3, font2b)
+    line1_draw = ellipsize(line1, font1)
+    line2_draw = ellipsize(line2, font2a)
+    line3_draw = ellipsize(line3, font2b)
 
-    y0 = H - FOOTER_H + 10
+    total_h = text_h(font1) + SP12 + text_h(font2a) + SP23 + text_h(font2b)
+    y0 = max(H - FOOTER_H + 10, H - 10 - total_h)
     y1 = y0
-    y2 = y1 + text_h(font1) + 6
-    y3 = y2 + text_h(font2a) + 4
+    y2 = y1 + text_h(font1) + SP12
+    y3 = y2 + text_h(font2a) + SP23
 
-    d.text((tx, y1), l1, fill=(255, 255, 255, 255), font=font1)
-    d.text((tx, y2), l2, fill=(255, 255, 255, 230), font=font2a)
-    d.text((tx, y3), l3, fill=(255, 255, 255, 200), font=font2b)
+    d.text((tx, y1), line1_draw, fill=(255, 255, 255, 255), font=font1)
+    d.text((tx, y2), line2_draw, fill=(255, 255, 255, 230), font=font2a)
+    d.text((tx, y3), line3_draw, fill=(255, 255, 255, 200), font=font2b)
 
 # =========================
 # Grid rendering (square-ish layout)
@@ -693,13 +686,14 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
     _info(f"[grid] start items={n} tile={tile} size={size}")
     thumbs = await _fetch_thumbs(ids, size=size)
 
-    # square-ish grid: cols = ceil(sqrt(n)), rows = ceil(n/cols)
+    # --- square-ish grid: pick cols = ceil(sqrt(n)), rows = ceil(n/cols)
     if n == 0:
         cols, rows = 0, 0
     else:
         cols = int(math.ceil(math.sqrt(n)))
         rows = int(math.ceil(n / cols))
 
+    # Canvas size
     top = HEADER_H if SHOW_HEADER else 0
     bottom = FOOTER_H if SHOW_FOOTER else 0
     W, H = (cols * tile, rows * tile + top + bottom + 2)
@@ -714,10 +708,9 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
         async with sem:
             aid = int(it['assetId'])
             thumb = thumbs.get(aid) or Image.new('RGBA', (tile - 12, tile - 26), (70, 80, 96, 255))
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(EXEC, _render_tile, it, thumb, tile)
+            return _render_tile(it, thumb, tile)
 
-    tiles = await asyncio.gather(*[make_tile(it) for it in items])
+    tiles = await asyncio.gather(*(make_tile(it) for it in items))
 
     k = 0
     for r in range(rows):
@@ -733,7 +726,7 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
     return out.getvalue()
 
 # =========================
-# Public API
+# Public API (signatures unchanged)
 # =========================
 async def generate_full_inventory_grid(items: List[Dict[str, Any]], tile: int=150, pad: int=0, username: Optional[str]=None, user_id: Optional[int]=None, title: Optional[int]=None) -> bytes:
     return await _render_grid(items, tile=tile, title=title or 'Инвентарь', username=username, user_id=user_id)
