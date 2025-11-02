@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, io, math, json, asyncio, hashlib, datetime, logging
+import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -80,7 +80,7 @@ FOOTER_ICON = os.getenv('FOOTER_ICON', os.path.join(ASSETS_DIR, 'footer_badge.pn
 FOOTER_BRAND = os.getenv('FOOTER_BRAND', 'raika.gg')
 
 # Style for price pill and title
-TITLE_TEXT_COLOR = (0, 0, 0, 255)
+TITLE_TEXT_COLOR = (255, 255, 255, 255)
 PRICE_TEXT_COLOR = (0, 0, 0, 255)
 
 # pill + colors via ENV
@@ -171,27 +171,17 @@ def _paths_for_tier(name: str):
 _FONT, _BOLD_FONT = ({}, {})
 
 def _font(sz):
-    if sz in _FONT:
-        return _FONT[sz]
+    if 'FORTNITEBATTLEFEST.OTF' in '':
+        pass
     try:
-        f = ImageFont.truetype('arial.ttf', sz)
+        f = ImageFont.truetype('font/FORTNITEBATTLEFEST.OTF', sz)
     except Exception:
         f = ImageFont.load_default()
-    _FONT[sz] = f
     return f
 
 def _bold_font(sz):
-    if sz in _BOLD_FONT:
-        return _BOLD_FONT[sz]
-    for cand in ('arialbd.ttf', 'Arial Bold.ttf', 'Arial-Bold.ttf'):
-        try:
-            f = ImageFont.truetype(cand, sz)
-            _BOLD_FONT[sz] = f
-            return f
-        except Exception:
-            pass
-    _BOLD_FONT[sz] = _font(sz)
-    return _BOLD_FONT[sz]
+    return _font(sz)
+
 
 
 def _make_grad(w, h, c1, c2):
@@ -411,6 +401,99 @@ async def _fetch_thumbs(ids: List[int], size: str='150x150') -> Dict[int, Image.
     _info(f"[thumb] fetch done total={len(ids)} have={len(result)} missing={len(ids)-len(result)}")
     return result
 
+
+
+# =========================
+# Fast local I/O caches (30 min TTL)
+# =========================
+
+_IMAGE_INDEX: Dict[int, str] = {}
+_IMAGE_INDEX_TS: float = 0.0
+_IMAGE_DIR = READY_ITEM_DIR
+_IMAGE_TTL_SEC = 1800  # 30 min
+_VALID_EXT = {'.png', '.jpg', '.jpeg', '.webp'}
+
+def _build_image_index_cached(force: bool=False):
+    global _IMAGE_INDEX, _IMAGE_INDEX_TS
+    now = time.time()
+    if not force and _IMAGE_INDEX and (now - _IMAGE_INDEX_TS) < _IMAGE_TTL_SEC:
+        return
+    idx: Dict[int, str] = {}
+    try:
+        with os.scandir(_IMAGE_DIR) as it:
+            for e in it:
+                if not e.is_file():
+                    continue
+                root, ext = os.path.splitext(e.name)
+                if ext.lower() not in _VALID_EXT:
+                    continue
+                try:
+                    aid = int(root)
+                except Exception:
+                    continue
+                idx[aid] = e.path
+    except FileNotFoundError:
+        idx = {}
+    _IMAGE_INDEX = idx
+    _IMAGE_INDEX_TS = now
+
+# Override local image reader to use index first
+def _read_ready_item(aid: int) -> Optional[Image.Image]:  # type: ignore[func-override]
+    p = _IMAGE_INDEX.get(int(aid))
+    if p and os.path.exists(p):
+        try:
+            return Image.open(p).convert('RGBA')
+        except Exception as e:
+            _err(f"[local] open fail for {p}", e)
+            return None
+    # Fallback legacy probing
+    for ext in ('.png', '.jpg', '.jpeg', '.webp'):
+        q = os.path.join(READY_ITEM_DIR, f'{aid}{ext}')
+        if os.path.exists(q):
+            try:
+                return Image.open(q).convert('RGBA')
+            except Exception as e:
+                _err(f"[local] open fail for {q}", e)
+    return None
+
+# Cached prices.csv reader (30 min TTL)
+_PRICES_CACHE: Optional[Dict[int, Dict[str, Any]]] = None
+_PRICES_TS: float = 0.0
+_PRICES_MTIME: float = -1.0
+_PRICES_TTL_SEC = 1800  # 30 min
+
+def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]]:
+    global _PRICES_CACHE, _PRICES_TS, _PRICES_MTIME
+    try:
+        mtime = os.path.getmtime(path)
+    except FileNotFoundError:
+        return {}
+    now = time.time()
+    if (_PRICES_CACHE is not None) and ((now - _PRICES_TS) < _PRICES_TTL_SEC) and (_PRICES_MTIME == mtime):
+        return _PRICES_CACHE
+
+    out: Dict[int, Dict[str, Any]] = {}
+    with open(path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            id_raw = row.get("id") or row.get("assetId")
+            if not id_raw:
+                continue
+            try:
+                aid = int(float(id_raw))
+            except Exception:
+                continue
+            name = (row.get("name") or "").strip()
+            try:
+                price_val = int(float(row.get("price") or 0))
+            except Exception:
+                price_val = 0
+            out[aid] = {"name": name, "priceInfo": {"value": price_val}}
+
+    _PRICES_CACHE = out
+    _PRICES_TS = now
+    _PRICES_MTIME = mtime
+    return out
 # =========================
 # Helpers
 # =========================
@@ -450,15 +533,12 @@ def _tier_color(name: str):
 def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Image:
     price = _price_of(it)
     tier  = _tier_by_price(price)
-    name  = str(it.get('name') or it.get('assetId') or '')
+    name  = str(it.get('name') or it.get('assetId') or '').upper()
 
     out = Image.new('RGBA', (tile, tile), (0, 0, 0, 0))
     out.alpha_composite(_get_tier_bg(tier, tile), (0, 0))
     d = ImageDraw.Draw(out)
-    d.rectangle([1, 1, tile - 2, tile - 2], outline=(0, 0, 0, 255), width=3)
-
-
-    # Fonts
+# Fonts
     title_font = _bold_font(max(12, tile // max(1, TITLE_FONT_TILE_DIV)))
     price_font = _bold_font(max(10, tile // max(1, PRICE_FONT_TILE_DIV)))
 
@@ -530,10 +610,10 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
     box_w      = tile - PADDING_CONTENT * 2
 
     iw, ih = thumb.size
-    k0 = min(box_w / max(1, iw), box_h / max(1, ih))
-    k = min(1.0, k0)  # не увеличиваем
+    k = min(box_w / max(1, iw), box_h / max(1, ih))
     nw, nh = (max(1, int(iw * k)), max(1, int(ih * k)))
-    im2 = thumb.resize((nw, nh), Image.LANCZOS)  # лучший даунскейл
+    resample = Image.LANCZOS if k < 1.0 else Image.BILINEAR
+    im2 = thumb.resize((nw, nh), resample)
 
     im_x = PADDING_CONTENT + (box_w - im2.width) // 2
     im_y = box_top + (box_h - im2.height) // 2
@@ -544,6 +624,7 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
 # Header / Footer
 # =========================
 
+
 def _draw_header(canvas: Image.Image, count: int, title: str):
     if not SHOW_HEADER:
         return
@@ -551,13 +632,18 @@ def _draw_header(canvas: Image.Image, count: int, title: str):
     band = Image.new('RGBA', (W, HEADER_H), (0, 0, 0, 255))
     canvas.alpha_composite(band, (0, 0))
     d = ImageDraw.Draw(canvas)
-    big = _bold_font(max(26, HEADER_H // 2))
-    small = _bold_font(max(20, HEADER_H // 3))
-    x = 16
-    y = 8
-    d.text((x, y), f'{count}', fill=(255, 255, 255, 255), font=big)
-    y2 = y + big.getbbox('Ag')[3] - 4
-    d.text((x, y2), f'{title}', fill=(255, 255, 255, 220), font=small)
+    font = _bold_font(max(26, HEADER_H // 2))
+    text = f"{count}  {title}"
+    try:
+        tw = int(d.textlength(text, font=font))
+        th = font.getbbox('Ag')[3]
+    except Exception:
+        tw = d.textbbox((0,0), text, font=font)[2]
+        th = d.textbbox((0,0), 'Ag', font=font)[3]
+    x = max(10, (W - tw) // 2)
+    y = max(6, (HEADER_H - th) // 2)
+    d.text((x, y), text, fill=(255, 255, 255, 255), font=font)
+
 
 
 def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional[int]):
@@ -677,6 +763,19 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
 # Grid rendering (square-ish layout)
 # =========================
 async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='Items', username: Optional[str]=None, user_id: Optional[int]=None) -> bytes:
+    _build_image_index_cached()
+    price_map = load_prices_csv_cached('prices.csv')
+    for it in items:
+        try:
+            aid = int(it.get('assetId'))
+        except Exception:
+            continue
+        rec = price_map.get(aid)
+        if rec:
+            if not it.get('name'):
+                it['name'] = rec.get('name')
+            if not it.get('priceInfo') or it.get('priceInfo', {}).get('value') in (None, 0):
+                it['priceInfo'] = rec.get('priceInfo')
     n = len(items)
     if not KEEP_INPUT_ORDER:
         items = sorted(items, key=lambda x: x.get('priceInfo', {}).get('value') or 0, reverse=True)
