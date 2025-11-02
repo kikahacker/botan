@@ -694,3 +694,40 @@
 [14:50:35] INFO: [grid] start items=10 tile=150 size=420x420
 [14:50:35] INFO: [thumb] input=10 local_hits=10 need_fetch=0 size=420x420
 [14:50:36] INFO: [grid] done items=10 cols=4 rows=3 tile=150 bytes=165171
+[18:56:15] INFO: [imagegen] cwd=C:\Users\Timox\Downloads\BOTIK-main\BOTIK-main READY_ITEM_DIR=C:\Users\Timox\Downloads\BOTIK-main\BOTIK-main\item_images DEBUG=True
+[18:56:38] INFO: [grid] start items=96 tile=150 size=420x420
+[18:56:38] INFO: [thumb] input=96 local_hits=96 need_fetch=0 size=420x420
+[18:56:39] INFO: [grid] done items=96 cols=10 rows=10 tile=150 bytes=869670
+[18:56:47] INFO: [grid] start items=96 tile=150 size=420x420
+[18:56:47] INFO: [thumb] input=96 local_hits=96 need_fetch=0 size=420x420
+[18:56:48] INFO: [grid] done items=96 cols=10 rows=10 tile=150 bytes=869670
+[18:56:59] INFO: [grid] start items=279 tile=150 size=420x420
+[18:57:00] INFO: [thumb] input=279 local_hits=279 need_fetch=0 size=420x420
+[18:57:02] INFO: [grid] done items=279 cols=17 rows=17 tile=150 bytes=1461988
+[18:57:10] INFO: [grid] start items=279 tile=150 size=420x420
+[18:57:11] INFO: [thumb] input=279 local_hits=279 need_fetch=0 size=420x420
+[19:49:30] INFO: [imagegen] cwd=C:\Users\Timox\Downloads\BOTIK-main\BOTIK-main READY_ITEM_DIR=C:\Users\Timox\Downloads\BOTIK-main\BOTIK-main\item_images DEBUG=False
+[19:49:58] INFO: [grid] start items=96 tile=150 size=300x300
+[19:49:58] INFO: [thumb] input=96 local_hits=96 need_fetch=0 size=300x300
+[19:49:59] INFO: [grid] done items=96 cols=10 rows=10 tile=150 bytes=813442
+[19:50:14] INFO: [grid] start items=279 tile=150 size=300x300
+[19:50:14] INFO: [thumb] input=279 local_hits=279 need_fetch=0 size=300x300
+[19:50:16] INFO: [grid] done items=279 cols=17 rows=17 tile=150 bytes=1356725
+[19:50:39] INFO: [grid] start items=21 tile=150 size=300x300
+[19:50:39] INFO: [thumb] input=21 local_hits=21 need_fetch=0 size=300x300
+[19:50:40] INFO: [grid] done items=21 cols=5 rows=5 tile=150 bytes=233513
+[19:50:44] INFO: [grid] start items=19 tile=150 size=300x300
+[19:50:44] INFO: [thumb] input=19 local_hits=19 need_fetch=0 size=300x300
+[19:50:44] INFO: [grid] done items=19 cols=5 rows=4 tile=150 bytes=190376
+[19:50:49] INFO: [grid] start items=4 tile=150 size=300x300
+[19:50:49] INFO: [thumb] input=4 local_hits=4 need_fetch=0 size=300x300
+[19:50:49] INFO: [grid] done items=4 cols=2 rows=2 tile=150 bytes=79658
+[19:50:51] INFO: [grid] start items=137 tile=150 size=300x300
+[19:50:51] INFO: [thumb] input=137 local_hits=137 need_fetch=0 size=300x300
+[19:50:52] INFO: [grid] done items=137 cols=12 rows=12 tile=150 bytes=1137398
+[19:51:10] INFO: [grid] start items=81 tile=150 size=300x300
+[19:51:10] INFO: [thumb] input=81 local_hits=81 need_fetch=0 size=300x300
+[19:51:11] INFO: [grid] done items=81 cols=9 rows=9 tile=150 bytes=637131
+[19:51:22] INFO: [grid] start items=10 tile=150 size=300x300
+[19:51:22] INFO: [thumb] input=10 local_hits=10 need_fetch=0 size=300x300
+[19:51:22] INFO: [grid] done items=10 cols=4 rows=3 tile=150 bytes=161107
