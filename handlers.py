@@ -12,12 +12,13 @@ from aiogram import Router, types, F
 from i18n import t, tr, get_user_lang, set_user_lang
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
-ADMINS = set((int(x) for x in os.getenv('ADMINS', '').replace(',', ' ').split() if x))
 
+ADMINS = set((int(x) for x in os.getenv('ADMINS', '').replace(',', ' ').split() if x))
 
 # Simple in-memory profile cache (per-process)
 _PROFILE_CACHE = {}  # {(tg_id, acc_id): (expires_ts, data)}
 _PROFILE_TTL = 6 * 60 * 60  # 6 hours
+
 
 def get_profile_mem(tg_id, acc_id):
     import time
@@ -31,14 +32,20 @@ def get_profile_mem(tg_id, acc_id):
         return None
     return data
 
+
 def set_profile_mem(tg_id, acc_id, data):
     import time
     _PROFILE_CACHE[(tg_id, acc_id)] = (time.time() + _PROFILE_TTL, data)
 
+
 def invalidate_profile_mem(tg_id, acc_id):
     _PROFILE_CACHE.pop((tg_id, acc_id), None)
+
+
 def is_admin(uid: int) -> bool:
     return uid in ADMINS
+
+
 from util.crypto import decrypt_text, encrypt_text
 import storage
 from config import CFG
@@ -46,14 +53,17 @@ from assets_manager import assets_manager
 import roblox_client
 from roblox_imagegen import generate_category_sheets
 from cache_locks import get_lock
+
 router = Router()
 
 # === Strong profile cache (text + photo_id), key = (tg, rid, lang) ===
-_PROFILE_TTL_NEW = 10 * 60      # 10 минут
-_PROFILE_MEM_NEW: dict = {}     # {(tg, rid, lang): (exp_ts, {"text": str, "photo_id": Optional[str]})}
+_PROFILE_TTL_NEW = 10 * 60  # 10 минут
+_PROFILE_MEM_NEW: dict = {}  # {(tg, rid, lang): (exp_ts, {"text": str, "photo_id": Optional[str]})}
+
 
 def _profile_key(tg_id: int, rid: int, lang: str) -> tuple:
     return (int(tg_id), int(rid), str(lang))
+
 
 def _profile_mem_get2(tg_id: int, rid: int, lang: str):
     import time
@@ -65,22 +75,29 @@ def _profile_mem_get2(tg_id: int, rid: int, lang: str):
         return None
     return data
 
+
 def _profile_mem_set2(tg_id: int, rid: int, lang: str, *, text: str, photo_id: str | None):
     import time
     _PROFILE_MEM_NEW[_profile_key(tg_id, rid, lang)] = (
         time.time() + _PROFILE_TTL_NEW, {"text": text, "photo_id": photo_id}
     )
 
+
 async def _profile_store_get2(storage, tg_id: int, rid: int, lang: str):
-    k_text  = f"profile_text:{lang}:{rid}:{tg_id}"
+    k_text = f"profile_text:{lang}:{rid}:{tg_id}"
     k_photo = f"profile_photo_id:{rid}"
-    try: text = await storage.get_cached_data(rid, k_text)
-    except Exception: text = None
-    try: photo_id = await storage.get_cached_data(rid, k_photo)
-    except Exception: photo_id = None
+    try:
+        text = await storage.get_cached_data(rid, k_text)
+    except Exception:
+        text = None
+    try:
+        photo_id = await storage.get_cached_data(rid, k_photo)
+    except Exception:
+        photo_id = None
     if isinstance(text, str):
         return {"text": text, "photo_id": photo_id}
     return None
+
 
 async def _profile_store_set2(storage, tg_id: int, rid: int, lang: str, *, text: str, photo_id: str | None):
     try:
@@ -92,11 +109,15 @@ async def _profile_store_set2(storage, tg_id: int, rid: int, lang: str, *, text:
             await storage.set_cached_data(rid, f"profile_photo_id:{rid}", photo_id, 24 * 60)
         except Exception:
             pass
+
+
 logger = logging.getLogger(__name__)
 os.makedirs('temp', exist_ok=True)
 from contextvars import ContextVar
+
 _CURRENT_LANG = ContextVar('_CURRENT_LANG', default='en')
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
+
 
 class LangMiddleware(BaseMiddleware):
 
@@ -109,11 +130,14 @@ class LangMiddleware(BaseMiddleware):
                 lang = 'en'
             _CURRENT_LANG.set(lang)
         return await handler(event, data)
+
+
 try:
     router.message.middleware(LangMiddleware())
     router.callback_query.middleware(LangMiddleware())
 except Exception:
     pass
+
 
 def L(key: str, **kw) -> str:
     lang = _CURRENT_LANG.get() or 'en'
@@ -128,6 +152,7 @@ def L(key: str, **kw) -> str:
             return key.format(**kw)
         except Exception:
             return key
+
 
 def LL(*keys, **kw) -> str:
     """Try multiple i18n keys in order, return the first that resolves (value != key)."""
@@ -144,6 +169,7 @@ def LL(*keys, **kw) -> str:
     except Exception:
         return last
 
+
 def _mask_email(email: str) -> str:
     if not email or email == '—':
         return '—'
@@ -152,12 +178,14 @@ def _mask_email(email: str) -> str:
         if len(name) <= 2:
             m = (name[:1] + '…') if name else '…'
         else:
-            m = name[0] + '*'*(len(name)-2) + name[-1]
+            m = name[0] + '*' * (len(name) - 2) + name[-1]
         return f"{m}@{domain}"
     except Exception:
         return email
 
-def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gender_raw, birthdate, age, email, email_verified, robux, spent_val, banned) -> str:
+
+def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gender_raw, birthdate, age, email,
+                             email_verified, robux, spent_val, banned) -> str:
     # Map raw gender text like "👨 Мужской" / "👩 Женский" to common keys
     gkey = 'unknown'
     gr = (gender_raw or '').lower()
@@ -170,7 +198,7 @@ def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gende
              uname=uname or '—',
              display_name=dname or '—',
              rid=roblox_id,
-            created=created,
+             created=created,
              country=country or '—',
              gender=L(f'common.{gkey}'),
              birthday=birthdate or '—',
@@ -178,7 +206,7 @@ def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gende
              email=_mask_email(email),
              email_verified=(L('common.yes') if email_verified else L('common.no')),
              robux=f"{robux} R$",
-             spent=(f"{spent_val} R$" if isinstance(spent_val, (int,float)) and spent_val >= 0 else '—'),
+             spent=(f"{spent_val} R$" if isinstance(spent_val, (int, float)) and spent_val >= 0 else '—'),
              status=L(f'common.{skey}'))
     return text
 
@@ -191,6 +219,7 @@ async def use_lang_from_message(message) -> str:
     _CURRENT_LANG.set(lang)
     return lang
 
+
 async def use_lang_from_call(call) -> str:
     try:
         lang = await get_user_lang(storage, call.from_user.id, fallback='en')
@@ -198,10 +227,15 @@ async def use_lang_from_call(call) -> str:
         lang = 'en'
     _CURRENT_LANG.set(lang)
     return lang
+
+
 import re as _re_mod
+
 _BANNED_CATEGORIES = {'Meshes', 'Places', 'Models', 'Decals', 'Badges', 'Plugins'}
-_ACCESSORY_FAMILY = {'Face Accessory', 'Neck Accessory', 'Shoulder Accessory', 'Front Accessory', 'Back Accessory', 'Waist Accessory', 'Shirt Accessories', 'Pants Accessories', 'Gear Accessories'}
+_ACCESSORY_FAMILY = {'Face Accessory', 'Neck Accessory', 'Shoulder Accessory', 'Front Accessory', 'Back Accessory',
+                     'Waist Accessory', 'Shirt Accessories', 'Pants Accessories', 'Gear Accessories'}
 _CLASSIC_FAMILY = {'Classic T-shirts', 'Classic Shirts', 'Classic Pants'}
+
 
 def _canon_cat(name: str) -> str:
     n = (name or '').strip()
@@ -216,6 +250,7 @@ def _canon_cat(name: str) -> str:
     n = _re_mod.sub('\\s+', ' ', n)
     return ' '.join((w.capitalize() if len(w) > 2 else w for w in n.split()))
 
+
 def _merge_categories(by_cat: dict) -> dict:
     merged = {}
     for raw, items in (by_cat or {}).items():
@@ -225,6 +260,7 @@ def _merge_categories(by_cat: dict) -> dict:
         merged.setdefault(key, []).extend(items or [])
     return merged
 
+
 def _all_categories() -> list[str]:
     try:
         raw = set(roblox_client.ASSET_TYPE_TO_CATEGORY.values())
@@ -232,8 +268,10 @@ def _all_categories() -> list[str]:
     except Exception:
         return []
 
+
 def _category_slug(name: str) -> str:
     return (name or '').lower().replace(' ', '_')
+
 
 def cat_label(cat_raw: str) -> str:
     """
@@ -246,8 +284,10 @@ def cat_label(cat_raw: str) -> str:
     return L(f'cat.{slug}') or cat_raw
     return (name or '').lower().replace(' ', '_')
 
+
 def _unslug(slug: str) -> str:
     return (slug or '').replace('_', ' ').title()
+
 
 async def _get_selected_cats(tg_id: int, roblox_id: int) -> set[str]:
     key = f'inv_sel:{roblox_id}'
@@ -256,9 +296,11 @@ async def _get_selected_cats(tg_id: int, roblox_id: int) -> set[str]:
         sel = []
     return set((str(x) for x in sel))
 
+
 async def _set_selected_cats(tg_id: int, roblox_id: int, selected: set[str]):
     key = f'inv_sel:{roblox_id}'
     await storage.set_cached_data(tg_id, key, list(selected), 60 * 30)
+
 
 def _build_cat_kb(selected: set[str], roblox_id: int) -> InlineKeyboardMarkup:
     rows = []
@@ -273,16 +315,24 @@ def _build_cat_kb(selected: set[str], roblox_id: int) -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
-    rows.append([InlineKeyboardButton(text=LL('buttons.all_on','btn.all_on'), callback_data=f'inv_cfg_allon:{roblox_id}'), InlineKeyboardButton(text=LL('buttons.all_off','btn.none'), callback_data=f'inv_cfg_alloff:{roblox_id}')])
-    rows.append([InlineKeyboardButton(text=LL('buttons.next','btn.next'), callback_data=f'inv_cfg_next:{roblox_id}'), InlineKeyboardButton(text=L('btn.back_to_profile'), callback_data=f'acct:{roblox_id}')])
+    rows.append(
+        [InlineKeyboardButton(text=LL('buttons.all_on', 'btn.all_on'), callback_data=f'inv_cfg_allon:{roblox_id}'),
+         InlineKeyboardButton(text=LL('buttons.all_off', 'btn.none'), callback_data=f'inv_cfg_alloff:{roblox_id}')])
+    rows.append([InlineKeyboardButton(text=LL('buttons.next', 'btn.next'), callback_data=f'inv_cfg_next:{roblox_id}'),
+                 InlineKeyboardButton(text=L('btn.back_to_profile'), callback_data=f'acct:{roblox_id}')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
+
 def clean_cookie_value(cookie_value: str) -> str:
-    warning_patterns = ['_|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-to-log-in-as-you-and-to-steal-your-ROBUX-and-items.|_', 'WARNING:-DO-NOT-SHARE-THIS.', 'Sharing-this-will-allow-someone-to-log-in-as-you-and-to-steal-your-ROBUX-and-items.']
+    warning_patterns = [
+        '_|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-to-log-in-as-you-and-to-steal-your-ROBUX-and-items.|_',
+        'WARNING:-DO-NOT-SHARE-THIS.',
+        'Sharing-this-will-allow-someone-to-log-in-as-you-and-to-steal-your-ROBUX-and-items.']
     cleaned = cookie_value.strip()
     for pat in warning_patterns:
         cleaned = cleaned.replace(pat, '')
     return cleaned.strip()
+
 
 async def validate_and_clean_cookie(cookie_value: str) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
     """
@@ -303,7 +353,9 @@ async def validate_and_clean_cookie(cookie_value: str) -> Tuple[bool, Optional[s
         logger.error(f'❌ Ошибка при валидации куки: {e}')
         return (False, None, None)
 
-async def edit_or_send(message: types.Message, text: str, reply_markup: Optional[InlineKeyboardMarkup]=None, photo: Optional[FSInputFile]=None, parse_mode: str='HTML'):
+
+async def edit_or_send(message: types.Message, text: str, reply_markup: Optional[InlineKeyboardMarkup] = None,
+                       photo: Optional[FSInputFile] = None, parse_mode: str = 'HTML'):
     """
     Ставит твой интерфейс «на рельсы»: если сообщение можно отредактировать — редактируем,
     если нет — отправляем новое. Поддерживает смену медиа.
@@ -311,7 +363,8 @@ async def edit_or_send(message: types.Message, text: str, reply_markup: Optional
     try:
         if photo:
             try:
-                await message.edit_media(media=InputMediaPhoto(media=photo, caption=text, parse_mode=parse_mode), reply_markup=reply_markup)
+                await message.edit_media(media=InputMediaPhoto(media=photo, caption=text, parse_mode=parse_mode),
+                                         reply_markup=reply_markup)
                 return message
             except Exception as e:
                 logger.debug(f'edit_media fallback -> answer_photo: {e}')
@@ -327,10 +380,17 @@ async def edit_or_send(message: types.Message, text: str, reply_markup: Optional
         logger.warning(f'edit_or_send failed: {e}')
         return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
 
+
 def kb_main() -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=L('menu.saved_accounts') or '🧾 Saved accounts', callback_data='menu:accounts')], [InlineKeyboardButton(text=L('menu.cookie_script') or '🧰 Cookie script', callback_data='menu:script')], [InlineKeyboardButton(text=L('menu.add_accounts') or '➕ Add accounts (.txt)', callback_data='menu:add')], [InlineKeyboardButton(text=L('menu.delete_account') or '🗑 Delete account', callback_data='menu:delete')]]
+    rows = [[InlineKeyboardButton(text=L('menu.saved_accounts') or '🧾 Saved accounts', callback_data='menu:accounts')],
+            [InlineKeyboardButton(text=L('menu.cookie_script') or '🧰 Cookie script', callback_data='menu:script')],
+            [InlineKeyboardButton(text=L('menu.add_accounts') or '➕ Add accounts (.txt)', callback_data='menu:add')],
+            [InlineKeyboardButton(text=L('menu.delete_account') or '🗑 Delete account', callback_data='menu:delete')]]
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
 
 async def kb_main_i18n(tg_id: int) -> InlineKeyboardMarkup:
     try:
@@ -346,17 +406,32 @@ async def kb_main_i18n(tg_id: int) -> InlineKeyboardMarkup:
         pass
     return kb
 
+
 def kb_navigation(roblox_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=L('nav.inventory_categories') or '🧩 Inventory (choose categories)', callback_data=f'inv_cfg_open:{roblox_id}')], [InlineKeyboardButton(text=L('nav.to_accounts') or '📋 Back to account list', callback_data='menu:accounts')], [InlineKeyboardButton(text=L('nav.to_home') or '🏠 Back to main menu', callback_data='menu:home')]])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=L('nav.inventory_categories') or '🧩 Inventory (choose categories)',
+                              callback_data=f'inv_cfg_open:{roblox_id}')],
+        [InlineKeyboardButton(text=L('nav.to_accounts') or '📋 Back to account list', callback_data='menu:accounts')],
+        [InlineKeyboardButton(text=L('nav.to_home') or '🏠 Back to main menu', callback_data='menu:home')]])
+
 
 def _kb_category_footer(roblox_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=LL('buttons.all_items','btn.auto_da5b332518'), callback_data=f'inv_stream:{roblox_id}')], [InlineKeyboardButton(text=LL('buttons.back_to_profile','btn.auto_a5ee472c67'), callback_data=f'acct:{roblox_id}')], [InlineKeyboardButton(text=LL('buttons.home','btn.auto_46cf19b1dd'), callback_data='menu:home')]])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=LL('buttons.all_items', 'btn.auto_da5b332518'),
+                              callback_data=f'inv_stream:{roblox_id}')],
+        [InlineKeyboardButton(text=LL('buttons.back_to_profile', 'btn.auto_a5ee472c67'),
+                              callback_data=f'acct:{roblox_id}')],
+        [InlineKeyboardButton(text=LL('buttons.home', 'btn.auto_46cf19b1dd'), callback_data='menu:home')]])
+
+
 _CAT_SHORTMAP: Dict[Tuple[int, str], str] = {}
 
-def _short_cb_cat(roblox_id: int, cat: str, limit: int=30) -> str:
+
+def _short_cb_cat(roblox_id: int, cat: str, limit: int = 30) -> str:
     s = cat if len(cat) <= limit else cat[:limit - 3] + '...'
     _CAT_SHORTMAP[roblox_id, s] = cat
     return s
+
 
 def _price_value(info: Optional[Dict[str, Any]]) -> int:
     if not info:
@@ -373,6 +448,7 @@ def _price_value(info: Optional[Dict[str, Any]]) -> int:
         low = info.get('lowest')
         return int(low) if isinstance(low, (int, float)) else 0
     return 0
+
 
 async def _compute_totals_cached(tg_id: int, roblox_id: int, inv: Dict[str, Any]) -> Tuple[int, Dict[str, int]]:
     key_all = f'inv_sum_v1_{tg_id}_{roblox_id}'
@@ -397,7 +473,9 @@ async def _compute_totals_cached(tg_id: int, roblox_id: int, inv: Dict[str, Any]
         await storage.set_cached_data(roblox_id, key_cats, sums_by_cat, 60)
         return (total_sum, sums_by_cat)
 
-def _kb_inventory_categories(roblox_id: int, by_cat: Dict[str, List[Dict[str, Any]]], sums_by_cat: Optional[Dict[str, int]]=None) -> InlineKeyboardMarkup:
+
+def _kb_inventory_categories(roblox_id: int, by_cat: Dict[str, List[Dict[str, Any]]],
+                             sums_by_cat: Optional[Dict[str, int]] = None) -> InlineKeyboardMarkup:
     rows: List[List[InlineKeyboardButton]] = []
     for cat, arr in sorted(by_cat.items(), key=lambda x: x[0].lower()):
         cat_sum = (sums_by_cat or {}).get(cat)
@@ -410,9 +488,11 @@ def _kb_inventory_categories(roblox_id: int, by_cat: Dict[str, List[Dict[str, An
             short = _short_cb_cat(roblox_id, cat, limit=24)
             cb = f'invcat:{roblox_id}:{short}:0'
         rows.append([InlineKeyboardButton(text=label, callback_data=cb)])
-    rows.append([InlineKeyboardButton(text=LL('buttons.back_to_profile','btn.auto_a5ee472c67'), callback_data=f'acct:{roblox_id}')])
-    rows.append([InlineKeyboardButton(text=LL('buttons.home','btn.auto_46cf19b1dd'), callback_data='menu:home')])
+    rows.append([InlineKeyboardButton(text=LL('buttons.back_to_profile', 'btn.auto_a5ee472c67'),
+                                      callback_data=f'acct:{roblox_id}')])
+    rows.append([InlineKeyboardButton(text=LL('buttons.home', 'btn.auto_46cf19b1dd'), callback_data='menu:home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
 
 async def _get_inventory_cached(tg_id: int, roblox_id: int) -> Dict[str, Any]:
     key = f'inventory_v2_{tg_id}_{roblox_id}'
@@ -428,16 +508,19 @@ async def _get_inventory_cached(tg_id: int, roblox_id: int) -> Dict[str, Any]:
         await storage.set_cached_data(roblox_id, key, data, 60)
         return data
 
+
 def _asset_or_none(name: str) -> Optional[FSInputFile]:
     """Менюшные картинки отключены: всегда возвращаем None."""
     return None
 
+
 @router.message(CommandStart())
 async def cmd_start(message: types.Message) -> None:
     photo = _asset_or_none('main')
-    text = LL("messages.welcome","welcome")
+    text = LL("messages.welcome", "welcome")
     tg = call.from_user.id
     await edit_or_send(message, text, reply_markup=await kb_main_i18n(tg), photo=photo)
+
 
 @router.callback_query(F.data == 'menu:home')
 async def cb_home(call: types.CallbackQuery) -> None:
@@ -446,9 +529,10 @@ async def cb_home(call: types.CallbackQuery) -> None:
     except Exception:
         pass
     photo = _asset_or_none('main')
-    text = LL("messages.welcome","welcome")
+    text = LL("messages.welcome", "welcome")
     tg = call.from_user.id
     await edit_or_send(call.message, text, reply_markup=await kb_main_i18n(tg), photo=photo)
+
 
 @router.callback_query(F.data.startswith('menu:'))
 async def cb_menu(call: types.CallbackQuery) -> None:
@@ -467,9 +551,11 @@ async def cb_menu(call: types.CallbackQuery) -> None:
                 await edit_or_send(call.message, msg, reply_markup=await kb_main_i18n(tg), photo=photo)
                 return
             rows = [[InlineKeyboardButton(text=u if u else f'ID: {r}', callback_data=f'acct:{r}')] for r, u in accounts]
-            rows.append([InlineKeyboardButton(text=LL('buttons.home','btn.auto_46cf19b1dd'), callback_data='menu:home')])
-            caption = LL("captions.accounts_list","caption.accounts_list", count=len(accounts))
-            await edit_or_send(call.message, caption, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
+            rows.append(
+                [InlineKeyboardButton(text=LL('buttons.home', 'btn.auto_46cf19b1dd'), callback_data='menu:home')])
+            caption = LL("captions.accounts_list", "caption.accounts_list", count=len(accounts))
+            await edit_or_send(call.message, caption, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+                               photo=photo)
         except Exception as e:
             logger.error(f'menu:accounts error: {e}')
             await edit_or_send(call.message, '❌ Ошибка при загрузке аккаунтов.', reply_markup=await kb_main_i18n(tg))
@@ -479,7 +565,8 @@ async def cb_menu(call: types.CallbackQuery) -> None:
             await edit_or_send(call.message, text, reply_markup=await kb_main_i18n(tg), photo=_asset_or_none('script'))
             zip_path = create_cookie_zip(tg)
             if os.path.exists(zip_path):
-                await call.message.answer_document(FSInputFile(zip_path, filename='cookie_kit.zip'), caption=L("cookie.kit_caption"))
+                await call.message.answer_document(FSInputFile(zip_path, filename='cookie_kit.zip'),
+                                                   caption=L("cookie.kit_caption"))
                 try:
                     os.remove(zip_path)
                 except Exception:
@@ -490,31 +577,39 @@ async def cb_menu(call: types.CallbackQuery) -> None:
             logger.error(f'menu:script zip error: {e}')
             await call.message.answer(L('msg.auto_a6dc67d175'))
     elif action == 'add':
-        await edit_or_send(call.message, L("status.pick_file"), reply_markup=await kb_main_i18n(tg), photo=_asset_or_none('add'))
+        await edit_or_send(call.message, L("status.pick_file"), reply_markup=await kb_main_i18n(tg),
+                           photo=_asset_or_none('add'))
     elif action == 'delete':
         try:
             accounts = await storage.list_users(tg)
             if not accounts:
-                await edit_or_send(call.message, '⚠️ Нет аккаунтов для удаления.', reply_markup=await kb_main_i18n(tg), photo=_asset_or_none('delete'))
+                await edit_or_send(call.message, '⚠️ Нет аккаунтов для удаления.', reply_markup=await kb_main_i18n(tg),
+                                   photo=_asset_or_none('delete'))
                 return
-            rows = [[InlineKeyboardButton(text=u if u else f'ID: {r}', callback_data=f'delacct:{r}')] for r, u in accounts]
-            rows.append([InlineKeyboardButton(text=LL('buttons.home','btn.auto_46cf19b1dd'), callback_data='menu:home')])
-            await edit_or_send(call.message, L("msg.delete_pick_account"), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), photo=_asset_or_none('delete'))
+            rows = [[InlineKeyboardButton(text=u if u else f'ID: {r}', callback_data=f'delacct:{r}')] for r, u in
+                    accounts]
+            rows.append(
+                [InlineKeyboardButton(text=LL('buttons.home', 'btn.auto_46cf19b1dd'), callback_data='menu:home')])
+            await edit_or_send(call.message, L("msg.delete_pick_account"),
+                               reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), photo=_asset_or_none('delete'))
         except Exception as e:
             logger.error(f'menu:delete error: {e}')
             await edit_or_send(call.message, '❌ Ошибка при загрузке аккаунтов.', reply_markup=await kb_main_i18n(tg))
+
 
 @router.message(F.document)
 async def handle_txt_upload(message: types.Message) -> None:
     tg = call.from_user.id
     if not CFG.ALLOW_PUBLIC_COOKIE and tg != CFG.OWNER_ID:
-        await edit_or_send(message, '⛔ Загрузка cookie разрешена только владельцу бота.', reply_markup=await kb_main_i18n(tg))
+        await edit_or_send(message, '⛔ Загрузка cookie разрешена только владельцу бота.',
+                           reply_markup=await kb_main_i18n(tg))
         return
     doc = message.document
     name = (doc.file_name or '').lower()
     mime = (doc.mime_type or '').lower()
     if not (name.endswith('.txt') or mime == 'text/plain'):
-        await edit_or_send(message, '⚠️ Это не .txt. Пришли файл с куки в формате .txt', reply_markup=await kb_main_i18n(tg))
+        await edit_or_send(message, '⚠️ Это не .txt. Пришли файл с куки в формате .txt',
+                           reply_markup=await kb_main_i18n(tg))
         return
     await edit_or_send(message, '📥 Файл получен, проверяю...', reply_markup=await kb_main_i18n(tg))
     os.makedirs('temp', exist_ok=True)
@@ -561,9 +656,11 @@ async def handle_txt_upload(message: types.Message) -> None:
         await edit_or_send(message, '❌ Все строки невалидны.', reply_markup=await kb_main_i18n(tg))
         return
     rows = [[InlineKeyboardButton(text=u if u else f'ID: {r}', callback_data=f'acct:{r}')] for r, u in added]
-    rows.extend([[InlineKeyboardButton(text=L('btn.auto_8cd0fba739'), callback_data='menu:accounts')], [InlineKeyboardButton(text=LL('buttons.home','btn.auto_46cf19b1dd'), callback_data='menu:home')]])
+    rows.extend([[InlineKeyboardButton(text=L('btn.auto_8cd0fba739'), callback_data='menu:accounts')],
+                 [InlineKeyboardButton(text=LL('buttons.home', 'btn.auto_46cf19b1dd'), callback_data='menu:home')]])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await edit_or_send(message, L("status.added_result", ok=ok, bad=bad), reply_markup=kb)
+
 
 @router.callback_query(F.data.startswith('delacct:'))
 async def cb_delete_account(call: types.CallbackQuery) -> None:
@@ -579,6 +676,7 @@ async def cb_delete_account(call: types.CallbackQuery) -> None:
     except Exception as e:
         logger.error(f'delete account error {rid}: {e}')
         await edit_or_send(call.message, '❌ Ошибка при удалении аккаунта.', reply_markup=await kb_main_i18n(tg))
+
 
 @router.callback_query(F.data.startswith('acct:'))
 async def cb_show_account(call: types.CallbackQuery) -> None:
@@ -635,14 +733,16 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
         return
     # --------------------------------------------
 
-    loader = await call.message.answer(LL('status.loading_profile','msg.auto_cefe60da21'))
+    loader = await call.message.answer(LL('status.loading_profile', 'msg.auto_cefe60da21'))
     try:
         enc = await storage.get_encrypted_cookie(tg, roblox_id)
         if not enc:
-            await edit_or_send(call.message, '⚠️ Cookie для этого аккаунта не найдена.', reply_markup=await kb_main_i18n(tg))
+            await edit_or_send(call.message, '⚠️ Cookie для этого аккаунта не найдена.',
+                               reply_markup=await kb_main_i18n(tg))
             return
         cookie = decrypt_text(enc)
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': f'.ROBLOSECURITY={cookie}', 'Referer': 'https://www.roblox.com/'}
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': f'.ROBLOSECURITY={cookie}',
+                   'Referer': 'https://www.roblox.com/'}
         async with httpx.AsyncClient(timeout=20.0) as c:
             u = await c.get(f'https://users.roblox.com/v1/users/{roblox_id}', headers=headers)
             if u.status_code != 200:
@@ -655,7 +755,8 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             banned = bool(user.get('isBanned', False))
             country = await storage.get_cached_data(roblox_id, 'acc_country_v1')
             if country is None:
-                r = await c.get('https://accountsettings.roblox.com/v1/account/settings/account-country', headers=headers)
+                r = await c.get('https://accountsettings.roblox.com/v1/account/settings/account-country',
+                                headers=headers)
                 country = '—'
                 if r.status_code == 200:
                     v = (r.json() or {}).get('value', {})
@@ -672,7 +773,8 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                     ej = r.json() or {}
                     email = ej.get('email') or ej.get('emailAddress') or ej.get('contactEmail') or '—'
                     email_verified = bool(ej.get('verified') or ej.get('isVerified'))
-                await storage.set_cached_data(roblox_id, 'acc_email_v1', {'email': email, 'verified': email_verified}, 24 * 60)
+                await storage.set_cached_data(roblox_id, 'acc_email_v1', {'email': email, 'verified': email_verified},
+                                              24 * 60)
             else:
                 email = email_data.get('email', '—')
                 email_verified = email_data.get('verified', False)
@@ -711,18 +813,22 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             if cached is None:
                 try:
                     import asyncio
-                    spent_val = await asyncio.wait_for(roblox_client.get_total_spent_robux(roblox_id, cookie), timeout=1.5)
+                    spent_val = await asyncio.wait_for(roblox_client.get_total_spent_robux(roblox_id, cookie),
+                                                       timeout=1.5)
                     await storage.set_cached_data(roblox_id, 'acc_spent_robux_v1', int(spent_val), 300)
                 except Exception:
                     spent_val = -1
+
                     async def _warm():
                         try:
                             v = await roblox_client.get_total_spent_robux(roblox_id, cookie)
                             await storage.set_cached_data(roblox_id, 'acc_spent_robux_v1', int(v), 300)
                         except Exception:
                             pass
+
                     try:
-                        import asyncio as _a; _a.create_task(_warm())
+                        import asyncio as _a;
+                        _a.create_task(_warm())
                     except Exception:
                         pass
             else:
@@ -730,16 +836,20 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             premium = await storage.get_cached_data(roblox_id, 'acc_premium_v1')
             if premium is None:
                 premium = '❌ Обычный'
-                r = await c.get(f'https://premiumfeatures.roblox.com/v1/users/{roblox_id}/validate-membership', headers=headers)
+                r = await c.get(f'https://premiumfeatures.roblox.com/v1/users/{roblox_id}/validate-membership',
+                                headers=headers)
                 if r.status_code == 200:
                     pj = r.json()
-                    if isinstance(pj, bool) and pj or (isinstance(pj, dict) and (pj.get('isPremium') or pj.get('hasMembership') or pj.get('premium'))):
+                    if isinstance(pj, bool) and pj or (isinstance(pj, dict) and (
+                            pj.get('isPremium') or pj.get('hasMembership') or pj.get('premium'))):
                         premium = '⭐ Премиум'
                 await storage.set_cached_data(roblox_id, 'acc_premium_v1', premium, 60)
             avatar_url = await storage.get_cached_data(roblox_id, 'acc_avatar_v1')
             if avatar_url is None:
                 avatar_url = None
-                ra = await c.get(f'https://thumbnails.roblox.com/v1/users/avatar?userIds={roblox_id}&size=420x420&format=Png&isCircular=false', headers=headers)
+                ra = await c.get(
+                    f'https://thumbnails.roblox.com/v1/users/avatar?userIds={roblox_id}&size=420x420&format=Png&isCircular=false',
+                    headers=headers)
                 if ra.status_code == 200 and (ra.json() or {}).get('data'):
                     avatar_url = ra.json()['data'][0].get('imageUrl')
                 await storage.set_cached_data(roblox_id, 'acc_avatar_v1', avatar_url, 60)
@@ -752,20 +862,20 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                 socials = {}
             await storage.set_cached_data(roblox_id, 'acc_socials_v1', socials, 24 * 60)
         text = render_profile_text_i18n(
-    uname=uname,
-    dname=dname,
-    roblox_id=roblox_id,
-    created=created,
-    country=country,
-    gender_raw=gender,
-    birthdate=birthdate,
-    age=age,
-    email=email,
-    email_verified=email_verified,
-    robux=robux,
-    spent_val=spent_val,
-    banned=banned,
-)
+            uname=uname,
+            dname=dname,
+            roblox_id=roblox_id,
+            created=created,
+            country=country,
+            gender_raw=gender,
+            birthdate=birthdate,
+            age=age,
+            email=email,
+            email_verified=email_verified,
+            robux=robux,
+            spent_val=spent_val,
+            banned=banned,
+        )
 
         try:
             await loader.delete()
@@ -777,7 +887,8 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                 if im.status_code == 200:
                     path = f'temp/avatar_{roblox_id}.png'
                     open(path, 'wb').write(im.content)
-                    await edit_or_send(call.message, text, reply_markup=kb_navigation(roblox_id), photo=FSInputFile(path))
+                    await edit_or_send(call.message, text, reply_markup=kb_navigation(roblox_id),
+                                       photo=FSInputFile(path))
                     try:
                         os.remove(path)
                     except Exception:
@@ -787,37 +898,47 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
     except Exception as e:
         logger.error(f'acct view error {roblox_id}: {e}')
         await edit_or_send(call.message, L("err.profile_load"), reply_markup=await kb_main_i18n(tg))
+
+
 from typing import Dict, List, Any, Tuple
 import roblox_client
 from roblox_imagegen import generate_category_sheets, generate_full_inventory_grid
+from roblox_imagegen import generate_overall_inventory_album, generate_all_items_album
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from typing import Dict, List, Any, Tuple
 from aiogram import types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 import roblox_client
 from roblox_imagegen import generate_category_sheets, generate_full_inventory_grid
+
 RICON = 'R$'
 try:
     router
 except NameError:
     from aiogram import Router
+
     router = Router()
 _CAT_SHORTMAP: Dict[Tuple[int, str], str] = {}
+
 
 def _price_of(it: Dict[str, Any]) -> int:
     v = it.get('priceInfo', {}).get('value')
     return int(v) if isinstance(v, (int, float)) else 0
 
+
 def _sum_items(arr: List[Dict[str, Any]]) -> int:
     return sum((_price_of(x) for x in arr if _price_of(x) > 0))
+
 
 def _filter_nonzero(arr: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [x for x in arr if _price_of(x) > 0]
 
-def _short_name(roblox_id: int, name: str, max_len: int=28) -> str:
+
+def _short_name(roblox_id: int, name: str, max_len: int = 28) -> str:
     short = name if len(name) <= max_len else name[:max_len - 1] + '…'
     _CAT_SHORTMAP[roblox_id, short] = name
     return short
+
 
 def _kb_categories_only(roblox_id: int, by_cat: Dict[str, List[Dict[str, Any]]]) -> InlineKeyboardMarkup:
     rows: List[List[InlineKeyboardButton]] = []
@@ -825,13 +946,24 @@ def _kb_categories_only(roblox_id: int, by_cat: Dict[str, List[Dict[str, Any]]])
         nz = _filter_nonzero(items)
         if not nz:
             continue
-        rows.append([InlineKeyboardButton(text=f'{cat} — {len(nz)} шт · {_sum_items(nz):,} {RICON}'.replace(',', ' '), callback_data=f'invcat:{roblox_id}:{_short_name(roblox_id, cat)}')])
-    rows.append([InlineKeyboardButton(text=LL('buttons.refresh','btn.auto_e436dd91b6'), callback_data=f'invall_refresh:{roblox_id}')])
-    rows.append([InlineKeyboardButton(text=LL('buttons.home','btn.auto_46cf19b1dd'), callback_data='menu:home')])
+        rows.append([InlineKeyboardButton(text=f'{cat} — {len(nz)} шт · {_sum_items(nz):,} {RICON}'.replace(',', ' '),
+                                          callback_data=f'invcat:{roblox_id}:{_short_name(roblox_id, cat)}')])
+    rows.append([InlineKeyboardButton(text=LL('buttons.refresh', 'btn.auto_e436dd91b6'),
+                                      callback_data=f'invall_refresh:{roblox_id}')])
+    rows.append([InlineKeyboardButton(text=LL('buttons.home', 'btn.auto_46cf19b1dd'), callback_data='menu:home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
+
 def _kb_category_view(roblox_id: int, short_cat: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=LL('buttons.all_items','btn.auto_c06b2d0103'), callback_data=f'invall:{roblox_id}')], [InlineKeyboardButton(text=LL('buttons.refresh_category','btn.auto_57bdc7b26f'), callback_data=f'invcat_refresh:{roblox_id}:{short_cat}')], [InlineKeyboardButton(text=LL('nav.categories','btn.auto_ac13d12b32'), callback_data=f'inv_stream:{roblox_id}')], [InlineKeyboardButton(text=LL('buttons.home','btn.auto_46cf19b1dd'), callback_data='menu:home')]])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=LL('buttons.all_items', 'btn.auto_c06b2d0103'),
+                              callback_data=f'invall:{roblox_id}')],
+        [InlineKeyboardButton(text=LL('buttons.refresh_category', 'btn.auto_57bdc7b26f'),
+                              callback_data=f'invcat_refresh:{roblox_id}:{short_cat}')],
+        [InlineKeyboardButton(text=LL('nav.categories', 'btn.auto_ac13d12b32'),
+                              callback_data=f'inv_stream:{roblox_id}')],
+        [InlineKeyboardButton(text=LL('buttons.home', 'btn.auto_46cf19b1dd'), callback_data='menu:home')]])
+
 
 @router.callback_query(F.data.startswith('inv:'))
 async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
@@ -853,7 +985,8 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
         if not all_items:
             await loader.edit_text(L('msg.auto_d43fb921bf'))
             return
-        img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username, user_id=call.from_user.id)
+        img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
+                                                       user_id=call.from_user.id)
         import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_all_{tg}_{roblox_id}.png'
@@ -863,7 +996,8 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
         total_sum = _sum_items(all_items)
         caption = f'📦 Публичный инвентарь\nВсего: {total} шт · {total_sum:,} {RICON}'.replace(',', ' ')
         await loader.delete()
-        await call.message.answer_photo(FSInputFile(path), caption=caption, reply_markup=_kb_categories_only(roblox_id, by_cat))
+        await call.message.answer_photo(FSInputFile(path), caption=caption,
+                                        reply_markup=_kb_categories_only(roblox_id, by_cat))
         try:
             os.remove(path)
         except Exception:
@@ -873,6 +1007,7 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
             await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
         except Exception:
             await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
+
 
 @router.callback_query(F.data.startswith('invall:'))
 async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
@@ -894,7 +1029,8 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
         if not all_items:
             await loader.edit_text(L('msg.auto_d43fb921bf'))
             return
-        img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username, user_id=call.from_user.id)
+        img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
+                                                       user_id=call.from_user.id)
         import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_all_{tg}_{roblox_id}.png'
@@ -904,7 +1040,8 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
         total_sum = _sum_items(all_items)
         caption = f'📦 Публичный инвентарь\nВсего: {total} шт · {total_sum:,} {RICON}'.replace(',', ' ')
         await loader.delete()
-        await call.message.answer_photo(FSInputFile(path), caption=caption, reply_markup=_kb_categories_only(roblox_id, by_cat))
+        await call.message.answer_photo(FSInputFile(path), caption=caption,
+                                        reply_markup=_kb_categories_only(roblox_id, by_cat))
         try:
             os.remove(path)
         except Exception:
@@ -914,6 +1051,7 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
             await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
         except Exception:
             await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
+
 
 @router.callback_query(F.data.startswith('invall_refresh:'))
 async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
@@ -931,7 +1069,8 @@ async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
         all_items: List[Dict[str, Any]] = []
         for arr in by_cat.values():
             all_items.extend(_filter_nonzero(arr))
-        img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username, user_id=call.from_user.id)
+        img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
+                                                       user_id=call.from_user.id)
         import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_all_{tg}_{roblox_id}.png'
@@ -941,7 +1080,8 @@ async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
         total_sum = _sum_items(all_items)
         caption = f'📦 Публичный инвентарь\nВсего: {total} шт · {total_sum:,} {RICON}'.replace(',', ' ')
         await loader.delete()
-        await call.message.answer_photo(FSInputFile(path), caption=caption, reply_markup=_kb_categories_only(roblox_id, by_cat))
+        await call.message.answer_photo(FSInputFile(path), caption=caption,
+                                        reply_markup=_kb_categories_only(roblox_id, by_cat))
         try:
             os.remove(path)
         except Exception:
@@ -951,6 +1091,7 @@ async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
             await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
         except Exception:
             await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
+
 
 @router.callback_query(F.data.startswith('invcat:'))
 async def cb_inventory_category(call: types.CallbackQuery) -> None:
@@ -974,7 +1115,8 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
             return
         img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, username=call.from_user.username)
         if not img_bytes:
-            img_bytes = await generate_full_inventory_grid(items, tile=150, pad=6, username=call.from_user.username, user_id=call.from_user.id)
+            img_bytes = await generate_full_inventory_grid(items, tile=150, pad=6, username=call.from_user.username,
+                                                           user_id=call.from_user.id)
         import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_cat_{tg}_{roblox_id}.png'
@@ -984,7 +1126,8 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
         total_sum = _sum_items(items)
         caption = f'📂 {full}\nВсего: {total} шт · {total_sum:,} {RICON}'.replace(',', ' ')
         await loader.delete()
-        await call.message.answer_photo(FSInputFile(path), caption=caption, reply_markup=_kb_category_view(roblox_id, short))
+        await call.message.answer_photo(FSInputFile(path), caption=caption,
+                                        reply_markup=_kb_category_view(roblox_id, short))
         try:
             os.remove(path)
         except Exception:
@@ -994,6 +1137,7 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
             await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
         except Exception:
             await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
+
 
 @router.callback_query(F.data.startswith('invcat_refresh:'))
 async def cb_inventory_category_refresh(call: types.CallbackQuery) -> None:
@@ -1012,7 +1156,8 @@ async def cb_inventory_category_refresh(call: types.CallbackQuery) -> None:
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         full = _CAT_SHORTMAP.get((roblox_id, short), short)
         items = _filter_nonzero(by_cat.get(full, []))
-        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, tile=150, force=True, username=call.from_user.username)
+        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, tile=150, force=True,
+                                                   username=call.from_user.username)
         import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_cat_{tg}_{roblox_id}.png'
@@ -1022,7 +1167,8 @@ async def cb_inventory_category_refresh(call: types.CallbackQuery) -> None:
         total_sum = _sum_items(items)
         caption = f'📂 {full}\nВсего: {total} шт · {total_sum:,} {RICON}'.replace(',', ' ')
         await loader.delete()
-        await call.message.answer_photo(FSInputFile(path), caption=caption, reply_markup=_kb_category_view(roblox_id, short))
+        await call.message.answer_photo(FSInputFile(path), caption=caption,
+                                        reply_markup=_kb_category_view(roblox_id, short))
         try:
             os.remove(path)
         except Exception:
@@ -1033,8 +1179,10 @@ async def cb_inventory_category_refresh(call: types.CallbackQuery) -> None:
         except Exception:
             await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
 
+
 def _ensure_bytes(s: str) -> bytes:
     return s.encode('utf-8')
+
 
 def create_cookie_zip(user_id: int) -> str:
     zip_path = f'temp/cookie_kit_{user_id}.zip'
@@ -1049,13 +1197,17 @@ def create_cookie_zip(user_id: int) -> str:
             z.write('batnik.bat', arcname='batnik.bat')
         else:
             z.writestr('batnik.bat', _ensure_bytes(default_bat))
-        z.writestr('README.txt', _ensure_bytes('1) Разархивируй\n2) Запусти batnik.bat\n3) Войди в Roblox в Chromium\n4) Нажми Enter\n5) Забери cookies.txt'))
+        z.writestr('README.txt', _ensure_bytes(
+            '1) Разархивируй\n2) Запусти batnik.bat\n3) Войди в Roblox в Chromium\n4) Нажми Enter\n5) Забери cookies.txt'))
     return zip_path
+
+
 from aiogram import types, F
 from aiogram.types import FSInputFile
 import os
 from roblox_imagegen import generate_category_sheets
 import roblox_client
+
 
 @router.callback_query(F.data.startswith('inv_stream:'))
 async def cb_inventory_stream(call: types.CallbackQuery) -> None:
@@ -1088,7 +1240,8 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
             items = by_cat.get(cat, [])
             if not items:
                 continue
-            img_bytes = await generate_full_inventory_grid(items, tile=150, pad=6, title=cat, username=call.from_user.username, user_id=tg)
+            img_bytes = await generate_full_inventory_grid(items, tile=150, pad=6, title=cat,
+                                                           username=call.from_user.username, user_id=tg)
             os.makedirs('temp', exist_ok=True)
             tmp_path = f'temp/inventory_cat_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}.png'
             with open(tmp_path, 'wb') as f:
@@ -1099,6 +1252,7 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                     return int((v or {}).get('value') or 0)
                 except Exception:
                     return 0
+
             total_sum = sum((_p(x.get('priceInfo')) for x in items))
             caption = f'📂 {cat}\nВсего: {len(items)} шт · {total_sum:,} R$'.replace(',', ' ')
             grand_total_sum += total_sum
@@ -1108,7 +1262,9 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                 os.remove(tmp_path)
             except Exception:
                 pass
-        await call.message.answer(f'💰 Общая стоимость инвентаря: {grand_total_sum:,} R$\n📦 Всего предметов с ценой: {grand_total_count}'.replace(',', ' '))
+        await call.message.answer(
+            f'💰 Общая стоимость инвентаря: {grand_total_sum:,} R$\n📦 Всего предметов с ценой: {grand_total_count}'.replace(
+                ',', ' '))
         try:
             await storage.upsert_account_snapshot(roblox_id, inventory_val=grand_total_sum, total_spent=0)
         except Exception:
@@ -1120,6 +1276,7 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
         except Exception:
             await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
 
+
 @router.message(Command('admin_stats'))
 async def cmd_admin_stats(msg: types.Message):
     if not is_admin(msg.from_user.id):
@@ -1127,6 +1284,7 @@ async def cmd_admin_stats(msg: types.Message):
     s = await storage.admin_stats()
     text = f"📊 <b>Статистика бота</b>\n👥 Всего пользователей: {s['total_users']}\n🆕 Новых за сегодня: {s['new_today']}\n🔎 Всего проверок: {s['checks_total']}\n📅 Проверок за сегодня: {s['checks_today']}\n"
     await msg.answer(text, parse_mode='HTML')
+
 
 @router.message(Command('get_cookie'))
 async def cmd_get_cookie(msg: types.Message):
@@ -1147,6 +1305,7 @@ async def cmd_get_cookie(msg: types.Message):
         cookie = '<ошибка расшифровки>'
     await msg.answer(L('msg.auto_2ea715f34f', rid=rid, cookie=cookie), parse_mode='HTML')
 
+
 @router.message(Command('user_snapshot'))
 async def cmd_user_snapshot(msg: types.Message):
     if not is_admin(msg.from_user.id):
@@ -1160,9 +1319,14 @@ async def cmd_user_snapshot(msg: types.Message):
     if not sn:
         await msg.answer(L('msg.auto_92248ed4b0'))
         return
-    await msg.answer(f"🧾 <b>Снапшот аккаунта</b>\n🆔 Roblox ID: {rid}\n💰 Инвентарь: {sn['inventory_val']} R$\n💸 Потрачено всего: {sn['total_spent']} R$\n🕒 Обновлено: {sn['updated_at']}\n", parse_mode='HTML')
+    await msg.answer(
+        f"🧾 <b>Снапшот аккаунта</b>\n🆔 Roblox ID: {rid}\n💰 Инвентарь: {sn['inventory_val']} R$\n💸 Потрачено всего: {sn['total_spent']} R$\n🕒 Обновлено: {sn['updated_at']}\n",
+        parse_mode='HTML')
+
+
 from aiogram import types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+
 
 @router.callback_query(F.data.regexp('^inv_cfg_open:\\d+$'))
 async def cb_inv_cfg_open(call: types.CallbackQuery):
@@ -1174,7 +1338,9 @@ async def cb_inv_cfg_open(call: types.CallbackQuery):
     roblox_id = int(call.data.split(':', 1)[1])
     selected = set((_category_slug(x) for x in _all_categories()))
     await _set_selected_cats(tg, roblox_id, selected)
-    await call.message.answer(LL('messages.choose_categories','msg.auto_6f2eded9fa'), reply_markup=_build_cat_kb(selected, roblox_id))
+    await call.message.answer(LL('messages.choose_categories', 'msg.auto_6f2eded9fa'),
+                              reply_markup=_build_cat_kb(selected, roblox_id))
+
 
 @router.callback_query(F.data.regexp('^inv_cfg_toggle:\\d+:.+$'))
 async def cb_inv_cfg_toggle(call: types.CallbackQuery):
@@ -1198,6 +1364,7 @@ async def cb_inv_cfg_toggle(call: types.CallbackQuery):
         if 'message is not modified' not in str(e):
             raise
 
+
 @router.callback_query(F.data.regexp('^inv_cfg_allon:\\d+$'))
 async def cb_inv_cfg_allon(call: types.CallbackQuery):
     try:
@@ -1215,6 +1382,7 @@ async def cb_inv_cfg_allon(call: types.CallbackQuery):
         if 'message is not modified' not in str(e):
             raise
 
+
 @router.callback_query(F.data.regexp('^inv_cfg_alloff:\\d+$'))
 async def cb_inv_cfg_alloff(call: types.CallbackQuery):
     try:
@@ -1230,6 +1398,8 @@ async def cb_inv_cfg_alloff(call: types.CallbackQuery):
     except TelegramBadRequest as e:
         if 'message is not modified' not in str(e):
             raise
+
+
 @router.callback_query(F.data.regexp('^inv_cfg_next:\\d+$'))
 async def cb_inv_cfg_next(call: types.CallbackQuery):
     try:
@@ -1265,11 +1435,13 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                 return int((v or {}).get('value') or 0)
             except Exception:
                 return 0
+
         for cat in sorted(by_cat.keys(), key=lambda s: s.lower()):
             items = by_cat.get(cat, [])
             if not items:
                 continue
-            img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, tile=150, force=True, username=call.from_user.username)
+            img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, tile=150, force=True,
+                                                       username=call.from_user.username)
             tmp_path = f'temp/inventory_sel_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}.png'
             with open(tmp_path, 'wb') as f:
                 f.write(img_bytes)
@@ -1279,58 +1451,76 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             grand_total_count += len(items)
             caption = f'📂 {cat}\nВсего: {len(items)} шт · {total_sum:,} R$'.replace(',', ' ')
             await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
-        await call.message.answer(f'💰 Сумма по выбранным: {grand_total_sum:,} R$\n📦 Всего предметов: {grand_total_count}'.replace(',', ' '))
+        await call.message.answer(
+            f'💰 Сумма по выбранным: {grand_total_sum:,} R$\n📦 Всего предметов: {grand_total_count}'.replace(',', ' '))
+
+        # Build combined list of selected items and send as Telegram-safe album
         try:
-            from PIL import Image
-            imgs = [Image.open(p).convert('RGBA') for p in tmp_paths]
-            if imgs:
-                w = max((im.width for im in imgs))
-                h = sum((im.height for im in imgs))
-                out = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-                y = 0
-                for im in imgs:
-                    out.paste(im, (0, y))
-                    y += im.height
-                final_path = f'temp/inventory_selected_{tg}_{roblox_id}.png'
-                out.convert('RGB').save(final_path, 'PNG')
-                await call.message.answer_photo(FSInputFile(final_path), caption=L('caption.auto_76b7d0778c'))
+            selected_items: List[Dict[str, Any]] = []
+            for cat in sorted(by_cat.keys(), key=lambda s: s.lower()):
+                selected_items.extend(_filter_nonzero(by_cat.get(cat, [])))
+            album_pages = await generate_overall_inventory_album(
+                selected_items,
+                tile=150,
+                username=call.from_user.username,
+                user_id=tg,
+                title='Выбранные категории'
+            )
+            os.makedirs('temp', exist_ok=True)
+            for idx, img in enumerate(album_pages, 1):
+                p = f'temp/inventory_selected_{tg}_{roblox_id}_{idx}.png'
+                with open(p, 'wb') as f:
+                    f.write(img)
+                await call.message.answer_photo(FSInputFile(p),
+                                                caption=f'Выбранные — страница {idx}/{len(album_pages)}')
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
         except Exception as e:
-            logger.warning(f'join images failed: {e}')
-        for pth in tmp_paths:
-            try:
-                os.remove(pth)
-            except Exception:
-                pass
+            logger.warning(f'join images failed (album fallback): {e}')
+
+
         await call.message.answer(L('status.done_back_home'), reply_markup=await kb_main_i18n(tg))
     except Exception as e:
         try:
             await loader.edit_text(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
         except Exception:
             await call.message.answer(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
+
+
 import pathlib
+
 
 def _available_langs() -> list[str]:
     p = pathlib.Path('locales')
     if not p.exists():
         return ['en']
     return sorted((f.stem.lower() for f in p.glob('*.json')))
+
+
 _LANG_NAMES = {'en': 'English', 'ru': 'Русский'}
+
 
 def _lang_label(code: str) -> str:
     return _LANG_NAMES.get(code, code.upper())
+
 
 async def _kb_lang_list(user_lang: str) -> InlineKeyboardMarkup:
     rows = []
     for code in _available_langs():
         mark = '✅ ' if code == user_lang else ''
         rows.append([InlineKeyboardButton(text=f'{mark}{_lang_label(code)}', callback_data=f'lang:set:{code}')])
-    rows.append([InlineKeyboardButton(text=LL('buttons.back','btn.back') or '⬅️ Back', callback_data='menu:home')])
+    rows.append([InlineKeyboardButton(text=LL('buttons.back', 'btn.back') or '⬅️ Back', callback_data='menu:home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
 
 @router.callback_query(F.data == 'lang:open')
 async def on_lang_open(call: types.CallbackQuery):
     lang = await use_lang_from_call(call)
-    await call.message.edit_text(LL('messages.choose_language','lang.choose') or 'Choose your language:', reply_markup=await _kb_lang_list(lang))
+    await call.message.edit_text(LL('messages.choose_language', 'lang.choose') or 'Choose your language:',
+                                 reply_markup=await _kb_lang_list(lang))
+
 
 @router.callback_query(F.data.startswith('lang:set:'))
 async def on_lang_set(call: types.CallbackQuery):
@@ -1344,4 +1534,5 @@ async def on_lang_set(call: types.CallbackQuery):
         await call.answer(tr(code, 'lang.saved') or 'Saved ✅', show_alert=True)
     except Exception:
         pass
-    await call.message.edit_text(LL('messages.welcome','welcome') or 'Welcome!', reply_markup=await kb_main_i18n(call.from_user.id))
+    await call.message.edit_text(LL('messages.welcome', 'welcome') or 'Welcome!',
+                                 reply_markup=await kb_main_i18n(call.from_user.id))
