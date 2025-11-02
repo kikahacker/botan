@@ -476,7 +476,7 @@ def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]
     with open(path, "r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            id_raw = row.get("id") or row.get("assetId")
+            id_raw = (row.get("id") or row.get("assetId") or row.get("collectibleId") or row.get("collectibleItemId"))
             if not id_raw:
                 continue
             try:
