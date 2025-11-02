@@ -474,48 +474,32 @@ def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]
         return _PRICES_CACHE
 
     out: Dict[int, Dict[str, Any]] = {}
+    import csv
     try:
         with open(path, "r", encoding="utf-8-sig", newline="") as f:
-            peek = f.read(4096)
-            f.seek(0)
-            # Try DictReader first (headered CSV, case-insensitive)
             reader = csv.DictReader(f)
             if reader.fieldnames:
-                fields = [x.strip().lower() for x in reader.fieldnames]
                 for row in reader:
-                    r = {k.strip().lower(): (v or "").strip() for k, v in row.items()}
-                    id_raw = r.get("id") or r.get("assetid") or r.get("collectibleid") or r.get("collectibleitemid") or r.get("itemid")
+                    r = {(k or '').strip().lower(): (v or '').strip() for k, v in row.items()}
+                    id_raw = r.get("itemid") or r.get("collectibleitemid") or r.get("collectibleid") or r.get("assetid") or r.get("id")
                     if not id_raw:
                         continue
-                    try:
-                        aid = _to_int(id_raw)
-                    except Exception:
-                        continue
+                    aid = _to_int(id_raw)
                     name = r.get("name", "")
-                    # accept price|cost|value
-                    price_field = r.get("price") or r.get("cost") or r.get("value") or r.get("pricepicked")
-                    try:
-                        price_val = int(float(price_field or 0))
-                    except Exception:
-                        price_val = 0
+                    price_field = r.get("pricepicked") or r.get("price") or r.get("value") or r.get("cost")
+                    price_val = _to_int(price_field or 0)
                     out[aid] = {"name": name, "priceInfo": {"value": price_val}}
             else:
-                # Headerless fallback: assume columns: id,name,price,(optional type)
                 f.seek(0)
-                reader2 = csv.reader(f)
+                import csv as _csv
+                reader2 = _csv.reader(f)
                 for row in reader2:
                     if not row or len(row) < 3:
                         continue
-                    id_raw, name, price_raw = row[0], row[1], row[2]
-                    try:
-                        aid = _to_int(id_raw)
-                    except Exception:
-                        continue
-                    try:
-                        price_val = int(float(price_raw or 0))
-                    except Exception:
-                        price_val = 0
-                    out[aid] = {"name": (name or "").strip(), "priceInfo": {"value": price_val}}
+                    aid = _to_int(row[0])
+                    name = (row[1] or "").strip()
+                    price_val = _to_int(row[2])
+                    out[aid] = {"name": name, "priceInfo": {"value": price_val}}
     except Exception as e:
         _err("[prices] read fail", e)
 
@@ -811,7 +795,7 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
     price_map = load_prices_csv_cached('prices.csv')
     for it in items:
         try:
-            aid = _to_int(it.get('assetId'))
+            aid = int(it.get('assetId'))
         except Exception:
             continue
         rec = price_map.get(aid)
