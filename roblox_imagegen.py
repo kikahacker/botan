@@ -44,6 +44,10 @@ import cache
 # =========================
 # Tunables
 # =========================
+# Telegram constraints (safe defaults)
+MAX_TG_DIM = int(os.getenv('MAX_TG_DIM', '10000'))
+MAX_TG_PIXELS = int(os.getenv('MAX_TG_PIXELS', '95000000'))  # leave margin from 100M
+
 IMG_TTL = int(getattr(CFG, 'CACHE_IMG_TTL', 3600))
 THUMB_TTL = int(getattr(CFG, 'THUMB_TTL', 86400))
 HTTP_TIMEOUT = float(os.getenv('HTTP_TIMEOUT', '10.0'))
@@ -845,3 +849,107 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     if limit and limit > 0:
         items = items[:limit]
     return await _render_grid(items, tile=tile, title=category, username=username, user_id=tg_id)
+
+
+# =========================
+# Telegram-safe pagination: render "overall" inventory
+# =========================
+async def generate_overall_inventory_album(items: List[Dict[str, Any]], tile: int=150,
+                                           username: Optional[str]=None, user_id: Optional[int]=None,
+                                           title: str='Все предметы') -> List[bytes]:
+    """Render one or multiple images (pages) that fit Telegram photo limits.
+    Returns a list of image bytes (PNG), each with header & footer.
+    """
+    n = len(items)
+    if n == 0:
+        return []
+
+    # Respect input order if requested
+    if not KEEP_INPUT_ORDER:
+        items = sorted(items, key=lambda x: x.get('priceInfo', {}).get('value') or 0, reverse=True)
+
+    # Pre-fetch all thumbs once
+    ids = [int(x['assetId']) for x in items if 'assetId' in x]
+    size = THUMB_SIZE
+    thumbs = await _fetch_thumbs(ids, size=size)
+
+    # Compute max grid that fits Telegram
+    max_cols = max(1, min(MAX_TG_DIM // tile, int(math.sqrt(MAX_TG_PIXELS // max(1, tile*tile)))))
+    # Header + footer eat vertical space
+    avail_h = max(1, MAX_TG_DIM - (HEADER_H if SHOW_HEADER else 0) - (FOOTER_H if SHOW_FOOTER else 0) - 2)
+    max_rows = max(1, min(avail_h // tile, MAX_TG_PIXELS // max(1, tile*max(1, max_cols))))
+
+    pages: List[bytes] = []
+    i = 0
+    while i < n:
+        # For each page choose rows/cols to fit remaining items.
+        rem = n - i
+        cols = min(max_cols, rem)  # don't exceed remaining items
+        rows = max(1, min((rem + cols - 1) // cols, max_rows))
+        # Re-clamp if pixels would overflow (safety)
+        W = cols * tile
+        H = rows * tile + (HEADER_H if SHOW_HEADER else 0) + (FOOTER_H if SHOW_FOOTER else 0) + 2
+        if W > MAX_TG_DIM:
+            cols = max(1, MAX_TG_DIM // tile)
+            W = cols * tile
+        if H > MAX_TG_DIM:
+            rows = max(1, (avail_h // tile))
+            H = rows * tile + (HEADER_H if SHOW_HEADER else 0) + (FOOTER_H if SHOW_FOOTER else 0) + 2
+        while (W * H) > MAX_TG_PIXELS and cols > 1:
+            cols -= 1
+            W = cols * tile
+            rows = max(1, min(rem // cols + (1 if rem % cols else 0), max_rows))
+            H = rows * tile + (HEADER_H if SHOW_HEADER else 0) + (FOOTER_H if SHOW_FOOTER else 0) + 2
+        # Final page slice
+        page_cap = max(1, rows * cols)
+        chunk = items[i:i+page_cap]
+
+        # Render this page reusing local routines (no extra network)
+        canvas = Image.new('RGBA', (W, H))
+        canvas.alpha_composite(_get_canvas_bg(W, H), (0, 0))
+        _draw_header(canvas, n, title)
+        _draw_footer(canvas, username, user_id)
+
+        # place tiles
+        sem = asyncio.Semaphore(RENDER_CONCURRENCY)
+
+        async def make_tile(it):
+            async with sem:
+                aid = int(it['assetId'])
+                thumb = thumbs.get(aid) or Image.new('RGBA', (tile - 12, tile - 26), (70, 80, 96, 255))
+                return _render_tile(it, thumb, tile)
+
+        tiles = await asyncio.gather(*(make_tile(it) for it in chunk))
+
+        k = 0
+        top_offset = (HEADER_H if SHOW_HEADER else 0)
+        for r in range(rows):
+            for c in range(cols):
+                if k >= len(tiles):
+                    break
+                canvas.alpha_composite(tiles[k], (c * tile, top_offset + r * tile))
+                k += 1
+
+        out = io.BytesIO()
+        canvas.convert('RGB').save(out, 'PNG', optimize=True, quality=90)
+        pages.append(out.getvalue())
+
+        i += page_cap
+
+    return pages
+
+
+# =========================
+# Public helper: overall album after categories
+# =========================
+async def generate_all_items_album(tg_id: int, roblox_id: int, tile: int = 150,
+                                   username: str | None = None, title: str = "Все предметы") -> list[bytes]:
+    """Fetch full inventory and produce a Telegram-safe album (1..N pages).
+    Mirrors generate_category_sheets() style but aggregates all categories.
+    """
+    from roblox_client import get_full_inventory
+    data = await get_full_inventory(tg_id, roblox_id)
+    items: list[dict] = []
+    for arr in (data.get('byCategory') or {}).values():
+        items.extend(arr)
+    return await generate_overall_inventory_album(items, tile=tile, username=username, user_id=tg_id, title=title)
