@@ -774,8 +774,7 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
         if rec:
             if not it.get('name'):
                 it['name'] = rec.get('name')
-            if not it.get('priceInfo') or it.get('priceInfo', {}).get('value') in (None, 0):
-                it['priceInfo'] = rec.get('priceInfo')
+            it['priceInfo'] = rec.get('priceInfo')
     n = len(items)
     if not KEEP_INPUT_ORDER:
         items = sorted(items, key=lambda x: x.get('priceInfo', {}).get('value') or 0, reverse=True)
