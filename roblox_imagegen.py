@@ -119,6 +119,10 @@ TEXT_BOTTOM_PAD_PX = int(os.getenv('TEXT_BOTTOM_PAD_PX', '2'))  # title sits low
 TITLE_FONT_TILE_DIV = int(os.getenv('TITLE_FONT_TILE_DIV', '7'))  # tile//7
 PRICE_FONT_TILE_DIV = int(os.getenv('PRICE_FONT_TILE_DIV', '8'))  # tile//8
 
+# NEW: scale + vertical offset for thumbnails
+IMG_SCALE = float(os.getenv('IMG_SCALE', '0.9'))        # 0.9 = 90% of available box
+IMG_Y_OFFSET = int(os.getenv('IMG_Y_OFFSET', '0'))      # negative -> up, positive -> down
+
 # =========================
 # Pricing tiers (only for bg)
 # =========================
@@ -151,7 +155,6 @@ DEFAULT_TIER_BACKGROUNDS = {
     'common': os.path.join(ASSETS_DIR, 'bg_tier_common.png'),
 }
 
-
 def _tier_by_price(price: int) -> str:
     if RULES_JSON:
         for r in RULES_JSON:
@@ -162,7 +165,6 @@ def _tier_by_price(price: int) -> str:
         if price >= th:
             return nm
     return 'common'
-
 
 def _paths_for_tier(name: str):
     if RULES_JSON:
@@ -199,7 +201,6 @@ def _bold_font(sz):
             pass
     _BOLD_FONT[sz] = _font(sz)
     return _BOLD_FONT[sz]
-
 
 def _make_grad(w, h, c1, c2):
     im = Image.new('RGBA', (w, h))
@@ -257,27 +258,6 @@ def _get_tier_bg(tier: str, tile: int):
     strip_px = int(os.getenv('STRIP_TILE_BORDER', '1'))
     if strip_px > 0 and im.width > 2*strip_px and im.height > 2*strip_px:
         im = im.crop((strip_px, strip_px, im.width - strip_px, im.height - strip_px)).resize((tile, tile), Image.LANCZOS)
-    _bg_cache[key] = im
-    return im
-    bg, _ = _paths_for_tier(tier)
-    try:
-        if bg and os.path.exists(bg):
-            im = Image.open(bg).convert('RGBA').resize((tile, tile), RESAMPLE_BILINEAR)
-        else:
-            raise FileNotFoundError
-    except Exception:
-        # fallback gradient by tier
-        t = tier.lower()
-        if t in ('gold', 'mythic'):
-            im = _make_grad(tile, tile, (250, 200, 80), (180, 120, 20))
-        elif t in ('orange', 'legendary'):
-            im = _make_grad(tile, tile, (230, 150, 40), (140, 80, 10))
-        elif t in ('purple', 'epic'):
-            im = _make_grad(tile, tile, (170, 120, 230), (90, 40, 160))
-        elif t in ('blue', 'rare'):
-            im = _make_grad(tile, tile, (40, 150, 245), (20, 60, 130))
-        else:
-            im = _make_grad(tile, tile, (200, 200, 200), (120, 120, 120))
     _bg_cache[key] = im
     return im
 
@@ -454,11 +434,9 @@ def _num(v):
     except Exception:
         return 0
 
-
 def _price_of(it: Dict[str, Any]) -> int:
     v = it.get('priceInfo', {}).get('value')
     return _num(v)
-
 
 def _tier_color(name: str):
     nm = name.lower()
@@ -473,7 +451,7 @@ def _tier_color(name: str):
     return (240, 240, 240)
 
 # =========================
-# Tile rendering (no outline, title bottom, pill top-right)
+# Tile rendering (centered image, smaller scale)
 # =========================
 
 def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Image:
@@ -485,6 +463,7 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
         w = int(ImageDraw.ImageDraw(Image.new("L", (1,1))).textlength(s, font=f))
         _tcache[key] = w
         return w
+
     price = _price_of(it)
     tier  = _tier_by_price(price)
     name  = str(it.get('name') or it.get('assetId') or '').upper()
@@ -492,13 +471,12 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
     out = Image.new('RGBA', (tile, tile), (0, 0, 0, 0))
     out.alpha_composite(_get_tier_bg(tier, tile), (0, 0))
     d = ImageDraw.Draw(out)
-    # no outer outline — tiles butt edge-to-edge
 
     # Fonts
     title_font = _bold_font(max(12, tile // max(1, TITLE_FONT_TILE_DIV)))
     price_font = _bold_font(max(10, tile // max(1, PRICE_FONT_TILE_DIV)))
 
-    # Title lines (1-2), will be drawn at very bottom (bg already has bar on your side)
+    # Title lines (1-2), bottom-aligned
     max_title_w = tile - 14
     max_lines = 1 if TITLE_SINGLE_LINE else 2
     words = name.split()
@@ -535,7 +513,6 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
         tw = _text_w(line, title_font)
         x = (tile - tw) // 2
         y = y_top + i * line_h
-        # your bg already has dark bar — draw white text
         d.text((x, y), line, fill=(255, 255, 255, 255), font=title_font)
 
     # Price pill (fixed top-right)
@@ -565,15 +542,17 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
     box_h      = max(1, box_bottom - box_top)
     box_w      = tile - PADDING_CONTENT * 2
 
+    # === shrink & center thumbnail ===
     iw, ih = thumb.size
     k0 = min(box_w / max(1, iw), box_h / max(1, ih))
-    k  = min(1.0, k0)  # do not upscale low-res thumbs
+    k  = min(max(0.1, IMG_SCALE), k0)  # clamp scale to [0.1, k0]
     nw, nh = (max(1, int(iw * k)), max(1, int(ih * k)))
     im2 = thumb.resize((nw, nh), RESAMPLE_BILINEAR)
 
     im_x = PADDING_CONTENT + (box_w - im2.width) // 2
-    im_y = box_top + (box_h - im2.height) // 2
+    im_y = box_top + (box_h - im2.height) // 2 + IMG_Y_OFFSET
     out.alpha_composite(im2, (im_x, im_y))
+
     return out
 
 # =========================
@@ -594,7 +573,6 @@ def _draw_header(canvas: Image.Image, count: int, title: str):
     d.text((x, y), f'{count}', fill=(255, 255, 255, 255), font=big)
     y2 = y + big.getbbox('Ag')[3] - 4
     d.text((x, y2), f'{title}', fill=(255, 255, 255, 220), font=small)
-
 
 def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional[int]):
     if not SHOW_FOOTER:
