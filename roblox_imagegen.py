@@ -1,5 +1,37 @@
 from __future__ import annotations
 import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
+
+# ---- helpers for robust ID/price parsing ----
+def _to_int(v) -> int:
+    try:
+        if v is None:
+            return 0
+        s = str(v).strip().replace(',', '').replace(' ', '')
+        if s.isdigit():
+            return int(s)
+        import re as _re
+        m = _re.search(r'\d+', s)
+        return int(m.group(0)) if m else 0
+    except Exception:
+        return 0
+
+def _enrich_with_csv(it: dict, price_map: dict) -> dict:
+    # Try assetId -> collectibleItemId/collectibleId/itemId -> id
+    keys = [
+        _to_int(it.get('assetId')),
+        _to_int(it.get('collectibleItemId') or it.get('collectibleId') or it.get('itemId')),
+        _to_int(it.get('id'))
+    ]
+    rec = None
+    for k in keys:
+        if k and k in price_map:
+            rec = price_map[k]
+            break
+    if rec:
+        if not it.get('name'):
+            it['name'] = rec.get('name')
+        it['priceInfo'] = {'value': _to_int((rec.get('priceInfo') or {}).get('value'))}
+    return it
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -462,7 +494,6 @@ _PRICES_TS: float = 0.0
 _PRICES_MTIME: float = -1.0
 _PRICES_TTL_SEC = 1800  # 30 min
 
-
 def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]]:
     global _PRICES_CACHE, _PRICES_TS, _PRICES_MTIME
     try:
@@ -491,14 +522,11 @@ def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]
                     out[aid] = {"name": name, "priceInfo": {"value": price_val}}
             else:
                 f.seek(0)
-                import csv as _csv
-                reader2 = _csv.reader(f)
+                reader2 = csv.reader(f)
                 for row in reader2:
                     if not row or len(row) < 3:
                         continue
-                    aid = _to_int(row[0])
-                    name = (row[1] or "").strip()
-                    price_val = _to_int(row[2])
+                    aid = _to_int(row[0]); name = (row[1] or "").strip(); price_val = _to_int(row[2])
                     out[aid] = {"name": name, "priceInfo": {"value": price_val}}
     except Exception as e:
         _err("[prices] read fail", e)
@@ -507,24 +535,9 @@ def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]
     _PRICES_TS = now
     _PRICES_MTIME = mtime
     return out
-
 # =========================
 # Helpers
 # =========================
-
-def _to_int(v) -> int:
-    try:
-        if v is None:
-            return 0
-        s = str(v).strip()
-        s = s.replace(',', '').replace(' ', '')
-        if s.isdigit():
-            return int(s)
-        import re as _re
-        m = _re.search(r'\d+', s)
-        return int(m.group(0)) if m else 0
-    except Exception:
-        return 0
 
 def _num(v):
     try:
@@ -869,6 +882,8 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     from roblox_client import get_full_inventory
     data = await get_full_inventory(tg_id, roblox_id)
     items = (data.get('byCategory') or {}).get(category, [])
+    price_map = load_prices_csv_cached()
+    items = [_enrich_with_csv(x, price_map) for x in items]
     if limit and limit > 0:
         items = items[:limit]
     return await _render_grid(items, tile=tile, title=category, username=username, user_id=tg_id)
