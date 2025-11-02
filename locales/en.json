@@ -94,8 +94,15 @@
     "delete_pick_account": "Select an account to delete:"
   },
   "buttons": {
-    "back_main": "⬅️ Back",
-    "public": "👁 Public data"
+    "all_items": "📦 All items",
+    "all_off": "buttons.all_off",
+    "all_on": "🟢 All",
+    "back": "buttons.back",
+    "back_to_profile": "buttons.back_to_profile",
+    "home": "🏠 Back to main menu",
+    "next": "✅ Next",
+    "refresh": "🔄 Refresh",
+    "refresh_category": "🔄 Refresh category"
   },
   "caption": {
     "auto_76b7d0778c": "caption.auto_76b7d0778c",
@@ -155,15 +162,5 @@
     "hair": "Hair",
     "hats": "Hats",
     "heads": "Heads"
-  },
-  "public": {
-    "menu_button": "👁 Public data",
-    "ask_id": "Send a Roblox ID (numbers only). I’ll fetch everything available without cookie.",
-    "collecting": "🔎 Collecting public data…",
-    "caption": "👁 Public data for ID {id}",
-    "socials": "🔗 Socials: {names}",
-    "inv_public_count": "📦 Public inventory with price: {count} pcs",
-    "inv_hidden": "⚠️ Inventory/prices are hidden or unavailable without cookie.",
-    "no_public": "⚠️ No public data available for this ID without cookie."
   }
 }
