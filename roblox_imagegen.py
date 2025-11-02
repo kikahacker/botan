@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
+import os, io, math, json, asyncio, hashlib, datetime, logging
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -44,10 +44,6 @@ import cache
 # =========================
 # Tunables
 # =========================
-# Telegram constraints (safe defaults)
-MAX_TG_DIM = int(os.getenv('MAX_TG_DIM', '10000'))
-MAX_TG_PIXELS = int(os.getenv('MAX_TG_PIXELS', '95000000'))  # leave margin from 100M
-
 IMG_TTL = int(getattr(CFG, 'CACHE_IMG_TTL', 3600))
 THUMB_TTL = int(getattr(CFG, 'THUMB_TTL', 86400))
 HTTP_TIMEOUT = float(os.getenv('HTTP_TIMEOUT', '10.0'))
@@ -84,7 +80,7 @@ FOOTER_ICON = os.getenv('FOOTER_ICON', os.path.join(ASSETS_DIR, 'footer_badge.pn
 FOOTER_BRAND = os.getenv('FOOTER_BRAND', 'raika.gg')
 
 # Style for price pill and title
-TITLE_TEXT_COLOR = (255, 255, 255, 255)
+TITLE_TEXT_COLOR = (0, 0, 0, 255)
 PRICE_TEXT_COLOR = (0, 0, 0, 255)
 
 # pill + colors via ENV
@@ -175,17 +171,27 @@ def _paths_for_tier(name: str):
 _FONT, _BOLD_FONT = ({}, {})
 
 def _font(sz):
-    if 'FORTNITEBATTLEFEST.OTF' in '':
-        pass
+    if sz in _FONT:
+        return _FONT[sz]
     try:
-        f = ImageFont.truetype('font/FORTNITEBATTLEFEST.OTF', sz)
+        f = ImageFont.truetype('arial.ttf', sz)
     except Exception:
         f = ImageFont.load_default()
+    _FONT[sz] = f
     return f
 
 def _bold_font(sz):
-    return _font(sz)
-
+    if sz in _BOLD_FONT:
+        return _BOLD_FONT[sz]
+    for cand in ('arialbd.ttf', 'Arial Bold.ttf', 'Arial-Bold.ttf'):
+        try:
+            f = ImageFont.truetype(cand, sz)
+            _BOLD_FONT[sz] = f
+            return f
+        except Exception:
+            pass
+    _BOLD_FONT[sz] = _font(sz)
+    return _BOLD_FONT[sz]
 
 
 def _make_grad(w, h, c1, c2):
@@ -405,99 +411,6 @@ async def _fetch_thumbs(ids: List[int], size: str='150x150') -> Dict[int, Image.
     _info(f"[thumb] fetch done total={len(ids)} have={len(result)} missing={len(ids)-len(result)}")
     return result
 
-
-
-# =========================
-# Fast local I/O caches (30 min TTL)
-# =========================
-
-_IMAGE_INDEX: Dict[int, str] = {}
-_IMAGE_INDEX_TS: float = 0.0
-_IMAGE_DIR = READY_ITEM_DIR
-_IMAGE_TTL_SEC = 1800  # 30 min
-_VALID_EXT = {'.png', '.jpg', '.jpeg', '.webp'}
-
-def _build_image_index_cached(force: bool=False):
-    global _IMAGE_INDEX, _IMAGE_INDEX_TS
-    now = time.time()
-    if not force and _IMAGE_INDEX and (now - _IMAGE_INDEX_TS) < _IMAGE_TTL_SEC:
-        return
-    idx: Dict[int, str] = {}
-    try:
-        with os.scandir(_IMAGE_DIR) as it:
-            for e in it:
-                if not e.is_file():
-                    continue
-                root, ext = os.path.splitext(e.name)
-                if ext.lower() not in _VALID_EXT:
-                    continue
-                try:
-                    aid = int(root)
-                except Exception:
-                    continue
-                idx[aid] = e.path
-    except FileNotFoundError:
-        idx = {}
-    _IMAGE_INDEX = idx
-    _IMAGE_INDEX_TS = now
-
-# Override local image reader to use index first
-def _read_ready_item(aid: int) -> Optional[Image.Image]:  # type: ignore[func-override]
-    p = _IMAGE_INDEX.get(int(aid))
-    if p and os.path.exists(p):
-        try:
-            return Image.open(p).convert('RGBA')
-        except Exception as e:
-            _err(f"[local] open fail for {p}", e)
-            return None
-    # Fallback legacy probing
-    for ext in ('.png', '.jpg', '.jpeg', '.webp'):
-        q = os.path.join(READY_ITEM_DIR, f'{aid}{ext}')
-        if os.path.exists(q):
-            try:
-                return Image.open(q).convert('RGBA')
-            except Exception as e:
-                _err(f"[local] open fail for {q}", e)
-    return None
-
-# Cached prices.csv reader (30 min TTL)
-_PRICES_CACHE: Optional[Dict[int, Dict[str, Any]]] = None
-_PRICES_TS: float = 0.0
-_PRICES_MTIME: float = -1.0
-_PRICES_TTL_SEC = 1800  # 30 min
-
-def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]]:
-    global _PRICES_CACHE, _PRICES_TS, _PRICES_MTIME
-    try:
-        mtime = os.path.getmtime(path)
-    except FileNotFoundError:
-        return {}
-    now = time.time()
-    if (_PRICES_CACHE is not None) and ((now - _PRICES_TS) < _PRICES_TTL_SEC) and (_PRICES_MTIME == mtime):
-        return _PRICES_CACHE
-
-    out: Dict[int, Dict[str, Any]] = {}
-    with open(path, "r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            id_raw = row.get("id") or row.get("assetId")
-            if not id_raw:
-                continue
-            try:
-                aid = int(float(id_raw))
-            except Exception:
-                continue
-            name = (row.get("name") or "").strip()
-            try:
-                price_val = int(float(row.get("price") or 0))
-            except Exception:
-                price_val = 0
-            out[aid] = {"name": name, "priceInfo": {"value": price_val}}
-
-    _PRICES_CACHE = out
-    _PRICES_TS = now
-    _PRICES_MTIME = mtime
-    return out
 # =========================
 # Helpers
 # =========================
@@ -537,12 +450,15 @@ def _tier_color(name: str):
 def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Image:
     price = _price_of(it)
     tier  = _tier_by_price(price)
-    name  = str(it.get('name') or it.get('assetId') or '').upper()
+    name  = str(it.get('name') or it.get('assetId') or '')
 
     out = Image.new('RGBA', (tile, tile), (0, 0, 0, 0))
     out.alpha_composite(_get_tier_bg(tier, tile), (0, 0))
     d = ImageDraw.Draw(out)
-# Fonts
+    d.rectangle([1, 1, tile - 2, tile - 2], outline=(0, 0, 0, 255), width=3)
+
+
+    # Fonts
     title_font = _bold_font(max(12, tile // max(1, TITLE_FONT_TILE_DIV)))
     price_font = _bold_font(max(10, tile // max(1, PRICE_FONT_TILE_DIV)))
 
@@ -628,7 +544,6 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
 # Header / Footer
 # =========================
 
-
 def _draw_header(canvas: Image.Image, count: int, title: str):
     if not SHOW_HEADER:
         return
@@ -636,18 +551,13 @@ def _draw_header(canvas: Image.Image, count: int, title: str):
     band = Image.new('RGBA', (W, HEADER_H), (0, 0, 0, 255))
     canvas.alpha_composite(band, (0, 0))
     d = ImageDraw.Draw(canvas)
-    font = _bold_font(max(26, HEADER_H // 2))
-    text = f"{count}  {title}"
-    try:
-        tw = int(d.textlength(text, font=font))
-        th = font.getbbox('Ag')[3]
-    except Exception:
-        tw = d.textbbox((0,0), text, font=font)[2]
-        th = d.textbbox((0,0), 'Ag', font=font)[3]
-    x = max(10, (W - tw) // 2)
-    y = max(6, (HEADER_H - th) // 2)
-    d.text((x, y), text, fill=(255, 255, 255, 255), font=font)
-
+    big = _bold_font(max(26, HEADER_H // 2))
+    small = _bold_font(max(20, HEADER_H // 3))
+    x = 16
+    y = 8
+    d.text((x, y), f'{count}', fill=(255, 255, 255, 255), font=big)
+    y2 = y + big.getbbox('Ag')[3] - 4
+    d.text((x, y2), f'{title}', fill=(255, 255, 255, 220), font=small)
 
 
 def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional[int]):
@@ -767,19 +677,6 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
 # Grid rendering (square-ish layout)
 # =========================
 async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='Items', username: Optional[str]=None, user_id: Optional[int]=None) -> bytes:
-    _build_image_index_cached()
-    price_map = load_prices_csv_cached('prices.csv')
-    for it in items:
-        try:
-            aid = int(it.get('assetId'))
-        except Exception:
-            continue
-        rec = price_map.get(aid)
-        if rec:
-            if not it.get('name'):
-                it['name'] = rec.get('name')
-            if not it.get('priceInfo') or it.get('priceInfo', {}).get('value') in (None, 0):
-                it['priceInfo'] = rec.get('priceInfo')
     n = len(items)
     if not KEEP_INPUT_ORDER:
         items = sorted(items, key=lambda x: x.get('priceInfo', {}).get('value') or 0, reverse=True)
@@ -849,107 +746,3 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     if limit and limit > 0:
         items = items[:limit]
     return await _render_grid(items, tile=tile, title=category, username=username, user_id=tg_id)
-
-
-# =========================
-# Telegram-safe pagination: render "overall" inventory
-# =========================
-async def generate_overall_inventory_album(items: List[Dict[str, Any]], tile: int=150,
-                                           username: Optional[str]=None, user_id: Optional[int]=None,
-                                           title: str='Все предметы') -> List[bytes]:
-    """Render one or multiple images (pages) that fit Telegram photo limits.
-    Returns a list of image bytes (PNG), each with header & footer.
-    """
-    n = len(items)
-    if n == 0:
-        return []
-
-    # Respect input order if requested
-    if not KEEP_INPUT_ORDER:
-        items = sorted(items, key=lambda x: x.get('priceInfo', {}).get('value') or 0, reverse=True)
-
-    # Pre-fetch all thumbs once
-    ids = [int(x['assetId']) for x in items if 'assetId' in x]
-    size = THUMB_SIZE
-    thumbs = await _fetch_thumbs(ids, size=size)
-
-    # Compute max grid that fits Telegram
-    max_cols = max(1, min(MAX_TG_DIM // tile, int(math.sqrt(MAX_TG_PIXELS // max(1, tile*tile)))))
-    # Header + footer eat vertical space
-    avail_h = max(1, MAX_TG_DIM - (HEADER_H if SHOW_HEADER else 0) - (FOOTER_H if SHOW_FOOTER else 0) - 2)
-    max_rows = max(1, min(avail_h // tile, MAX_TG_PIXELS // max(1, tile*max(1, max_cols))))
-
-    pages: List[bytes] = []
-    i = 0
-    while i < n:
-        # For each page choose rows/cols to fit remaining items.
-        rem = n - i
-        cols = min(max_cols, rem)  # don't exceed remaining items
-        rows = max(1, min((rem + cols - 1) // cols, max_rows))
-        # Re-clamp if pixels would overflow (safety)
-        W = cols * tile
-        H = rows * tile + (HEADER_H if SHOW_HEADER else 0) + (FOOTER_H if SHOW_FOOTER else 0) + 2
-        if W > MAX_TG_DIM:
-            cols = max(1, MAX_TG_DIM // tile)
-            W = cols * tile
-        if H > MAX_TG_DIM:
-            rows = max(1, (avail_h // tile))
-            H = rows * tile + (HEADER_H if SHOW_HEADER else 0) + (FOOTER_H if SHOW_FOOTER else 0) + 2
-        while (W * H) > MAX_TG_PIXELS and cols > 1:
-            cols -= 1
-            W = cols * tile
-            rows = max(1, min(rem // cols + (1 if rem % cols else 0), max_rows))
-            H = rows * tile + (HEADER_H if SHOW_HEADER else 0) + (FOOTER_H if SHOW_FOOTER else 0) + 2
-        # Final page slice
-        page_cap = max(1, rows * cols)
-        chunk = items[i:i+page_cap]
-
-        # Render this page reusing local routines (no extra network)
-        canvas = Image.new('RGBA', (W, H))
-        canvas.alpha_composite(_get_canvas_bg(W, H), (0, 0))
-        _draw_header(canvas, n, title)
-        _draw_footer(canvas, username, user_id)
-
-        # place tiles
-        sem = asyncio.Semaphore(RENDER_CONCURRENCY)
-
-        async def make_tile(it):
-            async with sem:
-                aid = int(it['assetId'])
-                thumb = thumbs.get(aid) or Image.new('RGBA', (tile - 12, tile - 26), (70, 80, 96, 255))
-                return _render_tile(it, thumb, tile)
-
-        tiles = await asyncio.gather(*(make_tile(it) for it in chunk))
-
-        k = 0
-        top_offset = (HEADER_H if SHOW_HEADER else 0)
-        for r in range(rows):
-            for c in range(cols):
-                if k >= len(tiles):
-                    break
-                canvas.alpha_composite(tiles[k], (c * tile, top_offset + r * tile))
-                k += 1
-
-        out = io.BytesIO()
-        canvas.convert('RGB').save(out, 'PNG', optimize=True, quality=90)
-        pages.append(out.getvalue())
-
-        i += page_cap
-
-    return pages
-
-
-# =========================
-# Public helper: overall album after categories
-# =========================
-async def generate_all_items_album(tg_id: int, roblox_id: int, tile: int = 150,
-                                   username: str | None = None, title: str = "Все предметы") -> list[bytes]:
-    """Fetch full inventory and produce a Telegram-safe album (1..N pages).
-    Mirrors generate_category_sheets() style but aggregates all categories.
-    """
-    from roblox_client import get_full_inventory
-    data = await get_full_inventory(tg_id, roblox_id)
-    items: list[dict] = []
-    for arr in (data.get('byCategory') or {}).values():
-        items.extend(arr)
-    return await generate_overall_inventory_album(items, tile=tile, username=username, user_id=tg_id, title=title)
