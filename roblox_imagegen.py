@@ -462,6 +462,7 @@ _PRICES_TS: float = 0.0
 _PRICES_MTIME: float = -1.0
 _PRICES_TTL_SEC = 1800  # 30 min
 
+
 def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]]:
     global _PRICES_CACHE, _PRICES_TS, _PRICES_MTIME
     try:
@@ -473,30 +474,73 @@ def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]
         return _PRICES_CACHE
 
     out: Dict[int, Dict[str, Any]] = {}
-    with open(path, "r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            id_raw = (row.get("id") or row.get("assetId") or row.get("collectibleId") or row.get("collectibleItemId"))
-            if not id_raw:
-                continue
-            try:
-                aid = int(float(id_raw))
-            except Exception:
-                continue
-            name = (row.get("name") or "").strip()
-            try:
-                price_val = int(float(row.get("price") or 0))
-            except Exception:
-                price_val = 0
-            out[aid] = {"name": name, "priceInfo": {"value": price_val}}
+    try:
+        with open(path, "r", encoding="utf-8-sig", newline="") as f:
+            peek = f.read(4096)
+            f.seek(0)
+            # Try DictReader first (headered CSV, case-insensitive)
+            reader = csv.DictReader(f)
+            if reader.fieldnames:
+                fields = [x.strip().lower() for x in reader.fieldnames]
+                for row in reader:
+                    r = {k.strip().lower(): (v or "").strip() for k, v in row.items()}
+                    id_raw = r.get("id") or r.get("assetid") or r.get("collectibleid") or r.get("collectibleitemid") or r.get("itemid")
+                    if not id_raw:
+                        continue
+                    try:
+                        aid = _to_int(id_raw)
+                    except Exception:
+                        continue
+                    name = r.get("name", "")
+                    # accept price|cost|value
+                    price_field = r.get("price") or r.get("cost") or r.get("value") or r.get("pricepicked")
+                    try:
+                        price_val = int(float(price_field or 0))
+                    except Exception:
+                        price_val = 0
+                    out[aid] = {"name": name, "priceInfo": {"value": price_val}}
+            else:
+                # Headerless fallback: assume columns: id,name,price,(optional type)
+                f.seek(0)
+                reader2 = csv.reader(f)
+                for row in reader2:
+                    if not row or len(row) < 3:
+                        continue
+                    id_raw, name, price_raw = row[0], row[1], row[2]
+                    try:
+                        aid = _to_int(id_raw)
+                    except Exception:
+                        continue
+                    try:
+                        price_val = int(float(price_raw or 0))
+                    except Exception:
+                        price_val = 0
+                    out[aid] = {"name": (name or "").strip(), "priceInfo": {"value": price_val}}
+    except Exception as e:
+        _err("[prices] read fail", e)
 
     _PRICES_CACHE = out
     _PRICES_TS = now
     _PRICES_MTIME = mtime
     return out
+
 # =========================
 # Helpers
 # =========================
+
+def _to_int(v) -> int:
+    try:
+        if v is None:
+            return 0
+        s = str(v).strip()
+        s = s.replace(',', '').replace(' ', '')
+        if s.isdigit():
+            return int(s)
+        import re as _re
+        m = _re.search(r'\d+', s)
+        return int(m.group(0)) if m else 0
+    except Exception:
+        return 0
 
 def _num(v):
     try:
@@ -767,7 +811,7 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
     price_map = load_prices_csv_cached('prices.csv')
     for it in items:
         try:
-            aid = int(it.get('assetId'))
+            aid = _to_int(it.get('assetId'))
         except Exception:
             continue
         rec = price_map.get(aid)

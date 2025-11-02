@@ -1235,32 +1235,57 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
             pass
         grand_total_sum = 0
         grand_total_count = 0
+
         for cat in sorted(by_cat.keys(), key=lambda s: s.lower()):
             items = by_cat.get(cat, [])
             if not items:
                 continue
-            img_bytes = await generate_full_inventory_grid(items, tile=150, pad=6, title=cat,
-                                                           username=call.from_user.username, user_id=tg)
-            os.makedirs('temp', exist_ok=True)
-            tmp_path = f'temp/inventory_cat_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}.png'
-            with open(tmp_path, 'wb') as f:
-                f.write(img_bytes)
 
-            def _p(v):
-                try:
-                    return int((v or {}).get('value') or 0)
-                except Exception:
-                    return 0
+            # paginate category to respect telegram's ~8k px limit
+            MAX_H = 7000
+            tiles_try = [150, 130, 120, 100, 90]
 
-            total_sum = sum((_p(x.get('priceInfo')) for x in items))
-            caption = f'📂 {cat}\nВсего: {len(items)} шт · {total_sum:,} R$'.replace(',', ' ')
-            grand_total_sum += total_sum
-            grand_total_count += len(items)
-            await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
+            def max_per_page(tile: int) -> int:
+                rows = max(1, MAX_H // tile)
+                cols = rows  # квадратная сетка
+                return rows * cols
+
+            def chunks(seq, size):
+                for i in range(0, len(seq), size):
+                    yield seq[i:i + size]
+
+            sent_pages = 0
+            for tile in tiles_try:
+                per_page = max_per_page(tile)
+                pages = list(chunks(items, per_page))
+                ok = True
+                for i, part in enumerate(pages, 1):
+                    img_bytes = await generate_full_inventory_grid(part, tile=tile, pad=6, title=(
+                        cat if len(pages) == 1 else f"{cat} (стр. {i}/{len(pages)})"),
+                                                                   username=call.from_user.username, user_id=tg)
+                    os.makedirs('temp', exist_ok=True)
+                    tmp_path = f'temp/inventory_cat_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}_{tile}_{i}.png'
+                    with open(tmp_path, 'wb') as f:
+                        f.write(img_bytes)
+
+                    def _p(v):
+                        try:
+                            return int((v or {}).get('value') or 0)
+                        except Exception:
+                            return 0
+
+                    total_sum = sum((_p(x.get('priceInfo')) for x in part))
+                    caption = f'📂 {cat}\nВсего: {len(part)} шт · {total_sum:,} R$'.replace(',', ' ')
+                    grand_total_sum += total_sum
+                    grand_total_count += len(part)
+                    await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+                    sent_pages += 1
+                if sent_pages:
+                    break
 
         # --- После всех категорий: одна общая картинка всех предметов (ограничение по высоте 8k) ---
         try:
@@ -1269,7 +1294,7 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                 all_items.extend(arr)
 
             if all_items:
-                MAX_H = 7800  # запас к 8000px по высоте
+                MAX_H = 7000  # запас к 8000px по высоте
                 MAX_BYTES = 8_500_000  # подстраховка по размеру файла
                 tiles_try = [150, 120, 100, 90]
 
@@ -1528,20 +1553,45 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
         await call.message.answer(
             f'💰 Сумма по выбранным: {grand_total_sum:,} R$\n📦 Всего предметов: {grand_total_count}'.replace(',', ' '))
+
         try:
             from PIL import Image
-            imgs = [Image.open(p).convert('RGBA') for p in tmp_paths]
-            if imgs:
-                w = max((im.width for im in imgs))
-                h = sum((im.height for im in imgs))
+            MAX_H = 7000
+            pages = []
+            cur_imgs = []
+            cur_h = 0
+            cur_w = 0
+            for p in tmp_paths:
+                im = Image.open(p).convert('RGBA')
+                # если следующий не влазит по высоте — закрываем страницу
+                if cur_imgs and (cur_h + im.height) > MAX_H:
+                    pages.append((cur_w, cur_h, cur_imgs))
+                    cur_imgs = []
+                    cur_h = 0
+                    cur_w = 0
+                cur_imgs.append(im)
+                cur_h += im.height
+                cur_w = max(cur_w, im.width)
+            if cur_imgs:
+                pages.append((cur_w, cur_h, cur_imgs))
+
+            # отрисовываем и шлём все страницы
+            for idx, (w, h, imgs) in enumerate(pages, 1):
                 out = Image.new('RGBA', (w, h), (0, 0, 0, 0))
                 y = 0
                 for im in imgs:
                     out.paste(im, (0, y))
                     y += im.height
-                final_path = f'temp/inventory_selected_{tg}_{roblox_id}.png'
+                final_path = f'temp/inventory_selected_{tg}_{roblox_id}_{idx}.png'
                 out.convert('RGB').save(final_path, 'PNG')
-                await call.message.answer_photo(FSInputFile(final_path), caption=L('caption.auto_76b7d0778c'))
+                cap = L('caption.auto_76b7d0778c')
+                if len(pages) > 1:
+                    cap += f" (стр. {idx}/{len(pages)})"
+                await call.message.answer_photo(FSInputFile(final_path), caption=cap)
+                try:
+                    os.remove(final_path)
+                except Exception:
+                    pass
         except Exception as e:
             logger.warning(f'join images failed: {e}')
         for pth in tmp_paths:
