@@ -1242,7 +1242,7 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                 continue
 
             # paginate category to respect telegram's ~8k px limit
-            MAX_H = 7000
+            MAX_H = 7800
             tiles_try = [150, 130, 120, 100, 90]
 
             def max_per_page(tile: int) -> int:
@@ -1294,7 +1294,7 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                 all_items.extend(arr)
 
             if all_items:
-                MAX_H = 7000  # запас к 8000px по высоте
+                MAX_H = 7800  # запас к 8000px по высоте
                 MAX_BYTES = 8_500_000  # подстраховка по размеру файла
                 tiles_try = [150, 120, 100, 90]
 
@@ -1527,6 +1527,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
         import os
         os.makedirs('temp', exist_ok=True)
         tmp_paths = []
+        selected_items: list[dict] = []
         grand_total_sum = 0
         grand_total_count = 0
 
@@ -1538,6 +1539,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
 
         for cat in sorted(by_cat.keys(), key=lambda s: s.lower()):
             items = by_cat.get(cat, [])
+            selected_items.extend(items)
             if not items:
                 continue
             img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, tile=150, force=True,
@@ -1554,46 +1556,77 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
         await call.message.answer(
             f'💰 Сумма по выбранным: {grand_total_sum:,} R$\n📦 Всего предметов: {grand_total_count}'.replace(',', ' '))
 
+        # --- ОДНА общая фотка из всех выбранных айтемов (квадратная сетка + 7000px лимит по высоте) ---
         try:
-            from PIL import Image
-            MAX_H = 7000
-            pages = []
-            cur_imgs = []
-            cur_h = 0
-            cur_w = 0
-            for p in tmp_paths:
-                im = Image.open(p).convert('RGBA')
-                # если следующий не влазит по высоте — закрываем страницу
-                if cur_imgs and (cur_h + im.height) > MAX_H:
-                    pages.append((cur_w, cur_h, cur_imgs))
-                    cur_imgs = []
-                    cur_h = 0
-                    cur_w = 0
-                cur_imgs.append(im)
-                cur_h += im.height
-                cur_w = max(cur_w, im.width)
-            if cur_imgs:
-                pages.append((cur_w, cur_h, cur_imgs))
+            if selected_items:
+                MAX_H = 7000
+                tiles_try = [150, 130, 120, 100, 90]
 
-            # отрисовываем и шлём все страницы
-            for idx, (w, h, imgs) in enumerate(pages, 1):
-                out = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-                y = 0
-                for im in imgs:
-                    out.paste(im, (0, y))
-                    y += im.height
-                final_path = f'temp/inventory_selected_{tg}_{roblox_id}_{idx}.png'
-                out.convert('RGB').save(final_path, 'PNG')
-                cap = L('caption.auto_76b7d0778c')
-                if len(pages) > 1:
-                    cap += f" (стр. {idx}/{len(pages)})"
-                await call.message.answer_photo(FSInputFile(final_path), caption=cap)
-                try:
-                    os.remove(final_path)
-                except Exception:
-                    pass
+                def per_page(tile: int) -> int:
+                    rows = max(1, MAX_H // tile)
+                    cols = rows
+                    return rows * cols
+
+                def chunks(seq, size):
+                    for i in range(0, len(seq), size):
+                        yield seq[i:i + size]
+
+                sent = False
+
+                def _pv(v):
+                    try:
+                        return int((v or {}).get('value') or 0)
+                    except Exception:
+                        return 0
+
+                total_items = len(selected_items)
+                total_sum_all = sum((_pv(x.get('priceInfo')) for x in selected_items))
+
+                for tile in tiles_try:
+                    size_per_page = per_page(tile)
+                    pages = list(chunks(selected_items, size_per_page))
+                    ok = True
+                    tmp_final_paths = []
+                    try:
+                        for i, part in enumerate(pages, 1):
+                            img = await generate_full_inventory_grid(
+                                part,
+                                tile=tile, pad=6,
+                                title=(
+                                    'All inventory' if len(pages) == 1 else f'All inventory (стр. {i}/{len(pages)})'),
+                                username=call.from_user.username,
+                                user_id=tg
+                            )
+                            os.makedirs('temp', exist_ok=True)
+                            final_path = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
+                            with open(final_path, 'wb') as f:
+                                f.write(img)
+                            tmp_final_paths.append(final_path)
+
+                        for i, pth in enumerate(tmp_final_paths, 1):
+                            cap = (
+                                f"📦 All inventory · {total_items} шт\n"
+                                f"💰 Всего по выбранным: {total_sum_all:,} R$"
+                            ).replace(',', ' ')
+                            if len(tmp_final_paths) > 1:
+                                cap += f"\nСтраница {i}/{len(tmp_final_paths)}"
+                            await call.message.answer_photo(FSInputFile(pth), caption=cap)
+                        sent = True
+                    finally:
+                        for pth in tmp_final_paths:
+                            try:
+                                os.remove(pth)
+                            except Exception:
+                                pass
+
+                    if sent:
+                        break
+
+                if not sent:
+                    await call.message.answer("📦 All inventory: слишком большой рендер. Снизь tile или сузай выбор.")
         except Exception as e:
-            logger.warning(f'join images failed: {e}')
+            logger.warning(f'final all-inventory render failed: {e}')
+
         for pth in tmp_paths:
             try:
                 os.remove(pth)
