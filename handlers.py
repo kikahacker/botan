@@ -1,3 +1,4 @@
+from i18n import t as L
 import os
 import html
 import zipfile
@@ -1345,3 +1346,120 @@ async def on_lang_set(call: types.CallbackQuery):
     except Exception:
         pass
     await call.message.edit_text(LL('messages.welcome','welcome') or 'Welcome!', reply_markup=await kb_main_i18n(call.from_user.id))
+
+from aiogram import types, F
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, FSInputFile
+import html, os, httpx
+import roblox_client
+from typing import Dict, Any, List
+from roblox_imagegen import generate_full_inventory_grid
+
+_PENDING_PUBLIC: set[int] = set()
+
+@router.callback_query(F.data == 'menu:public')
+async def on_menu_public(call: types.CallbackQuery):
+    _PENDING_PUBLIC.add(call.from_user.id)
+    try:
+        await call.message.edit_text(
+            L('public.ask_id'),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=L('buttons.back_main'), callback_data='menu:home')]])
+        )
+        await call.answer()
+    except Exception:
+        pass
+
+@router.message(F.text.regexp(r'^\d{3,}$'))
+async def on_public_id_input(msg: types.Message):
+    uid = msg.from_user.id
+    if uid not in _PENDING_PUBLIC:
+        return
+    _PENDING_PUBLIC.discard(uid)
+    try:
+        roblox_id = int(msg.text.strip())
+    except Exception:
+        await msg.reply(L('public.ask_id')); return
+    loader = await msg.answer(L('public.collecting'))
+
+    # profile
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            up = await c.get(f'https://users.roblox.com/v1/users/{roblox_id}')
+            user_ok = (up.status_code == 200)
+            user = up.json() if user_ok else {}
+    except Exception:
+        user_ok, user = False, {}
+
+    uname = html.escape(user.get('name', '—')) if user_ok else '—'
+    dname = html.escape(user.get('displayName', '—')) if user_ok else '—'
+    created = (user.get('created') or '—').split('T')[0] if user_ok else '—'
+    banned = bool(user.get('isBanned', False)) if user_ok else False
+
+    # socials
+    try:
+        socials = await roblox_client.get_social_links(roblox_id)
+    except Exception:
+        socials = {}
+
+    # inventory public
+    try:
+        per_type = await roblox_client.fetch_full_inventory_parallel(
+            roblox_id,
+            roblox_client._parse_asset_types_from_cfg(),
+            cookie=None
+        )
+        all_ids = [a for ids in per_type.values() for a in ids]
+        details = await roblox_client.fetch_catalog_details_fast(all_ids, cookie=None) if all_ids else []
+    except Exception:
+        per_type, details = {}, []
+
+    by_id = {int(d.get('id')): d for d in details if d.get('id') is not None}
+    by_cat: Dict[str, List[Dict[str, Any]]] = {}
+    total_items = 0
+    for at, ids in per_type.items():
+        cat = roblox_client._canon_cat(roblox_client.ASSET_TYPE_TO_CATEGORY.get(int(at), 'Other'))
+        if not cat:
+            continue
+        arr = []
+        for aid in ids:
+            det = by_id.get(int(aid))
+            if not det: continue
+            price = 0
+            for k in ('price','lowestPrice','lowestResalePrice','highestResalePrice'):
+                v = det.get(k)
+                if isinstance(v, (int,float)): price = int(v); break
+            arr.append({'assetId': int(aid),'priceInfo': {'value': price},'name': det.get('name') or '','assetType': int(at)})
+        if arr:
+            by_cat.setdefault(cat, []).extend(arr)
+            total_items += len(arr)
+
+    lines = [L('public.caption', id=roblox_id)]
+    if user_ok:
+        status_tag = " — 🚫 banned" if banned else ""
+        lines.append(f"@{uname} ({dname}), {created}{status_tag}")
+    if socials:
+        lines.append(L('public.socials', names=', '.join(sorted(socials.keys()))))
+
+    def _price_of(x):
+        v = x.get('priceInfo', {}).get('value')
+        return int(v) if isinstance(v, (int,float)) else 0
+    priced = []
+    for arr in by_cat.values():
+        priced.extend([x for x in arr if _price_of(x)>0])
+
+    if user_ok or socials or priced:
+        if priced:
+            img_bytes = await generate_full_inventory_grid(priced, tile=150, pad=6, username=msg.from_user.username, user_id=msg.from_user.id)
+            path = f"temp/inventory_public_{uid}_{roblox_id}.png"
+            os.makedirs("temp", exist_ok=True)
+            with open(path, "wb") as f: f.write(img_bytes)
+            try: await loader.delete()
+            except Exception: pass
+            lines.append(L('public.inv_public_count', count=len(priced)))
+            await msg.answer_photo(FSInputFile(path), caption="\n".join(lines), reply_markup=kb_main())
+            try: os.remove(path)
+            except Exception: pass
+        else:
+            lines.append(L('public.inv_hidden'))
+            await loader.edit_text("\n".join(lines), reply_markup=kb_main())
+    else:
+        await loader.edit_text(L('public.no_public'), reply_markup=kb_main())
