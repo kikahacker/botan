@@ -1,138 +1,124 @@
-
 import aiosqlite
-import os
-import logging
+import json
 from pathlib import Path
-from typing import List, Tuple
-
-LOG_DIR = os.getenv("LOG_DIR", "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-_logger = logging.getLogger("bot.storage")
-if not _logger.handlers:
-    _logger.setLevel(logging.INFO)
-    fh = logging.FileHandler(os.path.join(LOG_DIR, "bot.log"), encoding="utf-8")
-    fh.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(name)s: %(message)s"))
-    _logger.addHandler(fh)
-
+from typing import Optional, Dict, List, Tuple, Any
+from datetime import datetime, timedelta
+import os
 DB_PATH = Path(os.getenv('AUTH_DB', 'data/authorized.db'))
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DB_STR = str(DB_PATH)
-
-CREATE_USERS_SQL = '''
-CREATE TABLE IF NOT EXISTS authorized_users (
-  telegram_id INTEGER,
-  roblox_id   INTEGER,
-  username    TEXT,
-  created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at  TEXT DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (telegram_id, roblox_id)
-);
-'''
-CREATE_METRICS_SQL = '''
-CREATE TABLE IF NOT EXISTS metrics_events (
-  name        TEXT,
-  telegram_id INTEGER,
-  roblox_id   INTEGER,
-  meta_json   TEXT,
-  created_at  TEXT DEFAULT CURRENT_TIMESTAMP
-);
-'''
-CREATE_SNAPSHOTS_SQL = '''
-CREATE TABLE IF NOT EXISTS account_snapshots (
-  roblox_id     INTEGER PRIMARY KEY,
-  snapshot_json TEXT,
-  version       INTEGER DEFAULT 0,
-  updated_at    TEXT DEFAULT CURRENT_TIMESTAMP
-);
-'''
-CREATE_COOKIES_SQL = '''
-CREATE TABLE IF NOT EXISTS user_cookies (
-  telegram_id INTEGER,
-  roblox_id   INTEGER,
-  cookie_enc  TEXT,
-  created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at  TEXT DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (telegram_id, roblox_id)
-);
-'''
-CREATE_CACHE_SQL = '''
-CREATE TABLE IF NOT EXISTS user_cache (
-  roblox_id  INTEGER,
-  cache_key  TEXT,
-  payload    BLOB,
-  expires_at TIMESTAMP,
-  PRIMARY KEY (roblox_id, cache_key)
-);
-'''
-
-async def _apply_pragmas(db):
-    pragmas = [
-        "PRAGMA journal_mode=WAL;",
-        "PRAGMA synchronous=NORMAL;",
-        "PRAGMA temp_store=MEMORY;",
-        "PRAGMA mmap_size=268435456;",
-        "PRAGMA cache_size=-200000;",
-        "PRAGMA busy_timeout=5000;",
-        "PRAGMA journal_size_limit=67108864;"
-    ]
-    for p in pragmas:
-        try:
-            await db.execute(p)
-        except Exception as e:
-            _logger.warning(f"PRAGMA failed: {p} ({e})")
-
-async def _has_column(db, table, col):
-    async with db.execute(f"PRAGMA table_info({table});") as cur:
-        cols = [r[1] async for r in cur]
-    return col in cols
-
-async def _ensure_column(db, table, col, coltype):
-    if not await _has_column(db, table, col):
-        try:
-            await db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype};")
-        except Exception as e:
-            _logger.error(f"alter {table}.{col} failed: {e}")
-
-async def _safe_index(db, idx, table, col):
-    if await _has_column(db, table, col):
-        try:
-            await db.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON {table}({col});")
-        except Exception as e:
-            _logger.warning(f"index {idx} failed: {e}")
+CREATE_USERS_SQL = '\nCREATE TABLE IF NOT EXISTS authorized_users (\n  telegram_id INTEGER NOT NULL,\n  roblox_id   INTEGER NOT NULL,\n  username    TEXT,\n  created_at  TEXT,\n  linked_at   TEXT DEFAULT CURRENT_TIMESTAMP,\n  PRIMARY KEY (telegram_id, roblox_id)\n);\n'
+CREATE_METRICS_SQL = '\nCREATE TABLE IF NOT EXISTS metrics_events (\n  id          INTEGER PRIMARY KEY AUTOINCREMENT,\n  event       TEXT NOT NULL,\n  telegram_id INTEGER,\n  roblox_id   INTEGER,\n  created_at  TEXT DEFAULT CURRENT_TIMESTAMP\n);\n'
+CREATE_SNAPSHOTS_SQL = '\nCREATE TABLE IF NOT EXISTS account_snapshots (\n  roblox_id     INTEGER PRIMARY KEY,\n  inventory_val INTEGER DEFAULT 0,\n  total_spent   INTEGER DEFAULT 0,\n  updated_at    TEXT DEFAULT CURRENT_TIMESTAMP\n);\n'
+CREATE_COOKIES_SQL = '\nCREATE TABLE IF NOT EXISTS user_cookies (\n  telegram_id      INTEGER NOT NULL,\n  roblox_id        INTEGER NOT NULL,\n  enc_roblosecurity TEXT NOT NULL,\n  saved_at         TEXT DEFAULT CURRENT_TIMESTAMP,\n  PRIMARY KEY (telegram_id, roblox_id)\n);\n'
+CREATE_CACHE_SQL = '\nCREATE TABLE IF NOT EXISTS user_cache (\n    roblox_id INTEGER NOT NULL,\n    cache_key TEXT NOT NULL,\n    cache_data TEXT NOT NULL,\n    cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    expires_at TIMESTAMP,\n    PRIMARY KEY (roblox_id, cache_key)\n);\n'
 
 async def init_db():
-    async with aiosqlite.connect(DB_STR, isolation_level=None) as db:
-        await _apply_pragmas(db)
+    async with aiosqlite.connect(DB_STR) as db:
         await db.execute(CREATE_USERS_SQL)
         await db.execute(CREATE_METRICS_SQL)
         await db.execute(CREATE_SNAPSHOTS_SQL)
         await db.execute(CREATE_COOKIES_SQL)
         await db.execute(CREATE_CACHE_SQL)
-        await _ensure_column(db, "metrics_events", "name", "TEXT")
-        await _ensure_column(db, "metrics_events", "meta_json", "TEXT")
-        await _ensure_column(db, "metrics_events", "created_at", "TEXT")
-        await _safe_index(db, "idx_auth_users_tg", "authorized_users", "telegram_id")
-        await _safe_index(db, "idx_auth_users_rb", "authorized_users", "roblox_id")
-        await _safe_index(db, "idx_metrics_name", "metrics_events", "name")
-        await _safe_index(db, "idx_cache_exp", "user_cache", "expires_at")
         await db.commit()
 
-async def _table_exists(db, name):
-    async with db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", (name,)) as cur:
-        return await cur.fetchone() is not None
-
-async def list_users(telegram_id: int):
-    out = {}
+async def upsert_user(telegram_id: int, roblox_id: int, username: str, created_at: Optional[str]) -> None:
     async with aiosqlite.connect(DB_STR) as db:
-        db.row_factory = aiosqlite.Row
-        if await _table_exists(db, "users"):
-            cur = await db.execute("SELECT roblox_id, COALESCE(username, '') AS username FROM users WHERE telegram_id=?", (telegram_id,))
-            for r in await cur.fetchall():
-                out[int(r["roblox_id"])] = r["username"] or ""
-        if await _table_exists(db, "authorized_users"):
-            cur = await db.execute("SELECT roblox_id, COALESCE(username, '') AS username FROM authorized_users WHERE telegram_id=?", (telegram_id,))
-            for r in await cur.fetchall():
-                rid = int(r["roblox_id"])
-                if rid not in out or not out[rid]:
-                    out[rid] = r["username"] or ""
-    return sorted(out.items(), key=lambda x: ((x[1] == ""), x[1].lower(), x[0]))
+        await db.execute('\n            INSERT OR REPLACE INTO authorized_users (telegram_id, roblox_id, username, created_at)\n            VALUES (?, ?, ?, ?)\n            ', (telegram_id, roblox_id, username, created_at))
+        await db.commit()
+
+async def get_user(telegram_id: int, roblox_id: int) -> Optional[Dict]:
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute('SELECT username, created_at, linked_at FROM authorized_users WHERE telegram_id=? AND roblox_id=?', (telegram_id, roblox_id))
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return {'username': row[0], 'created_at': row[1], 'linked_at': row[2]}
+
+async def list_users(telegram_id: int) -> List[Tuple[int, str]]:
+    """Вернёт список (roblox_id, username) для клавиатуры."""
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            cur = await db.execute("SELECT roblox_id, COALESCE(username, '') FROM authorized_users WHERE telegram_id=? ORDER BY linked_at DESC", (telegram_id,))
+            rows = await cur.fetchall()
+            result = [(int(r[0]), r[1]) for r in rows]
+            return result
+    except Exception as e:
+        print(f'❌ Ошибка в list_users: {e}')
+        return []
+
+async def save_encrypted_cookie(telegram_id: int, roblox_id: int, enc_cookie: str) -> None:
+    async with aiosqlite.connect(DB_STR) as db:
+        await db.execute('\n            INSERT OR REPLACE INTO user_cookies (telegram_id, roblox_id, enc_roblosecurity)\n            VALUES (?, ?, ?)\n            ', (telegram_id, roblox_id, enc_cookie))
+        await db.commit()
+
+async def get_encrypted_cookie(telegram_id: int, roblox_id: int) -> Optional[str]:
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute('SELECT enc_roblosecurity FROM user_cookies WHERE telegram_id=? AND roblox_id=?', (telegram_id, roblox_id))
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+async def delete_cookie(telegram_id: int, roblox_id: int) -> None:
+    """Удаляет и куки и запись об аккаунте"""
+    async with aiosqlite.connect(DB_STR) as db:
+        await db.execute('DELETE FROM user_cookies WHERE telegram_id=? AND roblox_id=?', (telegram_id, roblox_id))
+        await db.execute('DELETE FROM authorized_users WHERE telegram_id=? AND roblox_id=?', (telegram_id, roblox_id))
+        await db.commit()
+
+async def get_cached_data(roblox_id: int, key: str) -> Optional[Any]:
+    """Получить данные из кэша"""
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute("SELECT cache_data FROM user_cache WHERE roblox_id=? AND cache_key=? AND expires_at > datetime('now')", (roblox_id, key))
+        row = await cur.fetchone()
+        if row:
+            return json.loads(row[0])
+        return None
+
+async def set_cached_data(roblox_id: int, key: str, data: Any, ttl_minutes: int=5) -> None:
+    """Сохранить данные в кэш"""
+    expires_at = datetime.now() + timedelta(minutes=ttl_minutes)
+    async with aiosqlite.connect(DB_STR) as db:
+        await db.execute('\n            INSERT OR REPLACE INTO user_cache (roblox_id, cache_key, cache_data, expires_at)\n            VALUES (?, ?, ?, ?)\n            ', (roblox_id, key, json.dumps(data), expires_at.isoformat()))
+        await db.commit()
+
+async def clear_user_cache(roblox_id: int) -> None:
+    """Очистить кэш пользователя (при изменении данных)"""
+    async with aiosqlite.connect(DB_STR) as db:
+        await db.execute('DELETE FROM user_cache WHERE roblox_id=?', (roblox_id,))
+        await db.commit()
+
+async def log_event(event: str, telegram_id: int | None, roblox_id: int | None) -> None:
+    async with aiosqlite.connect(DB_STR) as db:
+        await db.execute('INSERT INTO metrics_events(event, telegram_id, roblox_id) VALUES (?, ?, ?)', (event, telegram_id, roblox_id))
+        await db.commit()
+
+async def admin_stats() -> dict:
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute('SELECT COUNT(*) FROM (SELECT DISTINCT telegram_id FROM authorized_users)')
+        total_users = (await cur.fetchone())[0]
+        cur = await db.execute("SELECT COUNT(*) FROM authorized_users WHERE date(linked_at) = date('now','localtime')")
+        new_today = (await cur.fetchone())[0]
+        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='check'")
+        checks_total = (await cur.fetchone())[0]
+        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='check' AND date(created_at) = date('now','localtime')")
+        checks_today = (await cur.fetchone())[0]
+    return {'total_users': total_users, 'new_today': new_today, 'checks_total': checks_total, 'checks_today': checks_today}
+
+async def get_any_encrypted_cookie_by_roblox_id(roblox_id: int) -> Optional[str]:
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute('SELECT enc_roblosecurity FROM user_cookies WHERE roblox_id=? LIMIT 1', (roblox_id,))
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+async def upsert_account_snapshot(roblox_id: int, inventory_val: int, total_spent: int) -> None:
+    async with aiosqlite.connect(DB_STR) as db:
+        await db.execute('\n            INSERT INTO account_snapshots(roblox_id, inventory_val, total_spent, updated_at)\n            VALUES (?, ?, ?, CURRENT_TIMESTAMP)\n            ON CONFLICT(roblox_id) DO UPDATE SET\n                inventory_val=excluded.inventory_val,\n                total_spent=excluded.total_spent,\n                updated_at=CURRENT_TIMESTAMP\n            ', (roblox_id, int(inventory_val), int(total_spent)))
+        await db.commit()
+
+async def get_account_snapshot(roblox_id: int) -> Optional[dict]:
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute('SELECT inventory_val, total_spent, updated_at FROM account_snapshots WHERE roblox_id=?', (roblox_id,))
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return {'inventory_val': row[0], 'total_spent': row[1], 'updated_at': row[2]}
