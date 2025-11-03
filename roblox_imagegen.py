@@ -1,8 +1,21 @@
 from __future__ import annotations
-import os
-# Absolute path to prices.csv next to this file
-PRICE_CSV_PATH = os.path.join(os.path.dirname(__file__), 'prices.csv')
 import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
+
+from datetime import datetime as _dt2
+LOG_PRICE_PATH = os.path.join(os.path.dirname(__file__), "price_debug.log")
+PRICE_CSV_PATH = os.path.join(os.path.dirname(__file__), 'prices.csv')
+def _log_price_event(text: str):
+    ts = _dt2.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {text}"
+    try:
+        with open(LOG_PRICE_PATH, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+    try:
+        logger.info(line)
+    except Exception:
+        pass
 
 # ---- helpers for robust ID/price parsing ----
 def _to_int(v) -> int:
@@ -20,26 +33,34 @@ def _to_int(v) -> int:
 
 def _enrich_with_csv(it: dict, price_map: dict) -> dict:
     keys = [
-        int(str(it.get('itemId') or 0)) if it.get('itemId') is not None else 0,
-        int(str(it.get('assetId') or 0)) if it.get('assetId') is not None else 0,
-        int(str(it.get('collectibleItemId') or it.get('collectibleId') or 0)),
-        int(str(it.get('id') or 0)),
+        int(it.get('itemId') or 0),
+        int(it.get('assetId') or 0),
+        int(it.get('collectibleItemId') or it.get('collectibleId') or 0),
+        int(it.get('id') or 0),
     ]
     rec = None
     for k in keys:
         if k and k in price_map:
             rec = price_map[k]
             break
+
+    # fallback by name
     if not rec and it.get('name'):
         n = str(it.get('name') or '').strip().lower()
         for r in price_map.values():
             if str(r.get('name') or '').strip().lower() == n:
                 rec = r
                 break
+
+    name = (it.get('name') or '').strip()
+    pid = it.get('itemId') or it.get('assetId') or it.get('id')
     if rec:
         if not it.get('name'):
             it['name'] = rec.get('name')
         it['priceInfo'] = {'value': int(str((rec.get('priceInfo') or {}).get('value') or 0))}
+        _log_price_event(f"[PRICE_HIT] {name!r} (id={pid}) -> price={(rec.get('priceInfo') or {}).get('value')}")
+    else:
+        _log_price_event(f"[PRICE_MISS] {name!r} (id={pid}) -> not found in CSV")
     return it
 from typing import Any, Dict, List, Optional
 
@@ -501,9 +522,9 @@ def _read_ready_item(aid: int) -> Optional[Image.Image]:  # type: ignore[func-ov
 _PRICES_CACHE: Optional[Dict[int, Dict[str, Any]]] = None
 _PRICES_TS: float = 0.0
 _PRICES_MTIME: float = -1.0
-_PRICES_TTL_SEC = 0
+_PRICES_TTL_SEC = 1800  # 30 min
 
-def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]]:
+def load_prices_csv_cached(path: str = PRICE_CSV_PATH) -> Dict[int, Dict[str, Any]]:
     global _PRICES_CACHE, _PRICES_TS, _PRICES_MTIME
     try:
         mtime = os.path.getmtime(path)
@@ -816,7 +837,7 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
 async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='Items', username: Optional[str]=None, user_id: Optional[int]=None) -> bytes:
     _build_image_index_cached()
     price_map = load_prices_csv_cached(PRICE_CSV_PATH)
-    # обогащаем КАЖДЫЙ айтем ценой из CSV (itemId/assetId)
+    # обогащаем КАЖДЫЙ айтем ценой из CSV (itemId/collectibleItemId/assetId)
     items = [_enrich_with_csv(it, price_map) for it in items]
     n = len(items)
     if not KEEP_INPUT_ORDER:
@@ -843,11 +864,9 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
     canvas.alpha_composite(_get_canvas_bg(W, H), (0, 0))
     _draw_header(canvas, n, title)
     _draw_footer(canvas, username, user_id)
+
     sem = asyncio.Semaphore(RENDER_CONCURRENCY)
     async def make_tile(it):
-        price_map = load_prices_csv_cached(PRICE_CSV_PATH)
-        it = _enrich_with_csv(it, price_map)
-
         async with sem:
             aid = int(it['assetId'])
             thumb = thumbs.get(aid) or Image.new('RGBA', (tile - 12, tile - 26), (70, 80, 96, 255))
@@ -886,8 +905,8 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     from roblox_client import get_full_inventory
     data = await get_full_inventory(tg_id, roblox_id)
     items = (data.get('byCategory') or {}).get(category, [])
-    price_map = load_prices_csv_cached(PRICE_CSV_PATH)
-    items = [_enrich_with_csv(it, price_map) for it in items]
+    price_map = load_prices_csv_cached()
+    items = [_enrich_with_csv(x, price_map) for x in items]
     if limit and limit > 0:
         items = items[:limit]
     return await _render_grid(items, tile=tile, title=category, username=username, user_id=tg_id)
