@@ -985,7 +985,7 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
             await loader.edit_text(L('msg.auto_d43fb921bf'))
             return
         img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
-                                                       user_id=call.from_user.id, lang=get_user_lang(tg))
+                                                       user_id=call.from_user.id, lang=_user_lang(tg))
         import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_all_{tg}_{roblox_id}.png'
@@ -1029,7 +1029,7 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
             await loader.edit_text(L('msg.auto_d43fb921bf'))
             return
         img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
-                                                       user_id=call.from_user.id, lang=get_user_lang(tg))
+                                                       user_id=call.from_user.id, lang=_user_lang(tg))
         import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_all_{tg}_{roblox_id}.png'
@@ -1069,7 +1069,7 @@ async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
         for arr in by_cat.values():
             all_items.extend(_filter_nonzero(arr))
         img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
-                                                       user_id=call.from_user.id, lang=get_user_lang(tg))
+                                                       user_id=call.from_user.id, lang=_user_lang(tg))
         import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_all_{tg}_{roblox_id}.png'
@@ -1115,7 +1115,7 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
         img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, username=call.from_user.username)
         if not img_bytes:
             img_bytes = await generate_full_inventory_grid(items, tile=150, pad=6, username=call.from_user.username,
-                                                           user_id=call.from_user.id, lang=get_user_lang(tg))
+                                                           user_id=call.from_user.id, lang=_user_lang(tg))
         import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_cat_{tg}_{roblox_id}.png'
@@ -1265,7 +1265,7 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                         part, tile=tile, pad=6,
                         username=call.from_user.username,
                         user_id=tg, title=title,
-                        lang=get_user_lang(tg)
+                        lang=_user_lang(tg)
                     )
                     os.makedirs('temp', exist_ok=True)
                     tmp_path = f'temp/inventory_cat_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}_{tile}_{i}.png'
@@ -1321,7 +1321,7 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                             img = await generate_full_inventory_grid(
                                 part,
                                 tile=tile, pad=6,
-                                title=('Все предметы' if len(pages, lang=get_user_lang(tg)) == 1 else f'Все предметы (стр. {i}/{len(pages)})'),
+                                title=('Все предметы' if len(pages, lang=_user_lang(tg)) == 1 else f'Все предметы (стр. {i}/{len(pages)})'),
                                 username=call.from_user.username,
                                 user_id=tg
                             )
@@ -1597,7 +1597,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                                 part,
                                 tile=tile, pad=6,
                                 title=(
-                                    'All inventory' if len(pages, lang=get_user_lang(tg)) == 1 else f'All inventory (стр. {i}/{len(pages)})'),
+                                    'All inventory' if len(pages, lang=_user_lang(tg)) == 1 else f'All inventory (стр. {i}/{len(pages)})'),
                                 username=call.from_user.username,
                                 user_id=tg
                             )

@@ -2,6 +2,9 @@ from __future__ import annotations
 import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
 
 from datetime import datetime as _dt2
+
+from handlers import _category_slug
+
 LOG_PRICE_PATH = os.path.join(os.path.dirname(__file__), "price_debug.log")
 PRICE_CSV_PATH = os.path.join(os.path.dirname(__file__), 'prices.csv')
 def _log_price_event(text: str):
@@ -698,6 +701,15 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
 
 
 def _draw_header(canvas: Image.Image, count: int, title: str):
+    # if already localized (Cyrillic), keep; else try translating category label
+    try:
+        import re
+        _CYRIL = re.compile('[А-Яа-яЁё]')
+        if not _CYRIL.search(title or ''):
+            from i18n import t
+            title = t(f"cat.{_category_slug(title)}") or title
+    except Exception:
+        pass
     try:
         title = t(f"cat.{_category_slug(title)}") or title
     except Exception:
