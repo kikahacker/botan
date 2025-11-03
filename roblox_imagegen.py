@@ -840,11 +840,12 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
     canvas.alpha_composite(_get_canvas_bg(W, H), (0, 0))
     _draw_header(canvas, n, title)
     _draw_footer(canvas, username, user_id)
-
+    price_map = load_prices_csv_cached('prices.csv')
+    items = [_enrich_with_csv(x, price_map) for x in items]
     sem = asyncio.Semaphore(RENDER_CONCURRENCY)
     async def make_tile(it):
         price_map = load_prices_csv_cached('prices.csv')
-        items = [_enrich_with_csv(it, price_map) for it in items]
+        it = _enrich_with_csv(it, price_map)
 
         async with sem:
             aid = int(it['assetId'])
