@@ -750,7 +750,9 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
         'ru': ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"],
     }
     mlist = _months.get(lang, _months['en'])
-    date_text = f"{now.day:02d} {mlist[now.month-1]} {now.year}"
+    month = mlist[now.month-1]
+    date_text = tr(lang, 'footer.date', day=f"{now.day:02d}", month=month, year=now.year)
+
     who = username if username and str(username).strip() else str(user_id) if user_id is not None else '@unknown'
     if isinstance(who, str) and who and (not who.startswith('@')) and (not who.isdigit()):
         who = f'@{who}'
