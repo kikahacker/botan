@@ -15,12 +15,6 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFil
 
 ADMINS = set((int(x) for x in os.getenv('ADMINS', '').replace(',', ' ').split() if x))
 
-def _user_lang(tg_id: int) -> str:
-    try:
-        return get_user_lang(tg_id)
-    except Exception:
-        return 'ru'
-
 def _apply_lang(tg_id: int):
     try:
         set_current_lang(get_user_lang(tg_id))
@@ -715,7 +709,7 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
         return
     # try existing project mem cache if present
     try:
-        _rec_old = get_profile_mem(tg, roblox_id)  # may not exist
+        _rec_old = _get_profile_mem(tg, roblox_id)  # may not exist
     except Exception:
         _rec_old = None
     if isinstance(_rec_old, dict) and _rec_old.get("text"):
@@ -998,7 +992,8 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
             await loader.edit_text(L('msg.auto_d43fb921bf'))
             return
         img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
-                                                       user_id=call.from_user.id, lang=_user_lang(tg))
+                                                       user_id=call.from_user.id)
+        import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_all_{tg}_{roblox_id}.png'
         with open(path, 'wb') as f:
@@ -1041,7 +1036,8 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
             await loader.edit_text(L('msg.auto_d43fb921bf'))
             return
         img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
-                                                       user_id=call.from_user.id, lang=_user_lang(tg))
+                                                       user_id=call.from_user.id)
+        import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_all_{tg}_{roblox_id}.png'
         with open(path, 'wb') as f:
@@ -1080,7 +1076,8 @@ async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
         for arr in by_cat.values():
             all_items.extend(_filter_nonzero(arr))
         img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
-                                                       user_id=call.from_user.id, lang=_user_lang(tg))
+                                                       user_id=call.from_user.id)
+        import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_all_{tg}_{roblox_id}.png'
         with open(path, 'wb') as f:
@@ -1122,10 +1119,11 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
         if not items:
             await loader.edit_text(L('msg.auto_c61051830f'))
             return
-        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, username=call.from_user.username, lang=_user_lang(tg))
+        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, username=call.from_user.username)
         if not img_bytes:
             img_bytes = await generate_full_inventory_grid(items, tile=150, pad=6, username=call.from_user.username,
-                                                           user_id=call.from_user.id, lang=_user_lang(tg))
+                                                           user_id=call.from_user.id)
+        import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_cat_{tg}_{roblox_id}.png'
         with open(path, 'wb') as f:
@@ -1164,7 +1162,9 @@ async def cb_inventory_category_refresh(call: types.CallbackQuery) -> None:
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         full = _CAT_SHORTMAP.get((roblox_id, short), short)
         items = _filter_nonzero(by_cat.get(full, []))
-        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, username=call.from_user.username, lang=_user_lang(tg))
+        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, tile=150, force=True,
+                                                   username=call.from_user.username)
+        import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_cat_{tg}_{roblox_id}.png'
         with open(path, 'wb') as f:
@@ -1210,6 +1210,7 @@ def create_cookie_zip(user_id: int) -> str:
 
 from aiogram import types, F
 from aiogram.types import FSInputFile
+import os
 from roblox_imagegen import generate_category_sheets
 import roblox_client
 
@@ -1267,7 +1268,7 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                 ok = True
                 for i, part in enumerate(pages, 1):
                     img_bytes = await generate_full_inventory_grid(part, tile=tile, pad=6, title=(
-                        cat if len(pages, lang=_user_lang(tg)) == 1 else f"{cat} (стр. {i}/{len(pages)})"),
+                        cat if len(pages) == 1 else f"{cat} (стр. {i}/{len(pages)})"),
                                                                    username=call.from_user.username, user_id=tg)
                     os.makedirs('temp', exist_ok=True)
                     tmp_path = f'temp/inventory_cat_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}_{tile}_{i}.png'
@@ -1320,15 +1321,17 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                     tmp_paths = []
                     try:
                         for i, part in enumerate(pages, 1):
-                            img = await generate_full_inventory_grid(part,
+                            img = await generate_full_inventory_grid(
+                                part,
                                 tile=tile, pad=6,
-                                title=('Все предметы' if len(pages, lang=_user_lang(tg)) == 1 else f'Все предметы (стр. {i}/{len(pages)})'),
+                                title=('Все предметы' if len(pages) == 1 else f'Все предметы (стр. {i}/{len(pages)})'),
                                 username=call.from_user.username,
                                 user_id=tg
                             )
                             if len(img) > MAX_BYTES:
                                 ok = False
                                 break
+                            import os
                             os.makedirs('temp', exist_ok=True)
                             p = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
                             with open(p, 'wb') as f:
@@ -1528,6 +1531,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             await loader.delete()
         except Exception:
             pass
+        import os
         os.makedirs('temp', exist_ok=True)
         tmp_paths = []
         selected_items: list[dict] = []
@@ -1545,7 +1549,8 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             selected_items.extend(items)
             if not items:
                 continue
-            img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, username=call.from_user.username, lang=_user_lang(tg))
+            img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, tile=150, force=True,
+                                                       username=call.from_user.username)
             tmp_path = f'temp/inventory_sel_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}.png'
             with open(tmp_path, 'wb') as f:
                 f.write(img_bytes)
@@ -1591,10 +1596,11 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                     tmp_final_paths = []
                     try:
                         for i, part in enumerate(pages, 1):
-                            img = await generate_full_inventory_grid(part,
+                            img = await generate_full_inventory_grid(
+                                part,
                                 tile=tile, pad=6,
                                 title=(
-                                    L('inventory.full_title', lang=_user_lang(tg)) if len(pages) == 1 else L('inventory.full_title_paged', i=i, total=len(pages))),
+                                    L('inventory.full_title') if len(pages) == 1 else L('inventory.full_title_paged', i=i, total=len(pages))),
                                 username=call.from_user.username,
                                 user_id=tg
                             )
@@ -1683,8 +1689,7 @@ async def on_lang_set(call: types.CallbackQuery):
     await set_user_lang(storage, call.from_user.id, code)
     _CURRENT_LANG.set(code)
     try:
-        lang_name = (tr(code, f'lang.names.{code}') or ( 'Русский' if code=='ru' else 'English' if code=='en' else code ))
-        await call.answer(tr(code, 'lang.saved', lang_name=lang_name) or 'Saved ✅', show_alert=True)
+        await call.answer(tr(code, 'lang.saved', lang_name=tr(code, f'lang.names.{code}')) or 'Saved ✅', show_alert=True)
     except Exception:
         pass
     await call.message.edit_text(LL('messages.welcome', 'welcome') or 'Welcome!',
