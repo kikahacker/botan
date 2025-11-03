@@ -1,4 +1,7 @@
 from __future__ import annotations
+import os
+# Absolute path to prices.csv next to this file
+PRICE_CSV_PATH = os.path.join(os.path.dirname(__file__), 'prices.csv')
 import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
 
 # ---- helpers for robust ID/price parsing ----
@@ -498,7 +501,7 @@ def _read_ready_item(aid: int) -> Optional[Image.Image]:  # type: ignore[func-ov
 _PRICES_CACHE: Optional[Dict[int, Dict[str, Any]]] = None
 _PRICES_TS: float = 0.0
 _PRICES_MTIME: float = -1.0
-_PRICES_TTL_SEC = 0  # 30 min
+_PRICES_TTL_SEC = 0
 
 def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]]:
     global _PRICES_CACHE, _PRICES_TS, _PRICES_MTIME
@@ -518,12 +521,12 @@ def load_prices_csv_cached(path: str = "prices.csv") -> Dict[int, Dict[str, Any]
             if reader.fieldnames:
                 for row in reader:
                     r = {(k or '').strip().lower(): (v or '').strip() for k, v in row.items()}
-                    id_raw = r.get("itemid") or r.get("collectibleitemid") or r.get("collectibleid") or r.get("assetid") or r.get("id") or r.get("collectibleitemid") or r.get("collectibleid") or r.get("assetid") or r.get("id")
+                    id_raw = r.get("itemid") or r.get("collectibleitemid") or r.get("collectibleid") or r.get("assetid") or r.get("id")
                     if not id_raw:
                         continue
                     aid = _to_int(id_raw)
                     name = r.get("name", "")
-                    price_field = r.get("pricepicked") or r.get("price") or r.get("value") or r.get("cost") or r.get("price") or r.get("value") or r.get("cost")
+                    price_field = r.get("pricepicked") or r.get("price") or r.get("value") or r.get("cost")
                     price_val = _to_int(price_field or 0)
                     out[aid] = {"name": name, "priceInfo": {"value": price_val}}
             else:
@@ -620,7 +623,7 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
     title_total_h = line_h * len(lines)
     y_bottom = tile - TEXT_BOTTOM_PAD_PX
     y_top = y_bottom - title_total_h
-    y_top = y_top + 3  # shift title 2px down
+    y_top = y_top + 2  # shift title 2px down
 
     for i, line in enumerate(lines):
         tw = int(d.textlength(line, font=title_font))
@@ -812,7 +815,7 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
 # =========================
 async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='Items', username: Optional[str]=None, user_id: Optional[int]=None) -> bytes:
     _build_image_index_cached()
-    price_map = load_prices_csv_cached('prices.csv')
+    price_map = load_prices_csv_cached(PRICE_CSV_PATH)
     # обогащаем КАЖДЫЙ айтем ценой из CSV (itemId/assetId)
     items = [_enrich_with_csv(it, price_map) for it in items]
     n = len(items)
@@ -840,11 +843,9 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
     canvas.alpha_composite(_get_canvas_bg(W, H), (0, 0))
     _draw_header(canvas, n, title)
     _draw_footer(canvas, username, user_id)
-    price_map = load_prices_csv_cached('prices.csv')
-    items = [_enrich_with_csv(x, price_map) for x in items]
     sem = asyncio.Semaphore(RENDER_CONCURRENCY)
     async def make_tile(it):
-        price_map = load_prices_csv_cached('prices.csv')
+        price_map = load_prices_csv_cached(PRICE_CSV_PATH)
         it = _enrich_with_csv(it, price_map)
 
         async with sem:
@@ -878,9 +879,6 @@ async def generate_inventory_preview(tg_id: int, roblox_id: int, categories_limi
     data = await get_full_inventory(tg_id, roblox_id)
     items = []
     for arr in (data.get('byCategory') or {}).values():
-        price_map = load_prices_csv_cached('prices.csv')
-        items = [_enrich_with_csv(it, price_map) for it in items]
-
         items.extend(arr)
     return await _render_grid(items, tile=150, title='Инвентарь', username=username, user_id=tg_id)
 
@@ -888,7 +886,7 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     from roblox_client import get_full_inventory
     data = await get_full_inventory(tg_id, roblox_id)
     items = (data.get('byCategory') or {}).get(category, [])
-    price_map = load_prices_csv_cached()
+    price_map = load_prices_csv_cached(PRICE_CSV_PATH)
     items = [_enrich_with_csv(it, price_map) for it in items]
     if limit and limit > 0:
         items = items[:limit]
