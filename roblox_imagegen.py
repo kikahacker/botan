@@ -781,7 +781,7 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
         who = f'@{who}'
     line1 = date_text
     line2 = t('footer.checked_by', username=who)
-    line3 = f'{FOOTER_BRAND}'
+    line3 = t('footer.domain') or f'{FOOTER_BRAND}'
 
     base1 = max(20, FOOTER_H // 3)
     base2 = max(16, FOOTER_H // 4)
