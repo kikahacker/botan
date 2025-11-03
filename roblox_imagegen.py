@@ -26,7 +26,7 @@ def _category_label(cat_raw: str) -> str:
         slug = _category_slug(cat_raw)
     except Exception:
         slug = str(cat_raw).lower().replace(' ', '_')
-    return t(f"cat.{slug}") or cat_raw
+    return t(f'{slug}') or cat_raw
 
 
 
@@ -728,7 +728,7 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
 def _draw_header(canvas: Image.Image, count: int, title: str):
     # safety: localize category title if possible
     try:
-        title = t(f"cat.{_category_slug(title)}") or title
+        title = t(f"{_category_slug(title)}") or title
     except Exception:
         pass
     if not SHOW_HEADER:
