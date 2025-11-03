@@ -726,12 +726,12 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
 
 
 def _draw_header(canvas: Image.Image, count: int, title: str):
-    # safety: localize category title if possible
+    # localize category title via i18n if key exists
     try:
         slug = _category_slug(title)
         key = f"cat.{slug}"
         val = t(key)
-        if val and val != key:
+        if isinstance(val, str) and val and val != key:
             title = val
     except Exception:
         pass

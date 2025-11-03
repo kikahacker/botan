@@ -224,6 +224,7 @@ async def use_lang_from_message(message) -> str:
     except Exception:
         lang = 'en'
     _CURRENT_LANG.set(lang)
+    set_current_lang(lang)
     return lang
 
 
@@ -233,6 +234,7 @@ async def use_lang_from_call(call) -> str:
     except Exception:
         lang = 'en'
     _CURRENT_LANG.set(lang)
+    set_current_lang(lang)
     return lang
 
 
