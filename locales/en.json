@@ -13,23 +13,14 @@
     "total_sum": "💰 Total inventory value: {sum} R$",
     "total_items": "📦 Items with price: {count}",
     "by_cat": "📂 {cat}\nTotal: {count} pcs · {sum} R$",
-    "full_title": "Full inventory",
-    "selected_totals": "💰 Selected total: {sum} R$\n📦 Items: {count}",
-    "overall_totals": "💰 Inventory total value: {sum} R$\n📦 Items with price: {count}",
-    "full_title_paged": "All inventory (page {i}/{total})",
-    "all_inventory_line": "📦 All inventory · {total_items} pcs",
-    "all_inventory_too_big": "📦 All inventory: render is too large. Lower tile or reduce selection."
+    "full_title": "Full inventory"
   },
   "app": {
     "name": "Your Bot"
   },
   "lang": {
     "choose": "Choose your language:",
-    "saved": "✅ Language set to: {lang_name}",
-    "names": {
-      "en": "English",
-      "ru": "Russian"
-    }
+    "saved": "✅ Language set to: {lang_name}"
   },
   "btn": {
     "lang": "🌐 Language",
@@ -170,6 +161,9 @@
     "gear": "Gear",
     "hair": "Hair",
     "hats": "Hats",
-    "heads": "Heads"
+    "heads": "Heads",
+    "Heads": "Heads",
+    "Hats": "Hats",
+    "Emotes": "Emotes"
   }
 }
