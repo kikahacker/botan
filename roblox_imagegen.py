@@ -1,5 +1,5 @@
 from __future__ import annotations
-from i18n import t, get_current_lang
+from i18n import t, get_current_lang, tr
 import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
 
 from datetime import datetime as _dt2
@@ -21,7 +21,7 @@ def _log_price_event(text: str):
 def _category_slug(name: str) -> str:
     return (name or '').lower().replace(' ', '_')
 
-def _category_label(cat_raw: str) -> str:
+def _category_label(cat_raw: str, lang: str | None = None) -> str:
     try:
         slug = _category_slug(cat_raw)
     except Exception:
@@ -165,15 +165,6 @@ LINE_SCALE = float(os.getenv('LINE_SCALE', '1.0'))
 SHOW_HEADER = str(os.getenv('SHOW_HEADER', 'true')).strip().lower() in ('1','true','yes','y','on')
 SHOW_FOOTER = str(os.getenv('SHOW_FOOTER', 'true')).strip().lower() in ('1','true','yes','y','on')
 HEADER_H = int(os.getenv('HEADER_H', '76'))
-
-# === localized header helper ===
-from i18n import t, get_current_lang
-def _header_text(count):
-    try:
-        return t('header.items_count', count=count)
-    except Exception:
-        return f'{count} Heads'
-
 FOOTER_H = int(os.getenv('FOOTER_H', '140'))
 FOOTER_ICON = os.getenv('FOOTER_ICON', os.path.join(ASSETS_DIR, 'footer_badge.png'))
 FOOTER_BRAND = 'raika.gg'
@@ -737,7 +728,7 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
 def _draw_header(canvas: Image.Image, count: int, title: str):
     # safety: localize category title if possible
     try:
-        title = t(f"cat.{_category_slug(title)}") or title
+        title = (tr(lang, f"cat.{_category_slug(title)}") if "lang" in locals() and lang else t(f"cat.{_category_slug(title)}")) or title
     except Exception:
         pass
     if not SHOW_HEADER:
@@ -747,7 +738,7 @@ def _draw_header(canvas: Image.Image, count: int, title: str):
     canvas.alpha_composite(band, (0, 0))
     d = ImageDraw.Draw(canvas)
     font = _bold_font(max(26, HEADER_H // 2))
-    text = f"{_header_text(count)}  {title}"
+    text = f"{count}  {title}"
     try:
         tw = int(d.textlength(text, font=font))
         th = font.getbbox('Ag')[3]
@@ -790,7 +781,7 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
         who = f'@{who}'
     line1 = date_text
     line2 = t('footer.checked_by', username=who)
-    line3 = t('footer.domain')
+    line3 = f'{FOOTER_BRAND}'
 
     base1 = max(20, FOOTER_H // 3)
     base2 = max(16, FOOTER_H // 4)
@@ -933,17 +924,17 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
 # Public API (signatures unchanged)
 # =========================
 async def generate_full_inventory_grid(items: List[Dict[str, Any]], tile: int=150, pad: int=0, username: Optional[str]=None, user_id: Optional[int]=None, title: Optional[int]=None) -> bytes:
-    return await _render_grid(items, tile=tile, title=title or t('inventory.title'), username=username, user_id=user_id)
+    return await _render_grid(items, tile=tile, title=title or (tr(lang, 'inventory.title') if lang else t('inventory.title')), username=username, user_id=user_id)
 
-async def generate_inventory_preview(tg_id: int, roblox_id: int, categories_limit: int=8, username: Optional[str]=None) -> bytes:
+async def generate_inventory_preview(tg_id: int, roblox_id: int, categories_limit: int=8, username: Optional[str]=None, lang: str | None = None) -> bytes:
     from roblox_client import get_full_inventory
     data = await get_full_inventory(tg_id, roblox_id)
     items = []
     for arr in (data.get('byCategory') or {}).values():
         items.extend(arr)
-    return await _render_grid(items, tile=150, title=t('inventory.title'), username=username, user_id=tg_id)
+    return await _render_grid(items, tile=150, title=(tr(lang, 'inventory.title') if lang else t('inventory.title')), username=username, user_id=tg_id)
 
-async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, limit: int=0, tile: int=150, force: bool=False, username: Optional[str]=None) -> bytes:
+async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, limit: int=0, tile: int=150, force: bool=False, username: Optional[str]=None, lang: str | None = None) -> bytes:
     from roblox_client import get_full_inventory
     data = await get_full_inventory(tg_id, roblox_id)
     items = (data.get('byCategory') or {}).get(category, [])
@@ -951,4 +942,4 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     items = [_enrich_with_csv(x, price_map) for x in items]
     if limit and limit > 0:
         items = items[:limit]
-    return await _render_grid(items, tile=tile, title=_category_label(category), username=username, user_id=tg_id)
+    return await _render_grid(items, tile=tile, title=_category_label(category, lang), username=username, user_id=tg_id)
