@@ -224,7 +224,6 @@ async def use_lang_from_message(message) -> str:
     except Exception:
         lang = 'en'
     _CURRENT_LANG.set(lang)
-    set_current_lang(lang)
     return lang
 
 
@@ -234,7 +233,6 @@ async def use_lang_from_call(call) -> str:
     except Exception:
         lang = 'en'
     _CURRENT_LANG.set(lang)
-    set_current_lang(lang)
     return lang
 
 
@@ -1224,12 +1222,6 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
     except Exception:
         pass
     tg = call.from_user.id
-    # ensure RU i18n for image rendering
-    try:
-        lang = await get_user_lang(storage, tg, fallback='ru')
-    except Exception:
-        lang = 'ru'
-    set_current_lang(lang)
     try:
         roblox_id = int(call.data.split(':', 1)[1])
     except Exception:
