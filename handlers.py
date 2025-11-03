@@ -136,7 +136,6 @@ class LangMiddleware(BaseMiddleware):
             except Exception:
                 lang = 'en'
             _CURRENT_LANG.set(lang)
-            set_current_lang(lang)  # propagate to global i18n context
         return await handler(event, data)
 
 
@@ -224,7 +223,6 @@ async def use_lang_from_message(message) -> str:
         lang = await get_user_lang(storage, message.from_user.id, fallback='en')
     except Exception:
         lang = 'en'
-    set_current_lang(lang)
     _CURRENT_LANG.set(lang)
     return lang
 
@@ -234,7 +232,6 @@ async def use_lang_from_call(call) -> str:
         lang = await get_user_lang(storage, call.from_user.id, fallback='en')
     except Exception:
         lang = 'en'
-    set_current_lang(lang)
     _CURRENT_LANG.set(lang)
     return lang
 
