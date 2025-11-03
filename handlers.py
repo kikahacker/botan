@@ -1704,7 +1704,7 @@ async def on_lang_set(call: types.CallbackQuery):
     _CURRENT_LANG.set(code)
     set_current_lang(code)
     try:
-        await call.answer(tr(code, 'lang.saved') or 'Saved ✅', show_alert=True)
+        await call.answer(tr(code, 'lang.saved', lang_name=_LANG_NAMES.get(code, code)) or 'Saved ✅', show_alert=True)
     except Exception:
         pass
     await call.message.edit_text(LL('messages.welcome', 'welcome') or 'Welcome!',
