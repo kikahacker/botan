@@ -1572,7 +1572,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             total_sum = sum((_p(x.get('priceInfo')) for x in items))
             grand_total_sum += total_sum
             grand_total_count += len(items)
-            caption = f'📂 {cat}\nВсего: {len(items)} шт · {total_sum:,} R$'.replace(',', ' ')
+            caption = L('inventory.by_cat', cat=cat_label(cat), count=len(items), sum=f'{total_sum:,}'.replace(',', ' '))
             await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
         await call.message.answer(
             f'💰 Сумма по выбранным: {grand_total_sum:,} R$\n📦 Всего предметов: {grand_total_count}'.replace(',', ' '))
@@ -1704,7 +1704,13 @@ async def on_lang_set(call: types.CallbackQuery):
     _CURRENT_LANG.set(code)
     set_current_lang(code)
     try:
-        await call.answer(tr(code, 'lang.saved', lang_name=_LANG_NAMES.get(code, code)) or 'Saved ✅', show_alert=True)
+        msg_tpl = tr(code, 'lang.saved') or 'Saved ✅'
+        ln = _LANG_NAMES.get(code, code)
+        try:
+            msg = msg_tpl.format(lang_name=ln)
+        except Exception:
+            msg = msg_tpl.replace('{lang_name}', str(ln))
+        await call.answer(msg, show_alert=True)
     except Exception:
         pass
     await call.message.edit_text(LL('messages.welcome', 'welcome') or 'Welcome!',
