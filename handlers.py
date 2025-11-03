@@ -9,7 +9,7 @@ from unittest.mock import call
 from PIL import Image
 import httpx
 from aiogram import Router, types, F
-from i18n import t, tr, get_user_lang, set_user_lang, set_current_lang
+from i18n import t, tr, get_user_lang, set_user_lang
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
 
@@ -129,8 +129,6 @@ class LangMiddleware(BaseMiddleware):
             except Exception:
                 lang = 'en'
             _CURRENT_LANG.set(lang)
-            set_current_lang(lang)
-
         return await handler(event, data)
 
 
@@ -219,7 +217,6 @@ async def use_lang_from_message(message) -> str:
     except Exception:
         lang = 'en'
     _CURRENT_LANG.set(lang)
-    set_current_lang(lang)
     return lang
 
 
@@ -229,7 +226,6 @@ async def use_lang_from_call(call) -> str:
     except Exception:
         lang = 'en'
     _CURRENT_LANG.set(lang)
-    set_current_lang(lang)
     return lang
 
 
@@ -957,23 +953,6 @@ def _kb_categories_only(roblox_id: int, by_cat: Dict[str, List[Dict[str, Any]]])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-
-def _caption_full_inventory(total_count: int, total_sum: int) -> str:
-    # "📦 {full_title}\n{total_items}\n{total_sum}"
-    line1 = f"📦 {L('inventory.full_title') or 'Full inventory'}"
-    line2 = L('inventory.total_items', count=total_count) or f"📦 Items with price: {total_count}"
-    line3 = L('inventory.total_sum', sum=f"{total_sum:,}") or f"💰 Total inventory value: {total_sum:,}"
-    return (line1 + "\n" + line2 + "\n" + line3).replace(',', ' ')
-
-def _caption_category(cat_name: str, count: int, total_sum: int) -> str:
-    # "📂 {cat}\nВсего: {count} шт · {sum} R$" via i18n
-    cat_loc = cat_label(cat_name)
-    txt = L('inventory.by_cat', cat=cat_loc, count=count, sum=f"{total_sum:,}")
-    if not txt or txt == 'inventory.by_cat':
-        txt = f"📂 {cat_loc}\nВсего: {count} шт · {total_sum:,} R$"
-    return txt.replace(',', ' ')
-
-
 def _kb_category_view(roblox_id: int, short_cat: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=LL('buttons.all_items', 'btn.auto_c06b2d0103'),
@@ -1613,8 +1592,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                             img = await generate_full_inventory_grid(
                                 part,
                                 tile=tile, pad=6,
-                                title=(
-                                    'All inventory' if len(pages) == 1 else f'All inventory (стр. {i}/{len(pages)})'),
+                                title=(L('inventory.full_title') or 'All inventory') if len(pages)==1 else f"{L('inventory.full_title') or 'All inventory'} ({L('pagination.page_of').format(i=i, n=len(pages))})",
                                 username=call.from_user.username,
                                 user_id=tg
                             )
@@ -1644,7 +1622,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                         break
 
                 if not sent:
-                    await call.message.answer("📦 All inventory: слишком большой рендер. Снизь tile или сузай выбор.")
+                    await call.message.answer("{L('inventory.full_title') or 'All inventory'}: слишком большой рендер. Снизь tile или сузай выбор.")
         except Exception as e:
             logger.warning(f'final all-inventory render failed: {e}')
 
@@ -1702,9 +1680,8 @@ async def on_lang_set(call: types.CallbackQuery):
         return
     await set_user_lang(storage, call.from_user.id, code)
     _CURRENT_LANG.set(code)
-    set_current_lang(code)
     try:
-        await call.answer(tr(code, 'lang.saved') or 'Saved ✅', show_alert=True)
+        await call.answer(tr(code, 'lang.saved', lang_name=('Русский' if code=='ru' else 'English' if code=='en' else 'Українська' if code=='uk' else code)) or 'Saved ✅', show_alert=True)
     except Exception:
         pass
     await call.message.edit_text(LL('messages.welcome', 'welcome') or 'Welcome!',
