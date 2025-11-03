@@ -990,6 +990,14 @@ def _kb_categories_only(roblox_id: int, by_cat: Dict[str, List[Dict[str, Any]]])
 
 
 
+
+def _likely_private_inventory(err: Exception) -> bool:
+    s = str(err) if err else ''
+    for token in ('403', 'Forbidden', 'forbidden', 'private', 'privacy'):
+        if token in s:
+            return True
+    return False
+
 def _caption_full_inventory(total_count: int, total_sum: int) -> str:
     # "📦 {full_title}\n{total_items}\n{total_sum}"
     line1 = f"📦 {L('inventory.full_title') or 'Full inventory'}"
@@ -1035,7 +1043,7 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
         for arr in by_cat.values():
             all_items.extend(_filter_nonzero(arr))
         if not all_items:
-            await loader.edit_text(L('msg.auto_d43fb921bf'))
+            await loader.edit_text(L('public.inventory_private'))
             return
         img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
                                                        user_id=call.from_user.id)
@@ -1056,9 +1064,15 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
             pass
     except Exception as e:
         try:
-            await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await loader.edit_text(L('public.inventory_private'))
+            else:
+                await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
         except Exception:
-            await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await call.message.answer(L('public.inventory_private'))
+            else:
+                await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
 
 
 @router.callback_query(F.data.startswith('invall:'))
@@ -1079,7 +1093,7 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
         for arr in by_cat.values():
             all_items.extend(_filter_nonzero(arr))
         if not all_items:
-            await loader.edit_text(L('msg.auto_d43fb921bf'))
+            await loader.edit_text(L('public.inventory_private'))
             return
         img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
                                                        user_id=call.from_user.id)
@@ -1100,9 +1114,15 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
             pass
     except Exception as e:
         try:
-            await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await loader.edit_text(L('public.inventory_private'))
+            else:
+                await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
         except Exception:
-            await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await call.message.answer(L('public.inventory_private'))
+            else:
+                await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
 
 
 @router.callback_query(F.data.startswith('invall_refresh:'))
@@ -1140,9 +1160,15 @@ async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
             pass
     except Exception as e:
         try:
-            await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await loader.edit_text(L('public.inventory_private'))
+            else:
+                await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
         except Exception:
-            await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await call.message.answer(L('public.inventory_private'))
+            else:
+                await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
 
 
 @router.callback_query(F.data.startswith('invcat:'))
@@ -1186,9 +1212,15 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
             pass
     except Exception as e:
         try:
-            await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await loader.edit_text(L('public.inventory_private'))
+            else:
+                await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
         except Exception:
-            await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await call.message.answer(L('public.inventory_private'))
+            else:
+                await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
 
 
 @router.callback_query(F.data.startswith('invcat_refresh:'))
@@ -1227,9 +1259,15 @@ async def cb_inventory_category_refresh(call: types.CallbackQuery) -> None:
             pass
     except Exception as e:
         try:
-            await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await loader.edit_text(L('public.inventory_private'))
+            else:
+                await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
         except Exception:
-            await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await call.message.answer(L('public.inventory_private'))
+            else:
+                await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
 
 
 def _ensure_bytes(s: str) -> bytes:
@@ -1425,9 +1463,15 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
         await call.message.answer(L('status.done_back_home'), reply_markup=await kb_main_i18n(tg))
     except Exception as e:
         try:
-            await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await loader.edit_text(L('public.inventory_private'))
+            else:
+                await loader.edit_text(L('msg.auto_f3d5341cc3', e=e))
         except Exception:
-            await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
+            if _likely_private_inventory(e):
+                await call.message.answer(L('public.inventory_private'))
+            else:
+                await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
 
 
 @router.message(Command('admin_stats'))
