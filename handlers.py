@@ -538,9 +538,11 @@ def _asset_or_none(name: str) -> Optional[FSInputFile]:
 
 @router.message(CommandStart())
 async def cmd_start(message: types.Message) -> None:
+    # ensure lang context is set to user's stored language
+    await use_lang_from_message(message)
     photo = _asset_or_none('main')
     text = LL("messages.welcome", "welcome")
-    tg = call.from_user.id
+    tg = message.from_user.id
     await edit_or_send(message, text, reply_markup=await kb_main_i18n(tg), photo=photo)
 
 
