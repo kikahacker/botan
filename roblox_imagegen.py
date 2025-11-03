@@ -895,22 +895,48 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
     _info(f"[grid] done items={n} cols={cols} rows={rows} tile={tile} bytes={out.tell()}")
     return out.getvalue()
 
-# =========================
-# Public API (signatures unchanged)
-# =========================
-async def generate_full_inventory_grid(items: List[Dict[str, Any]], tile: int=150, pad: int=0, username: Optional[str]=None, user_id: Optional[int]=None, title: Optional[int]=None) -> bytes:
-    return await _render_grid(items, tile=tile, title=title or 'Инвентарь', username=username, user_id=user_id)
 
-async def generate_inventory_preview(tg_id: int, roblox_id: int, categories_limit: int=8, username: Optional[str]=None) -> bytes:
+# =========================
+# Public API (clean signatures)
+# =========================
+from typing import List, Dict, Any, Optional
+from i18n import tr, get_current_lang
+
+async def generate_full_inventory_grid(
+    items: List[Dict[str, Any]],
+    tile: int = 150,
+    pad: int = 6,
+    username: Optional[str] = None,
+    user_id: Optional[int] = None,
+    title: Optional[str] = None
+) -> bytes:
+    lang = get_current_lang()
+    default_title = tr(lang, 'inventory.title')
+    return await _render_grid(items, tile=tile, title=(title or default_title), username=username, user_id=user_id)
+
+async def generate_inventory_preview(
+    tg_id: int,
+    roblox_id: int,
+    categories_limit: int = 8,
+    username: Optional[str] = None
+) -> bytes:
     from roblox_client import get_full_inventory
     data = await get_full_inventory(tg_id, roblox_id)
-    items = []
+    items: List[Dict[str, Any]] = []
     for arr in (data.get('byCategory') or {}).values():
         items.extend(arr)
-        lang = get_current_lang()
+    lang = get_current_lang()
     return await _render_grid(items, tile=150, title=tr(lang, 'inventory.title'), username=username, user_id=tg_id)
 
-async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, limit: int=0, tile: int=150, force: bool=False, username: Optional[str]=None) -> bytes:
+async def generate_category_sheets(
+    tg_id: int,
+    roblox_id: int,
+    category: str,
+    limit: int = 0,
+    tile: int = 150,
+    force: bool = False,
+    username: Optional[str] = None
+) -> bytes:
     from roblox_client import get_full_inventory
     data = await get_full_inventory(tg_id, roblox_id)
     items = (data.get('byCategory') or {}).get(category, [])
@@ -918,7 +944,8 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     items = [_enrich_with_csv(x, price_map) for x in items]
     if limit and limit > 0:
         items = items[:limit]
-        lang = get_current_lang()
+    # Localize category title
+    lang = get_current_lang()
     slug = str(category or '').lower().replace(' ', '_')
     loc = tr(lang, f'cat.{slug}')
     title = loc if loc and loc != f'cat.{slug}' else category
