@@ -15,7 +15,10 @@
     "by_cat": "📂 {cat}\nTotal: {count} pcs · {sum} R$",
     "full_title": "Full inventory",
     "selected_totals": "💰 Selected total: {sum} R$\n📦 Items: {count}",
-    "overall_totals": "💰 Inventory total value: {sum} R$\n📦 Items with price: {count}"
+    "overall_totals": "💰 Inventory total value: {sum} R$\n📦 Items with price: {count}",
+    "full_title_paged": "All inventory (page {i}/{total})",
+    "all_inventory_line": "📦 All inventory · {total_items} pcs",
+    "all_inventory_too_big": "📦 All inventory: render is too large. Lower tile or reduce selection."
   },
   "app": {
     "name": "Your Bot"

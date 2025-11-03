@@ -1,5 +1,5 @@
 from __future__ import annotations
-from i18n import t
+from i18n import t, get_current_lang
 import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
 
 from datetime import datetime as _dt2
@@ -353,7 +353,7 @@ def _write_ready_item(aid: int, im: Image.Image):
 # Network fetch with cache (THUMB_SIZE enforced)
 # =========================
 async def _download_image_with_cache(url: str) -> Optional[Image.Image]:
-    key = 'thumb:' + hashlib.sha1(url.encode()).hexdigest()
+    key = f"thumb:{get_current_lang()}:" + hashlib.sha1(url.encode()).hexdigest()
     b = await cache.get_bytes(key, THUMB_TTL)
     if b:
         try:

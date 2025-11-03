@@ -1593,7 +1593,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                                 part,
                                 tile=tile, pad=6,
                                 title=(
-                                    'All inventory' if len(pages) == 1 else f'All inventory (стр. {i}/{len(pages)})'),
+                                    L('inventory.full_title') if len(pages) == 1 else L('inventory.full_title_paged', i=i, total=len(pages))),
                                 username=call.from_user.username,
                                 user_id=tg
                             )
@@ -1605,7 +1605,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
 
                         for i, pth in enumerate(tmp_final_paths, 1):
                             cap = (
-                                f"📦 All inventory · {total_items} шт\n"
+                                L('inventory.all_inventory_line', total_items=total_items) + '\n'
                                 f"💰 Всего по выбранным: {total_sum_all:,} R$"
                             ).replace(',', ' ')
                             if len(tmp_final_paths) > 1:
@@ -1623,7 +1623,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                         break
 
                 if not sent:
-                    await call.message.answer("📦 All inventory: слишком большой рендер. Снизь tile или сузай выбор.")
+                    await call.message.answer(L('inventory.all_inventory_too_big'))
         except Exception as e:
             logger.warning(f'final all-inventory render failed: {e}')
 
