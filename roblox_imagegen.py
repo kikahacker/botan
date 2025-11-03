@@ -1,4 +1,5 @@
 from __future__ import annotations
+from i18n import t
 import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
 
 from datetime import datetime as _dt2
@@ -120,7 +121,7 @@ ASSETS_DIR = getattr(CFG, 'ASSETS_DIR', 'assets')
 CANVAS_BG_PATH = getattr(CFG, 'CANVAS_BG', os.path.join(ASSETS_DIR, 'canvas_bg.png'))
 
 WRITE_READY_ITEM_IMAGES = str(os.getenv('WRITE_READY_ITEM_IMAGES', '0')).lower() in ("1","true","yes","on","y")
-ROBUX_PREFIX = os.getenv('ROBUX_PREFIX', 'R$')
+ROBUX_PREFIX = 'R$'
 KEEP_INPUT_ORDER = str(os.getenv('KEEP_INPUT_ORDER', '0')).lower() in ("1","true","yes","on","y")
 
 # Main switch: download thumbnails at this size (independent from tile)
@@ -139,7 +140,7 @@ SHOW_FOOTER = str(os.getenv('SHOW_FOOTER', 'true')).strip().lower() in ('1','tru
 HEADER_H = int(os.getenv('HEADER_H', '76'))
 FOOTER_H = int(os.getenv('FOOTER_H', '140'))
 FOOTER_ICON = os.getenv('FOOTER_ICON', os.path.join(ASSETS_DIR, 'footer_badge.png'))
-FOOTER_BRAND = os.getenv('FOOTER_BRAND', 'raika.gg')
+FOOTER_BRAND = 'raika.gg'
 
 # Style for price pill and title
 TITLE_TEXT_COLOR = (255, 255, 255, 255)
@@ -747,7 +748,7 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
     if isinstance(who, str) and who and (not who.startswith('@')) and (not who.isdigit()):
         who = f'@{who}'
     line1 = date_text
-    line2 = f'Проверено: {who}'
+    line2 = t('footer.checked_by', username=who)
     line3 = f'{FOOTER_BRAND}'
 
     base1 = max(20, FOOTER_H // 3)
