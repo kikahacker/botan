@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
+from i18n import tr, get_current_lang
 
 from datetime import datetime as _dt2
 LOG_PRICE_PATH = os.path.join(os.path.dirname(__file__), "price_debug.log")
@@ -742,13 +743,20 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
     max_w = max(10, W - tx - right_pad)
     max_h = max(10, FOOTER_H - 20)
 
-    date_text = datetime.datetime.now().strftime('%d %B %Y')
+    lang = get_current_lang()
+    now = datetime.datetime.now()
+    _months = {
+        'en': ["January","February","March","April","May","June","July","August","September","October","November","December"],
+        'ru': ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"],
+    }
+    mlist = _months.get(lang, _months['en'])
+    date_text = f"{now.day:02d} {mlist[now.month-1]} {now.year}"
     who = username if username and str(username).strip() else str(user_id) if user_id is not None else '@unknown'
     if isinstance(who, str) and who and (not who.startswith('@')) and (not who.isdigit()):
         who = f'@{who}'
     line1 = date_text
-    line2 = f'Проверено: {who}'
-    line3 = f'{FOOTER_BRAND}'
+    line2 = tr(lang, 'footer.checked_by', username=who)
+    line3 = tr(lang, 'footer.domain') if tr(lang, 'footer.domain') != 'footer.domain' else f'{FOOTER_BRAND}'
 
     base1 = max(20, FOOTER_H // 3)
     base2 = max(16, FOOTER_H // 4)
@@ -899,7 +907,8 @@ async def generate_inventory_preview(tg_id: int, roblox_id: int, categories_limi
     items = []
     for arr in (data.get('byCategory') or {}).values():
         items.extend(arr)
-    return await _render_grid(items, tile=150, title='Инвентарь', username=username, user_id=tg_id)
+        lang = get_current_lang()
+    return await _render_grid(items, tile=150, title=tr(lang, 'inventory.title'), username=username, user_id=tg_id)
 
 async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, limit: int=0, tile: int=150, force: bool=False, username: Optional[str]=None) -> bytes:
     from roblox_client import get_full_inventory
@@ -909,4 +918,8 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     items = [_enrich_with_csv(x, price_map) for x in items]
     if limit and limit > 0:
         items = items[:limit]
-    return await _render_grid(items, tile=tile, title=category, username=username, user_id=tg_id)
+        lang = get_current_lang()
+    slug = str(category or '').lower().replace(' ', '_')
+    loc = tr(lang, f'cat.{slug}')
+    title = loc if loc and loc != f'cat.{slug}' else category
+    return await _render_grid(items, tile=tile, title=title, username=username, user_id=tg_id)
