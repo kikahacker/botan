@@ -13,7 +13,9 @@
     "total_sum": "💰 Total inventory value: {sum} R$",
     "total_items": "📦 Items with price: {count}",
     "by_cat": "📂 {cat}\nTotal: {count} pcs · {sum} R$",
-    "full_title": "Full inventory"
+    "full_title": "Full inventory",
+    "selected_totals": "💰 Selected total: {sum} R$\n📦 Items: {count}",
+    "overall_totals": "💰 Inventory total value: {sum} R$\n📦 Items with price: {count}"
   },
   "app": {
     "name": "Your Bot"
