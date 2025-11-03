@@ -4,7 +4,8 @@
   },
   "footer": {
     "checked_by": "Checked by: {username}",
-    "domain": "raika.gg"
+    "domain": "raika.gg",
+    "date": "{day} {month} {year}"
   },
   "inventory": {
     "title": "Inventory",
@@ -162,11 +163,5 @@
     "hair": "Hair",
     "hats": "Hats",
     "heads": "Heads"
-  },
-  "units": {
-    "pcs_short": "pcs"
-  },
-  "pagination": {
-    "page_of": "page {i}/{n}"
   }
 }

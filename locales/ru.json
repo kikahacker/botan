@@ -4,7 +4,8 @@
   },
   "footer": {
     "checked_by": "Проверено: {username}",
-    "domain": "raika.gg"
+    "domain": "raika.gg",
+    "date": "{day} {month} {year}"
   },
   "inventory": {
     "title": "Инвентарь",
@@ -164,11 +165,5 @@
     "loading_profile": "Загружаем профиль…",
     "no_accounts": "⚠️ Аккаунтов пока нет.",
     "pick_file": "📄 Пришли .txt файл с куки."
-  },
-  "units": {
-    "pcs_short": "шт"
-  },
-  "pagination": {
-    "page_of": "стр. {i}/{n}"
   }
 }
