@@ -167,5 +167,8 @@
     "hair": "Hair",
     "hats": "Hats",
     "heads": "Heads"
+  },
+  "header": {
+    "items_count": "{count} Heads"
   }
 }

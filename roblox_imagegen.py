@@ -165,6 +165,15 @@ LINE_SCALE = float(os.getenv('LINE_SCALE', '1.0'))
 SHOW_HEADER = str(os.getenv('SHOW_HEADER', 'true')).strip().lower() in ('1','true','yes','y','on')
 SHOW_FOOTER = str(os.getenv('SHOW_FOOTER', 'true')).strip().lower() in ('1','true','yes','y','on')
 HEADER_H = int(os.getenv('HEADER_H', '76'))
+
+# === localized header helper ===
+from i18n import t, get_current_lang
+def _header_text(count):
+    try:
+        return t('header.items_count', count=count)
+    except Exception:
+        return f'{count} Heads'
+
 FOOTER_H = int(os.getenv('FOOTER_H', '140'))
 FOOTER_ICON = os.getenv('FOOTER_ICON', os.path.join(ASSETS_DIR, 'footer_badge.png'))
 FOOTER_BRAND = 'raika.gg'
@@ -781,7 +790,7 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
         who = f'@{who}'
     line1 = date_text
     line2 = t('footer.checked_by', username=who)
-    line3 = t('footer.domain') or f'{FOOTER_BRAND}'
+    line3 = f'{FOOTER_BRAND}'
 
     base1 = max(20, FOOTER_H // 3)
     base2 = max(16, FOOTER_H // 4)
