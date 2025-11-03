@@ -1,10 +1,8 @@
 from __future__ import annotations
+from i18n import t, get_current_lang
 import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
 
 from datetime import datetime as _dt2
-
-from handlers import _category_slug
-
 LOG_PRICE_PATH = os.path.join(os.path.dirname(__file__), "price_debug.log")
 PRICE_CSV_PATH = os.path.join(os.path.dirname(__file__), 'prices.csv')
 def _log_price_event(text: str):
@@ -19,6 +17,33 @@ def _log_price_event(text: str):
         logger.info(line)
     except Exception:
         pass
+
+def _category_slug(name: str) -> str:
+    return (name or '').lower().replace(' ', '_')
+
+def _category_label(cat_raw: str, lang: str | None = None) -> str:
+    try:
+        slug = _category_slug(cat_raw)
+    except Exception:
+        slug = str(cat_raw).lower().replace(' ', '_')
+    return t(f"cat.{slug}") or cat_raw
+
+
+
+# === locale-aware date formatter ===
+_RU_MONTHS = {
+    1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+    5: "мая", 6: "июня", 7: "июля", 8: "августа",
+    9: "сентября", 10: "октября", 11: "ноября", 12: "декабря"
+}
+def _format_date_loc(dt):
+    lang = get_current_lang() if 'get_current_lang' in globals() else 'en'
+    try:
+        if str(lang).startswith('ru'):
+            return f"{dt.day:02d} {_RU_MONTHS.get(dt.month, dt.strftime('%B'))} {dt.year}"
+        return dt.strftime("%d %B %Y")
+    except Exception:
+        return dt.strftime("%d %B %Y")
 
 # ---- helpers for robust ID/price parsing ----
 def _to_int(v) -> int:
@@ -123,7 +148,7 @@ ASSETS_DIR = getattr(CFG, 'ASSETS_DIR', 'assets')
 CANVAS_BG_PATH = getattr(CFG, 'CANVAS_BG', os.path.join(ASSETS_DIR, 'canvas_bg.png'))
 
 WRITE_READY_ITEM_IMAGES = str(os.getenv('WRITE_READY_ITEM_IMAGES', '0')).lower() in ("1","true","yes","on","y")
-ROBUX_PREFIX = os.getenv('ROBUX_PREFIX', 'R$')
+ROBUX_PREFIX = 'R$'
 KEEP_INPUT_ORDER = str(os.getenv('KEEP_INPUT_ORDER', '0')).lower() in ("1","true","yes","on","y")
 
 # Main switch: download thumbnails at this size (independent from tile)
@@ -142,7 +167,7 @@ SHOW_FOOTER = str(os.getenv('SHOW_FOOTER', 'true')).strip().lower() in ('1','tru
 HEADER_H = int(os.getenv('HEADER_H', '76'))
 FOOTER_H = int(os.getenv('FOOTER_H', '140'))
 FOOTER_ICON = os.getenv('FOOTER_ICON', os.path.join(ASSETS_DIR, 'footer_badge.png'))
-FOOTER_BRAND = os.getenv('FOOTER_BRAND', 'raika.gg')
+FOOTER_BRAND = 'raika.gg'
 
 # Style for price pill and title
 TITLE_TEXT_COLOR = (255, 255, 255, 255)
@@ -344,7 +369,7 @@ def _write_ready_item(aid: int, im: Image.Image):
 # Network fetch with cache (THUMB_SIZE enforced)
 # =========================
 async def _download_image_with_cache(url: str) -> Optional[Image.Image]:
-    key = 'thumb:' + hashlib.sha1(url.encode()).hexdigest()
+    key = f"thumb:{get_current_lang()}:" + hashlib.sha1(url.encode()).hexdigest()
     b = await cache.get_bytes(key, THUMB_TTL)
     if b:
         try:
@@ -701,17 +726,9 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
 
 
 def _draw_header(canvas: Image.Image, count: int, title: str):
-    # if already localized (Cyrillic), keep; else try translating category label
+    # safety: localize category title if possible
     try:
-        import re
-        _CYRIL = re.compile('[А-Яа-яЁё]')
-        if not _CYRIL.search(title or ''):
-            from i18n import t
-            title = t(f"cat.{_category_slug(title)}") or title
-    except Exception:
-        pass
-    try:
-        title = t(f"cat.{_category_slug(title)}") or title
+        title = (tr(lang, f"cat.{_category_slug(title)}") if "lang" in locals() and lang else t(f"cat.{_category_slug(title)}")) or title
     except Exception:
         pass
     if not SHOW_HEADER:
@@ -758,12 +775,12 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
     max_w = max(10, W - tx - right_pad)
     max_h = max(10, FOOTER_H - 20)
 
-    date_text = datetime.datetime.now().strftime('%d %B %Y')
+    date_text = _format_date_loc(_dt2.now())
     who = username if username and str(username).strip() else str(user_id) if user_id is not None else '@unknown'
     if isinstance(who, str) and who and (not who.startswith('@')) and (not who.isdigit()):
         who = f'@{who}'
     line1 = date_text
-    line2 = f'Проверено: {who}'
+    line2 = t('footer.checked_by', username=who)
     line3 = f'{FOOTER_BRAND}'
 
     base1 = max(20, FOOTER_H // 3)
@@ -906,18 +923,18 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
 # =========================
 # Public API (signatures unchanged)
 # =========================
-async def generate_full_inventory_grid(items: List[Dict[str, Any]], tile: int=150, pad: int=0, username: Optional[str]=None, user_id: Optional[int]=None, title: Optional[int]=None, lang: str | None = None) -> bytes:
-    return await _render_grid(items, tile=tile, title=title or 'Инвентарь', username=username, user_id=user_id)
+async def generate_full_inventory_grid(items: List[Dict[str, Any]], tile: int=150, pad: int=0, username: Optional[str]=None, user_id: Optional[int]=None, title: Optional[int]=None) -> bytes:
+    return await _render_grid(items, tile=tile, title=title or (tr(lang, 'inventory.title') if lang else t('inventory.title')), username=username, user_id=user_id)
 
-async def generate_inventory_preview(tg_id: int, roblox_id: int, categories_limit: int=8, username: Optional[str]=None) -> bytes:
+async def generate_inventory_preview(tg_id: int, roblox_id: int, categories_limit: int=8, username: Optional[str]=None, lang: str | None = None) -> bytes:
     from roblox_client import get_full_inventory
     data = await get_full_inventory(tg_id, roblox_id)
     items = []
     for arr in (data.get('byCategory') or {}).values():
         items.extend(arr)
-    return await _render_grid(items, tile=150, title='Инвентарь', username=username, user_id=tg_id)
+    return await _render_grid(items, tile=150, title=(tr(lang, 'inventory.title') if lang else t('inventory.title')), username=username, user_id=tg_id)
 
-async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, limit: int=0, tile: int=150, force: bool=False, username: Optional[str]=None) -> bytes:
+async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, limit: int=0, tile: int=150, force: bool=False, username: Optional[str]=None, lang: str | None = None) -> bytes:
     from roblox_client import get_full_inventory
     data = await get_full_inventory(tg_id, roblox_id)
     items = (data.get('byCategory') or {}).get(category, [])
@@ -925,4 +942,4 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     items = [_enrich_with_csv(x, price_map) for x in items]
     if limit and limit > 0:
         items = items[:limit]
-    return await _render_grid(items, tile=tile, title=category, username=username, user_id=tg_id)
+    return await _render_grid(items, tile=tile, title=_category_label(category, lang), username=username, user_id=tg_id)
