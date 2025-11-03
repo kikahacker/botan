@@ -301,7 +301,7 @@ async def _catalog_batch(items, cookie, retries: int) -> List[Dict[str, Any]]:
 # ==== Local price cache (prices.csv) ====
 _price_cache = None
 
-def _load_prices_csv(path: str = "prices.csv"):
+def _load_prices_csv(path: str = PRICE_DUMP_PATH):
     global _price_cache
     if _price_cache is not None:
         return _price_cache
@@ -327,6 +327,46 @@ def _load_prices_csv(path: str = "prices.csv"):
     except Exception as e:
         logging.warning(f"prices.csv load failed: {e}")
     return _price_cache
+
+
+def _ensure_prices_csv_header(path: str) -> None:
+    try:
+        need_header = not os.path.exists(path) or os.path.getsize(path) == 0
+        if need_header:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "a", encoding="utf-8", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["id", "name", "price", "collectible"])
+    except Exception as e:
+        log.warning(f"prices.csv header init failed: {e}")
+
+def _append_prices_csv_bulk(details: list, path: str = PRICE_DUMP_PATH) -> int:
+    """Append fetched price details to CSV (id,name,price,collectible) if missing in local cache."""
+    try:
+        _ensure_prices_csv_header(path)
+        local = _load_prices_csv(path)
+        cnt = 0
+        with open(path, "a", encoding="utf-8", newline="") as f:
+            w = csv.writer(f)
+            for d in details:
+                try:
+                    aid = int(d.get("id") or 0)
+                    if not aid or aid in local:
+                        continue
+                    price = _price_pick(d)
+                    name = str(d.get("name") or "").strip()
+                    collectible = 1 if _is_collectible(d) else 0
+                    w.writerow([aid, name, price, collectible])
+                    local[aid] = {"price": price, "collectible": bool(collectible)}
+                    _price_log(f"[CSV_APPEND] id={aid} price={price} collectible={collectible}")
+                    cnt += 1
+                except Exception:
+                    continue
+        return cnt
+    except Exception as e:
+        log.warning(f"prices.csv append failed: {e}")
+        return 0
+
 
 
 async def fetch_catalog_details_fast(asset_ids: List[int], cookie: Optional[str]) -> List[Dict[str, Any]]:
