@@ -588,7 +588,7 @@ async def get_full_inventory(tg_id: int, roblox_id: int, force_refresh: bool = F
                 "priceInfo": {"value": int(price)},
                 "name": d.get("name") or "",
                 "assetType": int(at),
-             "itemId": _to_int(d.get("itemId") or d.get("collectibleItemId") or 0) })
+                'itemId': _to_int(d.get('itemId') or d.get('collectibleItemId') or 0) })
         if arr:
             by_cat.setdefault(cat, []).extend(arr)
             total_count += len(arr)
