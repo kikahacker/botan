@@ -25,7 +25,11 @@
   },
   "lang": {
     "choose": "Choose your language:",
-    "saved": "✅ Language set to: {lang_name}"
+    "saved": "✅ Language set to: {lang_name}",
+    "names": {
+      "en": "English",
+      "ru": "Russian"
+    }
   },
   "btn": {
     "lang": "🌐 Language",

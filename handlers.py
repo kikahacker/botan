@@ -15,6 +15,12 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFil
 
 ADMINS = set((int(x) for x in os.getenv('ADMINS', '').replace(',', ' ').split() if x))
 
+def _user_lang(tg_id: int) -> str:
+    try:
+        return get_user_lang(tg_id)
+    except Exception:
+        return 'ru'
+
 def _apply_lang(tg_id: int):
     try:
         set_current_lang(get_user_lang(tg_id))
@@ -1119,7 +1125,7 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
         if not items:
             await loader.edit_text(L('msg.auto_c61051830f'))
             return
-        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, username=call.from_user.username)
+        img_bytes = await generate_category_sheets(lang=_user_lang(tg), tg, roblox_id, full, limit=0, username=call.from_user.username)
         if not img_bytes:
             img_bytes = await generate_full_inventory_grid(items, tile=150, pad=6, username=call.from_user.username,
                                                            user_id=call.from_user.id)
@@ -1162,7 +1168,7 @@ async def cb_inventory_category_refresh(call: types.CallbackQuery) -> None:
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         full = _CAT_SHORTMAP.get((roblox_id, short), short)
         items = _filter_nonzero(by_cat.get(full, []))
-        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, tile=150, force=True,
+        img_bytes = await generate_category_sheets(lang=_user_lang(tg), tg, roblox_id, full, limit=0, tile=150, force=True,
                                                    username=call.from_user.username)
         import os
         os.makedirs('temp', exist_ok=True)
@@ -1549,7 +1555,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             selected_items.extend(items)
             if not items:
                 continue
-            img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, tile=150, force=True,
+            img_bytes = await generate_category_sheets(lang=_user_lang(tg), tg, roblox_id, cat, limit=0, tile=150, force=True,
                                                        username=call.from_user.username)
             tmp_path = f'temp/inventory_sel_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}.png'
             with open(tmp_path, 'wb') as f:
@@ -1689,7 +1695,8 @@ async def on_lang_set(call: types.CallbackQuery):
     await set_user_lang(storage, call.from_user.id, code)
     _CURRENT_LANG.set(code)
     try:
-        await call.answer(tr(code, 'lang.saved', lang_name=tr(code, f'lang.names.{code}')) or 'Saved ✅', show_alert=True)
+        lang_name = (tr(code, f'lang.names.{code}') or ( 'Русский' if code=='ru' else 'English' if code=='en' else code ))
+        await call.answer(tr(code, 'lang.saved', lang_name=lang_name) or 'Saved ✅', show_alert=True)
     except Exception:
         pass
     await call.message.edit_text(LL('messages.welcome', 'welcome') or 'Welcome!',
