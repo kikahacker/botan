@@ -1,5 +1,5 @@
 from __future__ import annotations
-from i18n import t, get_current_lang
+from i18n import t, get_current_lang, tr
 import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
 
 from datetime import datetime as _dt2
