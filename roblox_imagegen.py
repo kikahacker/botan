@@ -16,10 +16,11 @@ def _to_int(v) -> int:
         return 0
 
 def _enrich_with_csv(it: dict, price_map: dict) -> dict:
-    # Try assetId -> collectibleItemId/collectibleId/itemId -> id
+    # Try itemId -> assetId -> collectible ids -> id
     keys = [
+        _to_int(it.get('itemId')),
         _to_int(it.get('assetId')),
-        _to_int(it.get('collectibleItemId') or it.get('collectibleId') or it.get('itemId')),
+        _to_int(it.get('collectibleItemId') or it.get('collectibleId')),
         _to_int(it.get('id'))
     ]
     rec = None
@@ -806,7 +807,7 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
 async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='Items', username: Optional[str]=None, user_id: Optional[int]=None) -> bytes:
     _build_image_index_cached()
     price_map = load_prices_csv_cached('prices.csv')
-    # обогащаем КАЖДЫЙ айтем ценой из CSV (itemId/collectibleItemId/assetId)
+    # обогащаем КАЖДЫЙ айтем ценой из CSV (itemId/assetId)
     items = [_enrich_with_csv(it, price_map) for it in items]
     n = len(items)
     if not KEEP_INPUT_ORDER:
@@ -875,7 +876,7 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     data = await get_full_inventory(tg_id, roblox_id)
     items = (data.get('byCategory') or {}).get(category, [])
     price_map = load_prices_csv_cached()
-    items = [_enrich_with_csv(x, price_map) for x in items]
+    items = [_enrich_with_csv(it, price_map) for it in items]
     if limit and limit > 0:
         items = items[:limit]
     return await _render_grid(items, tile=tile, title=category, username=username, user_id=tg_id)
