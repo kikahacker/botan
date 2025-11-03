@@ -9,18 +9,11 @@ from unittest.mock import call
 from PIL import Image
 import httpx
 from aiogram import Router, types, F
-from i18n import t, tr, get_user_lang, set_user_lang, set_current_lang
+from i18n import t, tr, get_user_lang, set_user_lang
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
 
 ADMINS = set((int(x) for x in os.getenv('ADMINS', '').replace(',', ' ').split() if x))
-
-def _apply_lang(tg_id: int):
-    try:
-        set_current_lang(get_user_lang(tg_id))
-    except Exception:
-        pass
-
 
 # Simple in-memory profile cache (per-process)
 _PROFILE_CACHE = {}  # {(tg_id, acc_id): (expires_ts, data)}
@@ -488,7 +481,7 @@ def _kb_inventory_categories(roblox_id: int, by_cat: Dict[str, List[Dict[str, An
         cat_sum = (sums_by_cat or {}).get(cat)
         if cat_sum is None:
             cat_sum = sum((_price_value(it.get('priceInfo')) for it in arr))
-        label = f'{cat_label(cat)} ({len(arr)} · {cat_sum:,} R$)'.replace(',', ' ')
+        label = f'{cat} ({len(arr)} · {cat_sum:,} R$)'.replace(',', ' ')
         short = _short_cb_cat(roblox_id, cat)
         cb = f'invcat:{roblox_id}:{short}:0'
         if len(cb) > 64:
@@ -1558,10 +1551,10 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             total_sum = sum((_p(x.get('priceInfo')) for x in items))
             grand_total_sum += total_sum
             grand_total_count += len(items)
-            caption = L('inventory.by_cat', cat=cat_label(cat), count=len(items), sum=f'{total_sum:,}').replace(',', ' ')
+            caption = f'📂 {cat}\nВсего: {len(items)} шт · {total_sum:,} R$'.replace(',', ' ')
             await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
         await call.message.answer(
-            L('inventory.selected_totals', sum=f'{grand_total_sum:,}', count=grand_total_count).replace(',', ' '))
+            f'💰 Сумма по выбранным: {grand_total_sum:,} R$\n📦 Всего предметов: {grand_total_count}'.replace(',', ' '))
 
         # --- ОДНА общая фотка из всех выбранных айтемов (квадратная сетка + 7000px лимит по высоте) ---
         try:
@@ -1600,7 +1593,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                                 part,
                                 tile=tile, pad=6,
                                 title=(
-                                    L('inventory.full_title') if len(pages) == 1 else L('inventory.full_title_paged', i=i, total=len(pages))),
+                                    'All inventory' if len(pages) == 1 else f'All inventory (стр. {i}/{len(pages)})'),
                                 username=call.from_user.username,
                                 user_id=tg
                             )
@@ -1612,7 +1605,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
 
                         for i, pth in enumerate(tmp_final_paths, 1):
                             cap = (
-                                L('inventory.all_inventory_line', total_items=total_items) + '\n'
+                                f"📦 All inventory · {total_items} шт\n"
                                 f"💰 Всего по выбранным: {total_sum_all:,} R$"
                             ).replace(',', ' ')
                             if len(tmp_final_paths) > 1:
@@ -1630,7 +1623,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                         break
 
                 if not sent:
-                    await call.message.answer(L('inventory.all_inventory_too_big'))
+                    await call.message.answer("📦 All inventory: слишком большой рендер. Снизь tile или сузай выбор.")
         except Exception as e:
             logger.warning(f'final all-inventory render failed: {e}')
 
@@ -1689,7 +1682,7 @@ async def on_lang_set(call: types.CallbackQuery):
     await set_user_lang(storage, call.from_user.id, code)
     _CURRENT_LANG.set(code)
     try:
-        await call.answer(tr(code, 'lang.saved', lang_name=tr(code, f'lang.names.{code}')) or 'Saved ✅', show_alert=True)
+        await call.answer(tr(code, 'lang.saved') or 'Saved ✅', show_alert=True)
     except Exception:
         pass
     await call.message.edit_text(LL('messages.welcome', 'welcome') or 'Welcome!',
