@@ -9,11 +9,18 @@ from unittest.mock import call
 from PIL import Image
 import httpx
 from aiogram import Router, types, F
-from i18n import t, tr, get_user_lang, set_user_lang
+from i18n import t, tr, get_user_lang, set_user_lang, set_current_lang
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
 
 ADMINS = set((int(x) for x in os.getenv('ADMINS', '').replace(',', ' ').split() if x))
+
+def _apply_lang(tg_id: int):
+    try:
+        set_current_lang(get_user_lang(tg_id))
+    except Exception:
+        pass
+
 
 # Simple in-memory profile cache (per-process)
 _PROFILE_CACHE = {}  # {(tg_id, acc_id): (expires_ts, data)}
@@ -1682,7 +1689,7 @@ async def on_lang_set(call: types.CallbackQuery):
     await set_user_lang(storage, call.from_user.id, code)
     _CURRENT_LANG.set(code)
     try:
-        await call.answer(tr(code, 'lang.saved') or 'Saved ✅', show_alert=True)
+        await call.answer(tr(code, 'lang.saved', lang_name=tr(code, f'lang.names.{code}')) or 'Saved ✅', show_alert=True)
     except Exception:
         pass
     await call.message.edit_text(LL('messages.welcome', 'welcome') or 'Welcome!',

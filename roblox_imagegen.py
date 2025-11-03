@@ -726,6 +726,11 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
 
 
 def _draw_header(canvas: Image.Image, count: int, title: str):
+    # safety: localize category title if possible
+    try:
+        title = t(f"cat.{_category_slug(title)}") or title
+    except Exception:
+        pass
     if not SHOW_HEADER:
         return
     W, H = canvas.size
