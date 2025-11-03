@@ -1551,7 +1551,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             total_sum = sum((_p(x.get('priceInfo')) for x in items))
             grand_total_sum += total_sum
             grand_total_count += len(items)
-            caption = L('inventory.by_cat', cat=cat, count=len(items), sum=f'{total_sum:,}').replace(',', ' ')
+            caption = L('inventory.by_cat', cat=cat_label(cat), count=len(items), sum=f'{total_sum:,}').replace(',', ' ')
             await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
         await call.message.answer(
             L('inventory.selected_totals', sum=f'{grand_total_sum:,}', count=grand_total_count).replace(',', ' '))

@@ -29,6 +29,22 @@ def _category_label(cat_raw: str) -> str:
     return t(f"cat.{slug}") or cat_raw
 
 
+
+# === locale-aware date formatter ===
+_RU_MONTHS = {
+    1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+    5: "мая", 6: "июня", 7: "июля", 8: "августа",
+    9: "сентября", 10: "октября", 11: "ноября", 12: "декабря"
+}
+def _format_date_loc(dt):
+    lang = get_current_lang() if 'get_current_lang' in globals() else 'en'
+    try:
+        if str(lang).startswith('ru'):
+            return f"{dt.day:02d} {_RU_MONTHS.get(dt.month, dt.strftime('%B'))} {dt.year}"
+        return dt.strftime("%d %B %Y")
+    except Exception:
+        return dt.strftime("%d %B %Y")
+
 # ---- helpers for robust ID/price parsing ----
 def _to_int(v) -> int:
     try:
@@ -754,7 +770,7 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
     max_w = max(10, W - tx - right_pad)
     max_h = max(10, FOOTER_H - 20)
 
-    date_text = datetime.datetime.now().strftime('%d %B %Y')
+    date_text = _format_date_loc(_dt2.now())
     who = username if username and str(username).strip() else str(user_id) if user_id is not None else '@unknown'
     if isinstance(who, str) and who and (not who.startswith('@')) and (not who.isdigit()):
         who = f'@{who}'
