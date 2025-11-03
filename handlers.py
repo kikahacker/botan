@@ -9,7 +9,7 @@ from unittest.mock import call
 from PIL import Image
 import httpx
 from aiogram import Router, types, F
-from i18n import t, tr, get_user_lang, set_user_lang
+from i18n import t, tr, get_user_lang, set_user_lang, set_current_lang
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
 
@@ -129,6 +129,8 @@ class LangMiddleware(BaseMiddleware):
             except Exception:
                 lang = 'en'
             _CURRENT_LANG.set(lang)
+            set_current_lang(lang)
+
         return await handler(event, data)
 
 
@@ -217,6 +219,7 @@ async def use_lang_from_message(message) -> str:
     except Exception:
         lang = 'en'
     _CURRENT_LANG.set(lang)
+    set_current_lang(lang)
     return lang
 
 
@@ -226,6 +229,7 @@ async def use_lang_from_call(call) -> str:
     except Exception:
         lang = 'en'
     _CURRENT_LANG.set(lang)
+    set_current_lang(lang)
     return lang
 
 
@@ -1681,6 +1685,7 @@ async def on_lang_set(call: types.CallbackQuery):
         return
     await set_user_lang(storage, call.from_user.id, code)
     _CURRENT_LANG.set(code)
+    set_current_lang(code)
     try:
         await call.answer(tr(code, 'lang.saved') or 'Saved ✅', show_alert=True)
     except Exception:
