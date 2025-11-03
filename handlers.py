@@ -481,7 +481,7 @@ def _kb_inventory_categories(roblox_id: int, by_cat: Dict[str, List[Dict[str, An
         cat_sum = (sums_by_cat or {}).get(cat)
         if cat_sum is None:
             cat_sum = sum((_price_value(it.get('priceInfo')) for it in arr))
-        label = f'{cat} ({len(arr)} · {cat_sum:,} R$)'.replace(',', ' ')
+        label = f'{cat_label(cat)} ({len(arr)} · {cat_sum:,} R$)'.replace(',', ' ')
         short = _short_cb_cat(roblox_id, cat)
         cb = f'invcat:{roblox_id}:{short}:0'
         if len(cb) > 64:

@@ -18,6 +18,17 @@ def _log_price_event(text: str):
     except Exception:
         pass
 
+def _category_slug(name: str) -> str:
+    return (name or '').lower().replace(' ', '_')
+
+def _category_label(cat_raw: str) -> str:
+    try:
+        slug = _category_slug(cat_raw)
+    except Exception:
+        slug = str(cat_raw).lower().replace(' ', '_')
+    return t(f"cat.{slug}") or cat_raw
+
+
 # ---- helpers for robust ID/price parsing ----
 def _to_int(v) -> int:
     try:
@@ -892,7 +903,7 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
 # Public API (signatures unchanged)
 # =========================
 async def generate_full_inventory_grid(items: List[Dict[str, Any]], tile: int=150, pad: int=0, username: Optional[str]=None, user_id: Optional[int]=None, title: Optional[int]=None) -> bytes:
-    return await _render_grid(items, tile=tile, title=title or 'Инвентарь', username=username, user_id=user_id)
+    return await _render_grid(items, tile=tile, title=title or t('inventory.title'), username=username, user_id=user_id)
 
 async def generate_inventory_preview(tg_id: int, roblox_id: int, categories_limit: int=8, username: Optional[str]=None) -> bytes:
     from roblox_client import get_full_inventory
@@ -900,7 +911,7 @@ async def generate_inventory_preview(tg_id: int, roblox_id: int, categories_limi
     items = []
     for arr in (data.get('byCategory') or {}).values():
         items.extend(arr)
-    return await _render_grid(items, tile=150, title='Инвентарь', username=username, user_id=tg_id)
+    return await _render_grid(items, tile=150, title=t('inventory.title'), username=username, user_id=tg_id)
 
 async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, limit: int=0, tile: int=150, force: bool=False, username: Optional[str]=None) -> bytes:
     from roblox_client import get_full_inventory
@@ -910,4 +921,4 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     items = [_enrich_with_csv(x, price_map) for x in items]
     if limit and limit > 0:
         items = items[:limit]
-    return await _render_grid(items, tile=tile, title=category, username=username, user_id=tg_id)
+    return await _render_grid(items, tile=tile, title=_category_label(category), username=username, user_id=tg_id)
