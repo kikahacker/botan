@@ -141,6 +141,23 @@ except Exception:
     pass
 
 
+# === Public info helpers ===
+async def _set_public_pending(tg_id: int, flag: bool, ttl: int = 600):
+    try:
+        await storage.set_cached_data(tg_id, 'await_public_id', 1 if flag else 0, ttl)
+    except Exception:
+        pass
+
+async def _is_public_pending(tg_id: int) -> bool:
+    try:
+        v = await storage.get_cached_data(tg_id, 'await_public_id')
+        return bool(int(v or 0))
+    except Exception:
+        return False
+
+
+
+
 def L(key: str, **kw) -> str:
     lang = _CURRENT_LANG.get() or 'en'
     try:
@@ -389,7 +406,8 @@ def kb_main() -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=L('menu.saved_accounts') or '🧾 Saved accounts', callback_data='menu:accounts')],
             [InlineKeyboardButton(text=L('menu.cookie_script') or '🧰 Cookie script', callback_data='menu:script')],
             [InlineKeyboardButton(text=L('menu.add_accounts') or '➕ Add accounts (.txt)', callback_data='menu:add')],
-            [InlineKeyboardButton(text=L('menu.delete_account') or '🗑 Delete account', callback_data='menu:delete')]]
+            [InlineKeyboardButton(text=L('menu.delete_account') or '🗑 Delete account', callback_data='menu:delete')],
+            [InlineKeyboardButton(text=L('menu.public_info') or '🌐 Public info', callback_data='menu:public')]]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -536,6 +554,18 @@ async def cb_home(call: types.CallbackQuery) -> None:
     text = LL("messages.welcome", "welcome")
     tg = call.from_user.id
     await edit_or_send(call.message, text, reply_markup=await kb_main_i18n(tg), photo=photo)
+
+
+
+@router.callback_query(F.data == 'menu:public')
+async def cb_public_open(call: types.CallbackQuery) -> None:
+    try:
+        await call.answer(cache_time=1)
+    except Exception:
+        pass
+    tg = call.from_user.id
+    await _set_public_pending(tg, True, ttl=600)
+    await edit_or_send(call.message, L('public.ask_id'), reply_markup=await kb_main_i18n(tg))
 
 
 @router.callback_query(F.data.startswith('menu:'))
@@ -1715,3 +1745,73 @@ async def on_lang_set(call: types.CallbackQuery):
         pass
     await call.message.edit_text(LL('messages.welcome', 'welcome') or 'Welcome!',
                                  reply_markup=await kb_main_i18n(call.from_user.id))
+
+
+def kb_public_navigation(roblox_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=L('nav.inventory_categories') or '🧩 Inventory (choose categories)', callback_data=f'inv_cfg_open:{roblox_id}')],
+        [InlineKeyboardButton(text=L('nav.to_home') or '🏠 Back to main menu', callback_data='menu:home')],
+    ])
+
+
+
+@router.message(F.text.regexp(r'^\d{5,}$'))
+async def handle_public_id(message: types.Message) -> None:
+    tg = message.from_user.id
+    if not await _is_public_pending(tg):
+        return
+    rid = int(message.text.strip())
+    # reset flag
+    await _set_public_pending(tg, False)
+    # Fetch minimal public profile (no cookie)
+    try:
+        await message.answer(LL('status.loading_profile', 'msg.auto_cefe60da21'))
+        async with httpx.AsyncClient(timeout=20.0) as c:
+            r = await c.get(f'https://users.roblox.com/v1/users/{rid}')
+            if r.status_code != 200:
+                await edit_or_send(message, L('public.not_found'), reply_markup=await kb_main_i18n(tg))
+                return
+            user = r.json()
+            uname = html.escape(user.get('name', '—'))
+            dname = html.escape(user.get('displayName', '—'))
+            created = (user.get('created') or 'N/A').split('T')[0]
+            banned = bool(user.get('isBanned', False))
+            # No-cookie fields → placeholders
+            country = '—'
+            gender = '—'
+            birthdate = '—'
+            age = '—'
+            email = '—'
+            email_verified = False
+            robux = 0
+            spent_val = -1
+
+            note = L('public.note_limited')
+            card = render_profile_text_i18n(
+                uname=uname, dname=dname, roblox_id=rid, created=created,
+                country=country, gender_raw=gender, birthdate=birthdate, age=age,
+                email=email, email_verified=email_verified, robux=robux,
+                spent_val=spent_val, banned=banned
+            )
+            text = f"{note}\n\n{card}"
+
+            # Avatar via thumbnails (no cookie)
+            avatar_url = None
+            tr = await c.get(f'https://thumbnails.roblox.com/v1/users/avatar?userIds={rid}&size=420x420&format=Png&isCircular=false')
+            if tr.status_code == 200 and (tr.json() or {}).get('data'):
+                avatar_url = tr.json()['data'][0].get('imageUrl')
+
+            if avatar_url:
+                im = await c.get(avatar_url)
+                if im.status_code == 200:
+                    path = f'temp/avatar_public_{rid}.png'
+                    os.makedirs('temp', exist_ok=True)
+                    open(path, 'wb').write(im.content)
+                    await edit_or_send(message, text, reply_markup=kb_public_navigation(rid), photo=FSInputFile(path))
+                    try: os.remove(path)
+                    except Exception: pass
+                    return
+
+            await edit_or_send(message, text, reply_markup=kb_public_navigation(rid))
+    except Exception:
+        await edit_or_send(message, L('public.not_found'), reply_markup=await kb_main_i18n(tg))

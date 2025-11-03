@@ -38,7 +38,8 @@
     "add_accounts": "➕ Add accounts (.txt)",
     "cookie_script": "🧰 Cookie script",
     "delete_account": "🗑 Delete account",
-    "saved_accounts": "🧾 Saved accounts"
+    "saved_accounts": "🧾 Saved accounts",
+    "public_info": "🌐 Public info"
   },
   "errors": {
     "bad_callback": "❌ Invalid callback format.",
@@ -163,5 +164,11 @@
     "hair": "Hair",
     "hats": "Hats",
     "heads": "Heads"
+  },
+  "public": {
+    "ask_id": "🆔 Send a Roblox ID to show public info.",
+    "note_limited": "ℹ️ Public mode: some data is unavailable without cookie.",
+    "bad_id": "⚠️ Invalid ID. Send a number (e.g., 123456789).",
+    "not_found": "❌ User not found or unavailable."
   }
 }
