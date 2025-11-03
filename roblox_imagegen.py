@@ -913,7 +913,7 @@ async def generate_full_inventory_grid(
     title: Optional[str] = None
 ) -> bytes:
     lang = get_current_lang()
-    default_title = tr(lang, 'inventory.title')
+    default_title = tr(lang, 'inventory.full_title')
     return await _render_grid(items, tile=tile, title=(title or default_title), username=username, user_id=user_id)
 
 async def generate_inventory_preview(
