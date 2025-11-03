@@ -957,6 +957,23 @@ def _kb_categories_only(roblox_id: int, by_cat: Dict[str, List[Dict[str, Any]]])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+
+def _caption_full_inventory(total_count: int, total_sum: int) -> str:
+    # "📦 {full_title}\n{total_items}\n{total_sum}"
+    line1 = f"📦 {L('inventory.full_title') or 'Full inventory'}"
+    line2 = L('inventory.total_items', count=total_count) or f"📦 Items with price: {total_count}"
+    line3 = L('inventory.total_sum', sum=f"{total_sum:,}") or f"💰 Total inventory value: {total_sum:,}"
+    return (line1 + "\n" + line2 + "\n" + line3).replace(',', ' ')
+
+def _caption_category(cat_name: str, count: int, total_sum: int) -> str:
+    # "📂 {cat}\nВсего: {count} шт · {sum} R$" via i18n
+    cat_loc = cat_label(cat_name)
+    txt = L('inventory.by_cat', cat=cat_loc, count=count, sum=f"{total_sum:,}")
+    if not txt or txt == 'inventory.by_cat':
+        txt = f"📂 {cat_loc}\nВсего: {count} шт · {total_sum:,} R$"
+    return txt.replace(',', ' ')
+
+
 def _kb_category_view(roblox_id: int, short_cat: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=LL('buttons.all_items', 'btn.auto_c06b2d0103'),
