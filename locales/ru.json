@@ -4,7 +4,8 @@
   },
   "footer": {
     "checked_by": "Проверено: {username}",
-    "domain": "raika.gg"
+    "domain": "raika.gg",
+    "date": "{day} {month} {year}"
   },
   "inventory": {
     "title": "Инвентарь",

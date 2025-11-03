@@ -4,7 +4,8 @@
   },
   "footer": {
     "checked_by": "Checked by: {username}",
-    "domain": "raika.gg"
+    "domain": "raika.gg",
+    "date": "{day} {month} {year}"
   },
   "inventory": {
     "title": "Inventory",
