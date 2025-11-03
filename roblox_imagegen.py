@@ -152,7 +152,7 @@ ROBUX_PREFIX = 'R$'
 KEEP_INPUT_ORDER = str(os.getenv('KEEP_INPUT_ORDER', '0')).lower() in ("1","true","yes","on","y")
 
 # Main switch: download thumbnails at this size (independent from tile)
-THUMB_SIZE = os.getenv('THUMB_SIZE', '720x720')
+THUMB_SIZE = os.getenv('THUMB_SIZE', '420x420')
 
 # Layout
 PADDING_CONTENT = int(os.getenv('PADDING_CONTENT', '0'))
@@ -747,7 +747,7 @@ def _draw_header(canvas: Image.Image, count: int, title: str):
     canvas.alpha_composite(band, (0, 0))
     d = ImageDraw.Draw(canvas)
     font = _bold_font(max(26, HEADER_H // 2))
-    text = _header_text(count) + '  ' + (t(f"cat.{_category_slug(title)}") or title)
+    text = f"{_header_text(count)}  {title}"
     try:
         tw = int(d.textlength(text, font=font))
         th = font.getbbox('Ag')[3]
@@ -790,7 +790,7 @@ def _draw_footer(canvas: Image.Image, username: Optional[str], user_id: Optional
         who = f'@{who}'
     line1 = date_text
     line2 = t('footer.checked_by', username=who)
-    line3 = t('footer.domain') or f'{FOOTER_BRAND}'
+    line3 = t('footer.domain')
 
     base1 = max(20, FOOTER_H // 3)
     base2 = max(16, FOOTER_H // 4)
@@ -897,17 +897,6 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
         cols = int(math.ceil(math.sqrt(n)))
         rows = int(math.ceil(n / cols))
 
-    # Auto-scale tile for clarity
-    TARGET_W = int(os.getenv('TARGET_W', '1200'))
-    MIN_TILE = int(os.getenv('MIN_TILE', '150'))
-    MAX_TILE = int(os.getenv('MAX_TILE', '360'))
-    # recompute tile to fit target width, clamped
-    try:
-        if cols > 0:
-            tile = max(MIN_TILE, min(MAX_TILE, TARGET_W // cols))
-    except Exception:
-        pass
-
     # Canvas size
     top = HEADER_H if SHOW_HEADER else 0
     bottom = FOOTER_H if SHOW_FOOTER else 0
@@ -936,7 +925,7 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
             k += 1
 
     out = io.BytesIO()
-    canvas.save(out, 'PNG', optimize=True)
+    canvas.convert('RGB').save(out, 'PNG', optimize=True, quality=90)
     _info(f"[grid] done items={n} cols={cols} rows={rows} tile={tile} bytes={out.tell()}")
     return out.getvalue()
 
