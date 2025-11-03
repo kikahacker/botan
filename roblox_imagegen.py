@@ -1,5 +1,5 @@
 from __future__ import annotations
-from i18n import t, get_current_lang, tr
+from i18n import t, get_current_lang
 import os, io, math, json, asyncio, hashlib, datetime, logging, time, csv
 
 from datetime import datetime as _dt2
@@ -21,7 +21,7 @@ def _log_price_event(text: str):
 def _category_slug(name: str) -> str:
     return (name or '').lower().replace(' ', '_')
 
-def _category_label(cat_raw: str, lang: str | None = None) -> str:
+def _category_label(cat_raw: str) -> str:
     try:
         slug = _category_slug(cat_raw)
     except Exception:
@@ -728,7 +728,7 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
 def _draw_header(canvas: Image.Image, count: int, title: str):
     # safety: localize category title if possible
     try:
-        title = (tr(lang, f"cat.{_category_slug(title)}") if "lang" in locals() and lang else t(f"cat.{_category_slug(title)}")) or title
+        title = t(f"cat.{_category_slug(title)}") or title
     except Exception:
         pass
     if not SHOW_HEADER:
@@ -924,17 +924,17 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
 # Public API (signatures unchanged)
 # =========================
 async def generate_full_inventory_grid(items: List[Dict[str, Any]], tile: int=150, pad: int=0, username: Optional[str]=None, user_id: Optional[int]=None, title: Optional[int]=None) -> bytes:
-    return await _render_grid(items, tile=tile, title=title or (tr(lang, 'inventory.title') if lang else t('inventory.title')), username=username, user_id=user_id)
+    return await _render_grid(items, tile=tile, title=title or t('inventory.title'), username=username, user_id=user_id)
 
-async def generate_inventory_preview(tg_id: int, roblox_id: int, categories_limit: int=8, username: Optional[str]=None, lang: str | None = None) -> bytes:
+async def generate_inventory_preview(tg_id: int, roblox_id: int, categories_limit: int=8, username: Optional[str]=None) -> bytes:
     from roblox_client import get_full_inventory
     data = await get_full_inventory(tg_id, roblox_id)
     items = []
     for arr in (data.get('byCategory') or {}).values():
         items.extend(arr)
-    return await _render_grid(items, tile=150, title=(tr(lang, 'inventory.title') if lang else t('inventory.title')), username=username, user_id=tg_id)
+    return await _render_grid(items, tile=150, title=t('inventory.title'), username=username, user_id=tg_id)
 
-async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, limit: int=0, tile: int=150, force: bool=False, username: Optional[str]=None, lang: str | None = None) -> bytes:
+async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, limit: int=0, tile: int=150, force: bool=False, username: Optional[str]=None) -> bytes:
     from roblox_client import get_full_inventory
     data = await get_full_inventory(tg_id, roblox_id)
     items = (data.get('byCategory') or {}).get(category, [])
@@ -942,4 +942,4 @@ async def generate_category_sheets(tg_id: int, roblox_id: int, category: str, li
     items = [_enrich_with_csv(x, price_map) for x in items]
     if limit and limit > 0:
         items = items[:limit]
-    return await _render_grid(items, tile=tile, title=_category_label(category, lang), username=username, user_id=tg_id)
+    return await _render_grid(items, tile=tile, title=_category_label(category), username=username, user_id=tg_id)
