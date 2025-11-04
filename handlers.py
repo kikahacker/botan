@@ -1541,7 +1541,7 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                 await call.message.answer(L('msg.auto_f3d5341cc3', e=e))
 
 
-@router.message(Command('admin_stats'))
+@router.message(Command('stat'))
 async def cmd_admin_stats(msg: types.Message):
     if not is_admin(msg.from_user.id):
         return
