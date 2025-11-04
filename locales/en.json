@@ -42,7 +42,8 @@
     "cookie_script": "🧰 Cookie script",
     "delete_account": "🗑 Delete account",
     "saved_accounts": "🧾 Saved accounts",
-    "public_info": "🌐 Public info"
+    "public_info": "🌐 Public info",
+    "settings": "⚙️ Settings"
   },
   "errors": {
     "bad_callback": "❌ Invalid callback format.",
@@ -174,5 +175,8 @@
     "bad_id": "⚠️ Invalid ID. Send a number (e.g., 123456789).",
     "not_found": "❌ User not found or unavailable.",
     "inventory_private": "⚠️ This user's inventory is private on Roblox."
+  },
+  "settings": {
+    "title": "⚙️ Settings"
   }
 }

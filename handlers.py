@@ -414,16 +414,19 @@ async def edit_or_send(message: types.Message, text: str, reply_markup: Optional
 
 
 def kb_main() -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=L('menu.saved_accounts') or '🧾 Saved accounts', callback_data='menu:accounts')],
-            [InlineKeyboardButton(text=L('menu.cookie_script') or '🧰 Cookie script', callback_data='menu:script')],
-            [InlineKeyboardButton(text=L('menu.add_accounts') or '➕ Add accounts (.txt)', callback_data='menu:add')],
-            [InlineKeyboardButton(text=L('menu.delete_account') or '🗑 Delete account', callback_data='menu:delete')],
-            [InlineKeyboardButton(text=L('menu.public_info') or '🌐 Public info', callback_data='menu:public')]]
+    rows = [
+        [
+            InlineKeyboardButton(text=L('menu.add_accounts') or '➕ Add accounts (.txt)', callback_data='menu:add'),
+            InlineKeyboardButton(text=L('menu.saved_accounts') or '🧾 Saved accounts', callback_data='menu:accounts'),
+        ],
+        [
+            InlineKeyboardButton(text=L('menu.public_info') or '🌐 Public info', callback_data='menu:public'),
+            InlineKeyboardButton(text=L('menu.delete_account') or '🗑 Delete account', callback_data='menu:delete'),
+        ],
+        [InlineKeyboardButton(text=L('menu.cookie_script') or '🧰 Cookie script', callback_data='menu:script')],
+        [InlineKeyboardButton(text=L('menu.settings') or '⚙️ Settings', callback_data='menu:settings')],
+    ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
 
 async def kb_main_i18n(tg_id: int) -> InlineKeyboardMarkup:
     try:
@@ -431,14 +434,27 @@ async def kb_main_i18n(tg_id: int) -> InlineKeyboardMarkup:
     except Exception:
         lang = 'en'
     _CURRENT_LANG.set(lang)
-    kb = kb_main()
-    label = tr(lang, 'btn.lang') if 'tr' in globals() else '🌐 Language'
+    return kb_main()
+
+def kb_settings() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=(tr(_CURRENT_LANG.get(), 'btn.lang') if 'tr' in globals() else '🌐 Язык'),
+                              callback_data='lang:open')],
+        [InlineKeyboardButton(text=L('buttons.home') or '🏠 В главное меню',
+                              callback_data='menu:home')]
+    ])
+
+@router.callback_query(F.data == 'menu:settings')
+async def cb_settings(call: types.CallbackQuery) -> None:
     try:
-        kb.inline_keyboard.append([InlineKeyboardButton(text=label, callback_data='lang:open')])
+        await call.answer(cache_time=1)
     except Exception:
         pass
-    return kb
-
+    await edit_or_send(
+        call.message,
+        L('settings.title') or '⚙️ Settings',
+        reply_markup=kb_settings()
+    )
 
 def kb_navigation(roblox_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
