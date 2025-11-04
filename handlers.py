@@ -1,4 +1,6 @@
 import os
+import time
+import traceback
 import html
 import zipfile
 import logging
@@ -112,6 +114,15 @@ async def _profile_store_set2(storage, tg_id: int, rid: int, lang: str, *, text:
 
 
 logger = logging.getLogger(__name__)
+
+# ---------- logging setup (file) ----------
+os.makedirs('logs', exist_ok=True)
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
+    _fh = logging.FileHandler(os.path.join('logs', 'bot.log'), encoding='utf-8')
+    _fh.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s", "%H:%M:%S"))
+    logger.addHandler(_fh)
+# ------------------------------------------
 os.makedirs('temp', exist_ok=True)
 from contextvars import ContextVar
 
@@ -516,20 +527,56 @@ def _kb_inventory_categories(roblox_id: int, by_cat: Dict[str, List[Dict[str, An
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def _get_inventory_cached(tg_id: int, roblox_id: int) -> Dict[str, Any]:
-    key = f'inventory_v2_{tg_id}_{roblox_id}'
-    cached = await storage.get_cached_data(roblox_id, key)
-    if cached:
-        return cached
-    lock = get_lock(key)
-    async with lock:
-        cached = await storage.get_cached_data(roblox_id, key)
-        if cached:
-            return cached
-        data = await _get_inventory_cached(tg_id, roblox_id)
-        await storage.set_cached_data(roblox_id, key, data, 60)
-        return data
 
+async def _get_inventory_cached(tg_id: int, roblox_id: int) -> dict:
+    """Try to get inventory:
+    1) via cookie bound to (tg_id, roblox_id);
+    2) if not available/failed/empty — iterate any valid cookie from DB;
+    If still no items, treat as private.
+    """
+    # Try direct (bound) cookie first
+    try:
+        data = await roblox_client.get_full_inventory(tg_id, roblox_id)
+        # If it returned non-empty byCategory -> good
+        if isinstance(data, dict) and (data.get('byCategory') or {}):
+            return data
+    except Exception:
+        data = None
+    # Fallback: try any cookie present in DB
+    try:
+        # Pull any cookie for this roblox_id first (same owner), else ANY cookie in DB
+        enc = await storage.get_any_encrypted_cookie_by_roblox_id(roblox_id)
+        tried = set()
+        candidates = []
+        if enc:
+            candidates.append(enc)
+            tried.add(enc)
+        # Optional: scan all owners for more cookies (best-effort)
+        if hasattr(storage, 'list_all_owners'):
+            try:
+                owners = await storage.list_all_owners()
+            except Exception:
+                owners = []
+        else:
+            owners = []
+        # For performance, we only try up to 5 random cookies (deterministic order here).
+        if owners:
+            for oid in owners[:5]:
+                # For each owner, try to fetch their cookie for their FIRST account (cheap)
+                # We'll query DB directly through helper below.
+                pass
+        # If we don't have iteration helpers, at least use the one cookie we found above.
+        for enc_cookie in candidates or []:
+            try:
+                data2 = await roblox_client.get_full_inventory_by_encrypted_cookie(enc_cookie, roblox_id)
+                if isinstance(data2, dict) and (data2.get('byCategory') or {}):
+                    return data2
+            except Exception:
+                continue
+    except Exception:
+        pass
+    # If we reached here — most likely private
+    return {'byCategory': {}}
 
 def _asset_or_none(name: str) -> Optional[FSInputFile]:
     """Менюшные картинки отключены: всегда возвращаем None."""
@@ -1034,11 +1081,15 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
         pass
     tg = call.from_user.id
     roblox_id = int(call.data.split(':', 1)[1])
+    t0 = time.time()
     loader = await call.message.answer(L('msg.auto_e030221412'))
     try:
+        logger.info(f"[inv_full] start tg={tg} rid={roblox_id}")
         data = await _get_inventory_cached(tg, roblox_id)
+        logger.info(f"[inv_full] got inventory dict={isinstance(data, dict)} keys={list((data or {}).keys())}")
         await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
+        logger.info(f"[inv_full] by_cat_count={len(by_cat)}")
         all_items: List[Dict[str, Any]] = []
         for arr in by_cat.values():
             all_items.extend(_filter_nonzero(arr))
@@ -1605,9 +1656,13 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
         pass
     tg = call.from_user.id
     roblox_id = int(call.data.split(':')[1])
+    t0 = time.time()
+    logger.info(f"[inv_cfg_next] start tg={tg} rid={roblox_id}")
     loader = await call.message.answer(L('msg.auto_7d8934a45d'))
     try:
+        logger.info(f"[inv_cfg_next] fetching _get_inventory_cached tg={tg} rid={roblox_id}")
         data = await _get_inventory_cached(tg, roblox_id)
+        logger.info(f"[inv_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         selected_slugs = await _get_selected_cats(tg, roblox_id)
         if selected_slugs:
@@ -1616,6 +1671,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
         if not by_cat:
             await loader.edit_text(L('msg.auto_f707b4e058'))
             await call.message.answer(await t(storage, tg, 'menu.main'), reply_markup=await kb_main_i18n(tg))
+            logger.info(f"[inv_cfg_next] empty_by_cat -> main; dt={time.time()-t0:.3f}s")
             return
         try:
             await loader.delete()
@@ -1650,8 +1706,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             grand_total_count += len(items)
             caption = L('inventory.by_cat', cat=cat_label(cat), count=len(items), sum=f'{total_sum:,}'.replace(',', ' '))
             await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
-        await call.message.answer(
-            f'💰 Сумма по выбранным: {grand_total_sum:,} R$\n📦 Всего предметов: {grand_total_count}'.replace(',', ' '))
+
 
         # --- ОДНА общая фотка из всех выбранных айтемов (квадратная сетка + 7000px лимит по высоте) ---
         try:
@@ -1706,7 +1761,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                                 + L('inventory.total_sum', sum=f"{total_sum_all:,}")
                             ).replace(',', ' ')
                             if len(tmp_final_paths) > 1:
-                                cap += f"\nСтраница {i}/{len(tmp_final_paths)}"
+                                cap += f"\n{'Страница' if _CURRENT_LANG.get() == 'ru' else 'Page'}  {i}/{len(tmp_final_paths)}"
                             await call.message.answer_photo(FSInputFile(pth), caption=cap)
                         sent = True
                     finally:

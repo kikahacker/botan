@@ -39,8 +39,13 @@ INV_MAX_RETRIES = int(os.getenv("INV_MAX_RETRIES", "4"))
 INV_BACKOFF_BASE_MS = int(os.getenv("INV_BACKOFF_BASE_MS", "300"))
 INV_BACKOFF_CAP_MS = int(os.getenv("INV_BACKOFF_CAP_MS", "2500"))
 
-log = logging.getLogger(__name__)
-
+log = logging.getLogger("roblox_client")
+os.makedirs('logs', exist_ok=True)
+if not log.handlers:
+    log.setLevel(logging.INFO)
+    _fh = logging.FileHandler(os.path.join('logs', 'roblox_client.log'), encoding='utf-8')
+    _fh.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s", "%H:%M:%S"))
+    log.addHandler(_fh)
 ASSET_TYPE_TO_CATEGORY = {
     2:  "Classic Clothes",
     3:  "Audio",
@@ -152,6 +157,8 @@ async def _get_inventory_pages(
     items: List[int] = []
     cursor: Optional[str] = None
 
+    log.info(f"[inv] begin uid={uid} type={asset_type} limit={limit}")
+    t_start = time.time()
     while True:
         params = {"limit": limit, "sortOrder": "Desc"}
         if cursor:
@@ -165,6 +172,7 @@ async def _get_inventory_pages(
             proxy = PROXY_POOL.any()
             client = await get_client(proxy)
             try:
+                t_req = time.time()
                 resp = await client.get(
                     endpoint,
                     params=params,
@@ -172,6 +180,14 @@ async def _get_inventory_pages(
                     timeout=httpx.Timeout(8.0, connect=2.0, read=6.0),
                 )
                 status = resp.status_code
+                dt = time.time() - t_req
+                try:
+                    _js = resp.json() if status == 200 else {}
+                    _len = len((_js or {}).get('data') or [])
+                    _next = bool((_js or {}).get('nextPageCursor'))
+                except Exception:
+                    _len, _next = 0, False
+                log.info(f"[inv] page uid={uid} type={asset_type} status={status} items={_len} next={_next} dt={dt:.3f}s")
 
                 if status == 200:
                     js = resp.json() or {}
@@ -229,6 +245,7 @@ async def _get_inventory_pages(
         if a not in seen:
             out.append(a)
             seen.add(a)
+    log.info(f"[inv] end uid={uid} type={asset_type} collected={len(items)} uniq={len(out)} dt={time.time()-t_start:.3f}s")
     return out
 
 
@@ -238,11 +255,13 @@ async def fetch_full_inventory_parallel(uid: int, asset_types: List[int], cookie
     """
     async def task(t: int):
         try:
+            t0 = time.time()
+            log.info(f"[inv_par] start uid={uid} type={t}")
             lst = await _get_inventory_pages(uid, t, cookie)
-            log.info(f"[inv] uid={uid} type={t} -> {len(lst)} items")
+            log.info(f"[inv_par] done uid={uid} type={t} items={len(lst)} dt={time.time()-t0:.3f}s")
             return (t, lst)
         except Exception as e:
-            log.error(f"[inv] uid={uid} type={t} crashed: {e}")
+            log.error(f"[inv_par] crashed uid={uid} type={t}: {type(e).__name__}: {e}", exc_info=True)
             return (t, [])
 
     res = await asyncio.gather(*[task(t) for t in asset_types], return_exceptions=False)
@@ -636,3 +655,28 @@ async def get_full_inventory(tg_id: int, roblox_id: int, force_refresh: bool = F
     data = {"total": int(total_count), "byCategory": by_cat}
     await cache.set_json(cache_key, data)
     return data
+
+
+# === Helper: fetch inventory for a target Roblox ID using a provided ENCRYPTED cookie ===
+async def get_full_inventory_by_encrypted_cookie(enc_cookie: str, roblox_id: int, force_refresh: bool=False) -> dict:
+    """Try to fetch full inventory for *roblox_id* using the given encrypted cookie ('.ROBLOSECURITY').
+    This bypasses per-user cookie lookup and is used in public mode as a fallback.
+    """
+    try:
+        cookie = decrypt_text(enc_cookie) if 'decrypt_text' in globals() else None
+        if not cookie:
+            # Maybe it's already plain? Try as-is.
+            cookie = enc_cookie
+        # Use the same lower-level pipeline as usual
+        items = await fetch_full_inventory_parallel(roblox_id, cookie, force_refresh=force_refresh)
+        # Enrich via catalog
+        detailed = await fetch_catalog_details_fast(items)
+        # Group by Category like in get_full_inventory
+        grouped = {}
+        for it in detailed:
+            cat = it.get('AssetType', '') or ''
+            grouped.setdefault(cat, []).append(it)
+        return {'byCategory': grouped}
+    except Exception as e:
+        # Keep contract same as get_full_inventory (bubble up)
+        raise
