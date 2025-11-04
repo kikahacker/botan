@@ -1818,7 +1818,20 @@ def _available_langs() -> list[str]:
     return sorted((f.stem.lower() for f in p.glob('*.json')))
 
 
-_LANG_NAMES = {'en': 'English', 'ru': 'Русский'}
+_LANG_NAMES = {
+    'en': '🇺🇸 English',
+    'ru': '🇷🇺 Русский',
+    'ar': '🇸🇦 العربية',
+    'de': '🇩🇪 Deutsch',
+    'es': '🇪🇸 Español',
+    'fr': '🇫🇷 Français',
+    'hu': '🇭🇺 Magyar',
+    'it': '🇮🇹 Italiano',
+    'pl': '🇵🇱 Polski',
+    'pt': '🇧🇷 Português',
+    'tr': '🇹🇷 Türkçe'
+}
+
 
 
 def _lang_label(code: str) -> str:

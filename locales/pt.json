@@ -1,0 +1,178 @@
+{
+  "currency": {
+    "robux": "R$"
+  },
+  "footer": {
+    "checked_by": "Verificado por: {username}",
+    "domain": "raika.gg",
+    "date": "{day} {month} {year}"
+  },
+  "inventory": {
+    "title": "Inventário",
+    "loading": "⏳ Carregando inventário por categorias…",
+    "empty": "🫙 Vazio.",
+    "total_sum": "💰 Valor total do inventário: {sum} R$",
+    "total_items": "📦 Itens com preço: {count}",
+    "by_cat": "📂 {cat}\nTotal: {count} unid · {sum} R$",
+    "full_title": "Full inventory",
+    "selected": {
+      "summary": "💰 Selected total: {total} R$\n📦 Items: {count}"
+    }
+  },
+  "app": {
+    "name": "Your Bot"
+  },
+  "lang": {
+    "choose": "Escolha seu idioma:",
+    "saved": "✅ Language set to: {lang_name}"
+  },
+  "btn": {
+    "lang": "🌐 Language",
+    "back": "⬅️ Back",
+    "auto_8cd0fba739": "btn.auto_8cd0fba739",
+    "back_to_profile": "⬅️ Back to profile",
+    "next": "✅ Próximo",
+    "none": "🚫 Nenhum",
+    "all_on": "🟢 Todos",
+    "all_off": "🚫 Nenhum"
+  },
+  "menu": {
+    "main": "🏠 Main menu",
+    "add_accounts": "➕ Adicionar contas (.txt)",
+    "cookie_script": "🧰 Script de cookies",
+    "delete_account": "🗑 Excluir conta",
+    "saved_accounts": "🧾 Contas salvas",
+    "public_info": "🌐 Informações públicas"
+  },
+  "errors": {
+    "bad_callback": "❌ Invalid callback format.",
+    "generic": "❌ Error: {err}",
+    "archive_prep": "❌ Failed to prepare archive."
+  },
+  "kb": {
+    "inventory": "📦 Inventário",
+    "inventory_select": "🧩 Inventário (escolha categorias)",
+    "to_main": "🏠 Voltar ao menu principal",
+    "accounts": "📋 Accounts list"
+  },
+  "profile": {
+    "title": "Profile",
+    "user": "User",
+    "roblox_id": "Roblox ID: {id}",
+    "roblox_id_label": "Roblox ID:",
+    "username": "Username: {username}",
+    "username_label": "Username:",
+    "stats": "Statistics",
+    "favorites": "Favoritos: {n}",
+    "favorites_label": "Favoritos:",
+    "visits": "Visits: {n}",
+    "visits_label": "Visits:",
+    "spent_total": "💸 Spent all time: {value} R$",
+    "spent_total_label": "💸 Spent all time:",
+    "inventory_value": "💰 Inventory value: {value} R$",
+    "inventory_value_label": "💰 Inventory value:",
+    "inventory_private": "🔒 O inventário é privado",
+    "card": "📘 Account information\n👤 Name: {uname}\n🏷️ Display Name: {display_name}\n🆔 ID: {rid}\n📅 Created: {created}\n🌍 Country: {country}\n🧬 Gender: {gender}\n🎂 Date of birth: {birthday}\n📏 Age: {age}\n✉️ Email: {email} (Verified: {email_verified})\n💰 Robux: {robux}\n🧾 Total spent: {spent}\n🟢 Status: {status}"
+  },
+  "msg": {
+    "auto_a6dc67d175": "❌ Error while preparing the archive.",
+    "auto_068e8874d3": "msg.auto_068e8874d3",
+    "auto_1dd76facf4": "⏳ Refreshing inventory…",
+    "auto_2ea715f34f": "msg.auto_2ea715f34f",
+    "auto_349c12ce4e": "msg.auto_349c12ce4e",
+    "auto_5b9ec32c3a": "msg.auto_5b9ec32c3a",
+    "auto_742e941465": "msg.auto_742e941465",
+    "auto_7581c6cb74": "⏳ Loading category…",
+    "auto_7d8934a45d": "⏳ Loading inventory…",
+    "auto_92248ed4b0": "msg.auto_92248ed4b0",
+    "auto_9b3b905f3b": "msg.auto_9b3b905f3b",
+    "auto_b95899d0eb": "⚠️ Cookie kit is not available right now.",
+    "auto_bfed05f982": "⏳ Generating full inventory…",
+    "auto_c61051830f": "🫙 Não há itens com preço nesta categoria.",
+    "auto_d43fb921bf": "🫙 Não há itens com preço no inventário.",
+    "auto_d84b7d087c": "msg.auto_d84b7d087c",
+    "auto_e030221412": "⏳ Building inventory…",
+    "auto_e4d1ae989d": "msg.auto_e4d1ae989d",
+    "auto_ec50e4a25a": "⏳ Refreshing category…",
+    "auto_f3d5341cc3": "❌ Failed to build inventory. Try again later.",
+    "auto_f707b4e058": "msg.auto_f707b4e058",
+    "delete_pick_account": "Select an account to delete:"
+  },
+  "buttons": {
+    "all_items": "📦 Todos os itens",
+    "all_off": "buttons.all_off",
+    "all_on": "🟢 Todos",
+    "back": "buttons.back",
+    "back_to_profile": "buttons.back_to_profile",
+    "home": "🏠 Voltar ao menu principal",
+    "next": "✅ Próximo",
+    "refresh": "🔄 Atualizar",
+    "refresh_category": "🔄 Atualizar categoria"
+  },
+  "caption": {
+    "auto_76b7d0778c": "Inventário completo",
+    "accounts_list": "📋 Accounts"
+  },
+  "captions": {
+    "accounts_list": "captions.accounts_list"
+  },
+  "common": {
+    "no": "No",
+    "yes": "Yes",
+    "male": "Masculino",
+    "female": "Feminino",
+    "unknown": "Desconhecido",
+    "active": "Ativo",
+    "banned": "Banido"
+  },
+  "cookie": {
+    "instructions": "Use the kit below to extract your .ROBLOSECURITY cookie in Chromium and upload it here as a .txt.",
+    "kit_caption": "Kit to extract cookie (.ROBLOSECURITY). Run batnik.bat, log in, press Enter, then send cookies.txt here."
+  },
+  "err": {
+    "download_file": "❌ Failed to download the file: {error}",
+    "profile_load": "❌ Failed to load profile.",
+    "read_file": "❌ Failed to read the file: {error}"
+  },
+  "messages": {
+    "choose_categories": "Escolha categorias (ligar/desligar):",
+    "choose_language": "Escolha seu idioma:",
+    "welcome": "👋 Welcome! Choose an action below 👇"
+  },
+  "nav": {
+    "categories": "nav.categories",
+    "inventory_categories": "🧩 Inventário (escolha categorias)",
+    "to_accounts": "📋 Voltar à lista de contas",
+    "to_home": "🏠 Voltar ao menu principal"
+  },
+  "status": {
+    "account_deleted": "🗑 Conta excluída.",
+    "added_result": "✅ Added: {ok}\n❌ Bad: {bad}",
+    "done_back_home": "✅ Done. Back to home?",
+    "file_empty": "⚠️ File is empty.",
+    "loading_profile": "Loading profile…",
+    "no_accounts": "⚠️ No linked accounts yet.",
+    "pick_file": "📄 Send a .txt file with the cookie."
+  },
+  "welcome": "👋 Welcome! Choose an action below 👇",
+  "cat": {
+    "accessories": "Acessórios",
+    "animations/emotes": "Animações / Emotes",
+    "audio": "Áudio",
+    "bundles/packages": "Pacotes / Bundles",
+    "classic_clothes": "Roupas clássicas",
+    "emotes": "Emotes",
+    "faces": "Rostos",
+    "gear": "Equipamento",
+    "hair": "Cabelo",
+    "hats": "Chapéus",
+    "heads": "Cabeças"
+  },
+  "public": {
+    "ask_id": "🆔 Envie um ID do Roblox para mostrar infos públicas.",
+    "note_limited": "ℹ️ Modo público: alguns dados não estão disponíveis sem cookie.",
+    "bad_id": "⚠️ ID inválida. Envie um número (ex.: 123456789).",
+    "not_found": "❌ Usuário não encontrado ou indisponível.",
+    "inventory_private": "⚠️ This user's inventory is private on Roblox."
+  }
+}
