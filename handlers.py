@@ -696,7 +696,6 @@ async def cb_menu(call: types.CallbackQuery) -> None:
 async def handle_txt_upload(message: types.Message) -> None:
     tg = message.from_user.id
 
-
     doc = message.document
     name = (doc.file_name or '').lower()
     mime = (doc.mime_type or '').lower()
@@ -795,7 +794,7 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
         return
     # try existing project mem cache if present
     try:
-        _rec_old = _get_profile_mem(tg, roblox_id)  # may not exist
+        _rec_old = get_profile_mem(tg, roblox_id)  # may not exist
     except Exception:
         _rec_old = None
     if isinstance(_rec_old, dict) and _rec_old.get("text"):
@@ -1355,13 +1354,14 @@ def create_cookie_zip(user_id: int) -> str:
 
 from aiogram import types, F
 from aiogram.types import FSInputFile
-import os
+
 from roblox_imagegen import generate_category_sheets
 import roblox_client
 
 
 @router.callback_query(F.data.startswith('inv_stream:'))
 async def cb_inventory_stream(call: types.CallbackQuery) -> None:
+    import os
     try:
         await call.answer(cache_time=1)
     except Exception:
