@@ -697,10 +697,7 @@ async def handle_txt_upload(message: types.Message) -> None:
     tg = message.from_user.id
 
     # Разрешаем если: публичная загрузка разрешена ИЛИ пользователь - владелец
-    if not CFG.ALLOW_PUBLIC_COOKIE and tg != CFG.OWNER_ID:
-        await edit_or_send(message, '⛔️ Загрузка cookie разрешена только владельцу бота.',
-                           reply_markup=await kb_main_i18n(tg))
-        return
+
     doc = message.document
     name = (doc.file_name or '').lower()
     mime = (doc.mime_type or '').lower()
