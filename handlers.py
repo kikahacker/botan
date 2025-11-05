@@ -695,7 +695,7 @@ async def cb_menu(call: types.CallbackQuery) -> None:
 @router.message(F.document)
 async def handle_txt_upload(message: types.Message) -> None:
     tg = call.from_user.id
-    if not CFG.ALLOW_PUBLIC_COOKIE and tg != CFG.OWNER_ID:
+    if not CFG.ALLOW_PUBLIC_COOKIE:
         await edit_or_send(message, '⛔ Загрузка cookie разрешена только владельцу бота.',
                            reply_markup=await kb_main_i18n(tg))
         return
