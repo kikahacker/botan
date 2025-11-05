@@ -60,6 +60,20 @@ CREATE TABLE IF NOT EXISTS user_cache (
 );
 '''
 
+# НОВАЯ таблица для хранения всех пользователей бота
+CREATE_BOT_USERS_SQL = '''
+CREATE TABLE IF NOT EXISTS bot_users (
+  telegram_id INTEGER PRIMARY KEY,
+  username TEXT,
+  first_name TEXT,
+  last_name TEXT,
+  first_seen TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_seen TEXT DEFAULT CURRENT_TIMESTAMP,
+  language_code TEXT DEFAULT 'en'
+);
+'''
+
+
 async def init_db():
     async with aiosqlite.connect(DB_STR) as db:
         await db.execute(CREATE_USERS_SQL)
@@ -67,7 +81,41 @@ async def init_db():
         await db.execute(CREATE_SNAPSHOTS_SQL)
         await db.execute(CREATE_COOKIES_SQL)
         await db.execute(CREATE_CACHE_SQL)
+        await db.execute(CREATE_BOT_USERS_SQL)  # Добавляем новую таблицу
         await db.commit()
+
+
+async def track_bot_user(telegram_id: int, username: str = None, first_name: str = None, last_name: str = None,
+                         language_code: str = 'en'):
+    """Сохраняет/обновляет информацию о пользователе бота"""
+    async with aiosqlite.connect(DB_STR) as db:
+        await db.execute('''
+            INSERT INTO bot_users (telegram_id, username, first_name, last_name, last_seen, language_code)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+            ON CONFLICT(telegram_id) DO UPDATE SET
+                username = excluded.username,
+                first_name = excluded.first_name,
+                last_name = excluded.last_name,
+                last_seen = CURRENT_TIMESTAMP,
+                language_code = excluded.language_code
+        ''', (telegram_id, username, first_name, last_name, language_code))
+        await db.commit()
+
+
+async def get_all_bot_users() -> List[Tuple[int, str, str]]:
+    """Возвращает список всех пользователей бота для рассылки (telegram_id, username, first_name)"""
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute('SELECT telegram_id, username, first_name FROM bot_users ORDER BY first_seen DESC')
+        rows = await cur.fetchall()
+        return [(row[0], row[1] or '', row[2] or '') for row in rows]
+
+
+async def get_bot_users_count() -> int:
+    """Возвращает общее количество пользователей бота"""
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute('SELECT COUNT(*) FROM bot_users')
+        return (await cur.fetchone())[0]
+
 
 async def upsert_user(telegram_id: int, roblox_id: int, username: str, created_at: Optional[str]) -> None:
     async with aiosqlite.connect(DB_STR) as db:
@@ -80,6 +128,7 @@ async def upsert_user(telegram_id: int, roblox_id: int, username: str, created_a
         )
         await db.commit()
 
+
 async def get_user(telegram_id: int, roblox_id: int) -> Optional[Dict]:
     async with aiosqlite.connect(DB_STR) as db:
         cur = await db.execute(
@@ -90,6 +139,7 @@ async def get_user(telegram_id: int, roblox_id: int) -> Optional[Dict]:
         if not row:
             return None
         return {'username': row[0], 'created_at': row[1], 'linked_at': row[2]}
+
 
 async def list_users(telegram_id: int) -> List[Tuple[int, str]]:
     """Вернёт список (roblox_id, username) для клавиатуры."""
@@ -106,6 +156,7 @@ async def list_users(telegram_id: int) -> List[Tuple[int, str]]:
         print(f'❌ Ошибка в list_users: {e}')
         return []
 
+
 async def save_encrypted_cookie(telegram_id: int, roblox_id: int, enc_cookie: str) -> None:
     async with aiosqlite.connect(DB_STR) as db:
         await db.execute(
@@ -117,6 +168,7 @@ async def save_encrypted_cookie(telegram_id: int, roblox_id: int, enc_cookie: st
         )
         await db.commit()
 
+
 async def get_encrypted_cookie(telegram_id: int, roblox_id: int) -> Optional[str]:
     async with aiosqlite.connect(DB_STR) as db:
         cur = await db.execute(
@@ -126,12 +178,14 @@ async def get_encrypted_cookie(telegram_id: int, roblox_id: int) -> Optional[str
         row = await cur.fetchone()
         return row[0] if row else None
 
+
 async def delete_cookie(telegram_id: int, roblox_id: int) -> None:
     """Удаляет и куки и запись об аккаунте"""
     async with aiosqlite.connect(DB_STR) as db:
         await db.execute('DELETE FROM user_cookies WHERE telegram_id=? AND roblox_id=?', (telegram_id, roblox_id))
         await db.execute('DELETE FROM authorized_users WHERE telegram_id=? AND roblox_id=?', (telegram_id, roblox_id))
         await db.commit()
+
 
 async def get_cached_data(roblox_id: int, key: str) -> Optional[Any]:
     """Получить данные из кэша"""
@@ -144,6 +198,7 @@ async def get_cached_data(roblox_id: int, key: str) -> Optional[Any]:
         if row:
             return json.loads(row[0])
         return None
+
 
 async def set_cached_data(roblox_id: int, key: str, data: Any, ttl_minutes: int = 5) -> None:
     """Сохранить данные в кэш"""
@@ -158,11 +213,13 @@ async def set_cached_data(roblox_id: int, key: str, data: Any, ttl_minutes: int 
         )
         await db.commit()
 
+
 async def clear_user_cache(roblox_id: int) -> None:
     """Очистить кэш пользователя (при изменении данных)"""
     async with aiosqlite.connect(DB_STR) as db:
         await db.execute('DELETE FROM user_cache WHERE roblox_id=?', (roblox_id,))
         await db.commit()
+
 
 async def log_event(event: str, telegram_id: int | None, roblox_id: int | None) -> None:
     async with aiosqlite.connect(DB_STR) as db:
@@ -172,22 +229,41 @@ async def log_event(event: str, telegram_id: int | None, roblox_id: int | None) 
         )
         await db.commit()
 
+
 async def admin_stats() -> dict:
     async with aiosqlite.connect(DB_STR) as db:
-        cur = await db.execute('SELECT COUNT(*) FROM (SELECT DISTINCT telegram_id FROM authorized_users)')
+        # Все пользователи бота
+        cur = await db.execute('SELECT COUNT(*) FROM bot_users')
         total_users = (await cur.fetchone())[0]
-        cur = await db.execute("SELECT COUNT(*) FROM authorized_users WHERE date(linked_at) = date('now','localtime')")
+
+        # Новые пользователи за сегодня
+        cur = await db.execute("SELECT COUNT(*) FROM bot_users WHERE date(first_seen) = date('now','localtime')")
         new_today = (await cur.fetchone())[0]
+
+        # Активные пользователи за сегодня
+        cur = await db.execute("SELECT COUNT(*) FROM bot_users WHERE date(last_seen) = date('now','localtime')")
+        active_today = (await cur.fetchone())[0]
+
+        # Пользователи с привязанными аккаунтами
+        cur = await db.execute('SELECT COUNT(*) FROM (SELECT DISTINCT telegram_id FROM authorized_users)')
+        users_with_accounts = (await cur.fetchone())[0]
+
+        # Статистика проверок
         cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='check'")
         checks_total = (await cur.fetchone())[0]
-        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='check' AND date(created_at) = date('now','localtime')")
+        cur = await db.execute(
+            "SELECT COUNT(*) FROM metrics_events WHERE event='check' AND date(created_at) = date('now','localtime')")
         checks_today = (await cur.fetchone())[0]
+
     return {
         'total_users': total_users,
         'new_today': new_today,
+        'active_today': active_today,
+        'users_with_accounts': users_with_accounts,
         'checks_total': checks_total,
         'checks_today': checks_today
     }
+
 
 async def get_any_encrypted_cookie_by_roblox_id(roblox_id: int) -> Optional[str]:
     """Вернёт любую (первую попавшуюся) зашифрованную куку для данного roblox_id, если есть."""
@@ -198,6 +274,7 @@ async def get_any_encrypted_cookie_by_roblox_id(roblox_id: int) -> Optional[str]
         )
         row = await cur.fetchone()
         return row[0] if row else None
+
 
 async def upsert_account_snapshot(roblox_id: int, inventory_val: int, total_spent: int) -> None:
     async with aiosqlite.connect(DB_STR) as db:
@@ -214,6 +291,7 @@ async def upsert_account_snapshot(roblox_id: int, inventory_val: int, total_spen
         )
         await db.commit()
 
+
 async def get_account_snapshot(roblox_id: int) -> Optional[dict]:
     async with aiosqlite.connect(DB_STR) as db:
         cur = await db.execute(
@@ -224,6 +302,7 @@ async def get_account_snapshot(roblox_id: int) -> Optional[dict]:
         if not row:
             return None
         return {'inventory_val': row[0], 'total_spent': row[1], 'updated_at': row[2]}
+
 
 # =========================
 # NEW: глобальные хелперы для перебора кук
@@ -238,6 +317,7 @@ async def list_all_owners() -> List[int]:
             return [int(r[0]) for r in rows]
     except Exception:
         return []
+
 
 async def list_all_cookies() -> List[Tuple[int, int, str]]:
     """

