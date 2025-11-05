@@ -692,11 +692,13 @@ async def cb_menu(call: types.CallbackQuery) -> None:
             await edit_or_send(call.message, '❌ Ошибка при загрузке аккаунтов.', reply_markup=await kb_main_i18n(tg))
 
 
-@router.message(F.document)
+@router.message(F.document & F.document.file_name.endswith('.txt'))
 async def handle_txt_upload(message: types.Message) -> None:
-    tg = call.from_user.id
-    if not CFG.ALLOW_PUBLIC_COOKIE:
-        await edit_or_send(message, '⛔ Загрузка cookie разрешена только владельцу бота.',
+    tg = message.from_user.id
+
+    # Разрешаем если: публичная загрузка разрешена ИЛИ пользователь - владелец
+    if not CFG.ALLOW_PUBLIC_COOKIE and tg != CFG.OWNER_ID:
+        await edit_or_send(message, '⛔️ Загрузка cookie разрешена только владельцу бота.',
                            reply_markup=await kb_main_i18n(tg))
         return
     doc = message.document
