@@ -696,7 +696,6 @@ async def cb_menu(call: types.CallbackQuery) -> None:
 async def handle_txt_upload(message: types.Message) -> None:
     tg = message.from_user.id
 
-    # Разрешаем если: публичная загрузка разрешена ИЛИ пользователь - владелец
 
     doc = message.document
     name = (doc.file_name or '').lower()
