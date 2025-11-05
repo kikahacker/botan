@@ -152,6 +152,59 @@ except Exception:
     pass
 
 
+# === Automatic language enforcement on outgoing messages ===
+async def _ensure_lang_for_user_id(user_id: int, fallback: str = 'en') -> str:
+    try:
+        lang = await get_user_lang(storage, int(user_id), fallback=fallback)
+    except Exception:
+        lang = fallback
+    _CURRENT_LANG.set(lang)
+    set_current_lang(lang)
+    return lang
+
+def _patch_aiogram_message_methods():
+    # Monkey-patch aiogram.types.Message methods to always set user's lang
+    from aiogram.types import Message
+
+    async def _wrap_answer(self, *args, **kwargs):
+        user = getattr(self, 'from_user', None)
+        if user:
+            await _ensure_lang_for_user_id(user.id)
+        return await Message.__orig_answer(self, *args, **kwargs)
+
+    async def _wrap_reply(self, *args, **kwargs):
+        user = getattr(self, 'from_user', None)
+        if user:
+            await _ensure_lang_for_user_id(user.id)
+        return await Message.__orig_reply(self, *args, **kwargs)
+
+    async def _wrap_edit_text(self, *args, **kwargs):
+        user = getattr(self, 'from_user', None)
+        if user:
+            await _ensure_lang_for_user_id(user.id)
+        return await Message.__orig_edit_text(self, *args, **kwargs)
+
+    async def _wrap_answer_photo(self, *args, **kwargs):
+        user = getattr(self, 'from_user', None)
+        if user:
+            await _ensure_lang_for_user_id(user.id)
+        return await Message.__orig_answer_photo(self, *args, **kwargs)
+
+    if not getattr(Message, '_rbx_lang_patch_done', False):
+        Message.__orig_answer = Message.answer
+        Message.__orig_reply = Message.reply
+        Message.__orig_edit_text = Message.edit_text
+        Message.__orig_answer_photo = Message.answer_photo
+        Message.answer = _wrap_answer
+        Message.reply = _wrap_reply
+        Message.edit_text = _wrap_edit_text
+        Message.answer_photo = _wrap_answer_photo
+        Message._rbx_lang_patch_done = True
+
+_patch_aiogram_message_methods()
+
+
+
 # === Public info helpers ===
 async def _set_public_pending(tg_id: int, flag: bool, ttl: int = 600):
     try:
