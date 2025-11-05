@@ -415,16 +415,12 @@ async def edit_or_send(message: types.Message, text: str, reply_markup: Optional
 
 def kb_main() -> InlineKeyboardMarkup:
     rows = [
-        [
-            InlineKeyboardButton(text=L('menu.add_accounts') or '➕ Add accounts (.txt)', callback_data='menu:add'),
-            InlineKeyboardButton(text=L('menu.saved_accounts') or '🧾 Saved accounts', callback_data='menu:accounts'),
-        ],
-        [
-            InlineKeyboardButton(text=L('menu.public_info') or '🌐 Public info', callback_data='menu:public'),
-            InlineKeyboardButton(text=L('menu.delete_account') or '🗑 Delete account', callback_data='menu:delete'),
-        ],
-        [InlineKeyboardButton(text=L('menu.cookie_script') or '🧰 Cookie script', callback_data='menu:script')],
-        [InlineKeyboardButton(text=L('menu.settings') or '⚙️ Settings', callback_data='menu:settings')],
+        [InlineKeyboardButton(text=L('menu.add_accounts'),    callback_data='menu:add'),
+         InlineKeyboardButton(text=L('menu.saved_accounts'),  callback_data='menu:accounts')],
+        [InlineKeyboardButton(text=L('menu.public_info'),     callback_data='menu:public'),
+         InlineKeyboardButton(text=L('menu.delete_account'),  callback_data='menu:delete')],
+        [InlineKeyboardButton(text=L('menu.cookie_script'),   callback_data='menu:script')],
+        [InlineKeyboardButton(text=L('menu.settings'),        callback_data='menu:settings')],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

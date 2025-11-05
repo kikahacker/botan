@@ -37,7 +37,6 @@
     "all_off": "🚫 None"
   },
   "menu": {
-    "main": "🏠 Main menu",
     "add_accounts": "➕ Add accounts (.txt)",
     "cookie_script": "🧰 Cookie script",
     "delete_account": "🗑 Delete account",
@@ -53,7 +52,6 @@
   "kb": {
     "inventory": "📦 Inventory",
     "inventory_select": "🧩 Inventory (choose categories)",
-    "to_main": "🏠 Back to main menu",
     "accounts": "📋 Accounts list"
   },
   "profile": {
@@ -97,15 +95,17 @@
     "auto_ec50e4a25a": "⏳ Refreshing category…",
     "auto_f3d5341cc3": "❌ Failed to build inventory. Try again later.",
     "auto_f707b4e058": "msg.auto_f707b4e058",
-    "delete_pick_account": "Select an account to delete:"
+    "delete_pick_account": "Select an account to delete:",
+    "settings": "⚙️ Settings",
+    "welcome": "\uD83D\uDC4B Welcome to Raika bot!\n\n\uD83D\uDCF0 Our news channel - t.me/RaikaChecker\n\nUsing the bot, you automatically agree to the <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Terms of Service</a>"
   },
   "buttons": {
     "all_items": "📦 All items",
     "all_off": "buttons.all_off",
     "all_on": "🟢 All",
-    "back": "buttons.back",
+    "back": "🔙 Back",
     "back_to_profile": "buttons.back_to_profile",
-    "home": "🏠 Back to main menu",
+    "home": "\uD83D\uDD19 Back",
     "next": "✅ Next",
     "refresh": "🔄 Refresh",
     "refresh_category": "🔄 Refresh category"
@@ -138,13 +138,13 @@
   "messages": {
     "choose_categories": "Choose categories (toggle on/off):",
     "choose_language": "Choose your language:",
-    "welcome": "👋 Welcome! Choose an action below 👇"
+    "welcome": "\uD83D\uDC4B Welcome to Raika bot!\n\n\uD83D\uDCF0 Our news channel - t.me/RaikaChecker\n\nUsing the bot, you automatically agree to the <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Terms of Service</a>"
   },
   "nav": {
     "categories": "nav.categories",
     "inventory_categories": "🧩 Inventory (choose categories)",
     "to_accounts": "📋 Back to account list",
-    "to_home": "🏠 Back to main menu"
+    "to_home": "\uD83D\uDD19 Back"
   },
   "status": {
     "account_deleted": "🗑 Account deleted.",
@@ -155,7 +155,7 @@
     "no_accounts": "⚠️ No linked accounts yet.",
     "pick_file": "📄 Send a .txt file with the cookie."
   },
-  "welcome": "👋 Welcome! Choose an action below 👇",
+  "welcome": "\uD83D\uDC4B Welcome to Raika bot!\n\n\uD83D\uDCF0 Our news channel - t.me/RaikaChecker\n\nUsing the bot, you automatically agree to the <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Terms of Service</a>",
   "cat": {
     "accessories": "Accessories",
     "animations/emotes": "Animations / Emotes",

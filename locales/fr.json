@@ -1,124 +1,126 @@
+
 {
   "currency": {
     "robux": "R$"
   },
   "footer": {
-    "checked_by": "Vérifié par : {username}",
+    "checked_by": "Vérifié par : {username}",
     "domain": "raika.gg",
     "date": "{day} {month} {year}"
   },
   "inventory": {
     "title": "Inventaire",
-    "loading": "⏳ Chargement de l’inventaire par catégories…",
+    "loading": "⏳ Chargement de l'inventaire par catégories…",
     "empty": "🫙 Vide.",
-    "total_sum": "💰 Valeur totale de l’inventaire : {sum} R$",
-    "total_items": "📦 Articles avec prix : {count}",
-    "by_cat": "📂 {cat}\nTotal : {count} pcs · {sum} R$",
-    "full_title": "Full inventory",
+    "total_sum": "💰 Valeur totale de l'inventaire : {sum} R$",
+    "total_items": "📦 Articles avec prix : {count}",
+    "by_cat": "📂 {cat}\nTotal : {count} unités · {sum} R$",
+    "full_title": "Inventaire complet",
     "selected": {
-      "summary": "💰 Selected total: {total} R$\n📦 Items: {count}"
+      "summary": "💰 Total sélectionné : {total} R$\n📦 Articles : {count}"
     }
   },
   "app": {
-    "name": "Your Bot"
+    "name": "Votre Bot"
   },
   "lang": {
-    "choose": "Choisis ta langue :",
-    "saved": "✅ Language set to: {lang_name}"
+    "choose": "Choisissez votre langue :",
+    "saved": "✅ Langue définie sur : {lang_name}"
   },
   "btn": {
-    "lang": "🌐 Language",
-    "back": "⬅️ Back",
+    "lang": "🌐 Langue",
+    "back": "⬅️ Retour",
     "auto_8cd0fba739": "btn.auto_8cd0fba739",
-    "back_to_profile": "⬅️ Back to profile",
+    "back_to_profile": "⬅️ Retour au profil",
     "next": "✅ Suivant",
     "none": "🚫 Aucun",
     "all_on": "🟢 Tous",
     "all_off": "🚫 Aucun"
   },
   "menu": {
-    "main": "🏠 Main menu",
     "add_accounts": "➕ Ajouter des comptes (.txt)",
     "cookie_script": "🧰 Script de cookies",
     "delete_account": "🗑 Supprimer le compte",
     "saved_accounts": "🧾 Comptes enregistrés",
-    "public_info": "🌐 Infos publiques"
+    "public_info": "🌐 Infos publiques",
+    "settings": "⚙️ Paramètres"
   },
   "errors": {
-    "bad_callback": "❌ Invalid callback format.",
-    "generic": "❌ Error: {err}",
-    "archive_prep": "❌ Failed to prepare archive."
+    "bad_callback": "❌ Format de callback invalide.",
+    "generic": "❌ Erreur : {err}",
+    "archive_prep": "❌ Échec de la préparation de l'archive."
   },
   "kb": {
     "inventory": "📦 Inventaire",
-    "inventory_select": "🧩 Inventaire (choisir des catégories)",
-    "to_main": "🏠 Retour au menu principal",
-    "accounts": "📋 Accounts list"
+    "inventory_select": "🧩 Inventaire (choisir les catégories)",
+    "accounts": "📋 Liste des comptes"
   },
   "profile": {
-    "title": "Profile",
-    "user": "User",
-    "roblox_id": "Roblox ID: {id}",
-    "roblox_id_label": "Roblox ID:",
-    "username": "Username: {username}",
-    "username_label": "Username:",
-    "stats": "Statistics",
-    "favorites": "Favoris : {n}",
-    "favorites_label": "Favoris :",
-    "visits": "Visits: {n}",
-    "visits_label": "Visits:",
-    "spent_total": "💸 Spent all time: {value} R$",
-    "spent_total_label": "💸 Spent all time:",
-    "inventory_value": "💰 Inventory value: {value} R$",
-    "inventory_value_label": "💰 Inventory value:",
-    "inventory_private": "🔒 L’inventaire est privé",
-    "card": "📘 Account information\n👤 Name: {uname}\n🏷️ Display Name: {display_name}\n🆔 ID: {rid}\n📅 Created: {created}\n🌍 Country: {country}\n🧬 Gender: {gender}\n🎂 Date of birth: {birthday}\n📏 Age: {age}\n✉️ Email: {email} (Verified: {email_verified})\n💰 Robux: {robux}\n🧾 Total spent: {spent}\n🟢 Status: {status}"
+    "title": "Profil",
+    "user": "Utilisateur",
+    "roblox_id": "ID Roblox : {id}",
+    "roblox_id_label": "ID Roblox :",
+    "username": "Nom d'utilisateur : {username}",
+    "username_label": "Nom d'utilisateur :",
+    "stats": "Statistiques",
+    "favorites": "Favoris : {n}",
+    "favorites_label": "Favoris :",
+    "visits": "Visites : {n}",
+    "visits_label": "Visites :",
+    "spent_total": "💸 Dépensé au total : {value} R$",
+    "spent_total_label": "💸 Dépensé au total :",
+    "inventory_value": "💰 Valeur de l'inventaire : {value} R$",
+    "inventory_value_label": "💰 Valeur de l'inventaire :",
+    "inventory_private": "🔒 L'inventaire est privé",
+    "card": "📘 Informations du compte\n👤 Nom : {uname}\n🏷️ Nom d'affichage : {display_name}\n🆔 ID : {rid}\n📅 Créé : {created}\n🌍 Pays : {country}\n🧬 Genre : {gender}\n🎂 Date de naissance : {birthday}\n📏 Âge : {age}\n✉️ Email : {email} (Vérifié : {email_verified})\n💰 Robux : {robux}\n🧾 Total dépensé : {spent}\n🟢 Statut : {status}"
   },
   "msg": {
-    "auto_a6dc67d175": "❌ Error while preparing the archive.",
+    "auto_a6dc67d175": "❌ Erreur lors de la préparation de l'archive.",
     "auto_068e8874d3": "msg.auto_068e8874d3",
-    "auto_1dd76facf4": "⏳ Refreshing inventory…",
+    "auto_1dd76facf4": "⏳ Actualisation de l'inventaire…",
     "auto_2ea715f34f": "msg.auto_2ea715f34f",
     "auto_349c12ce4e": "msg.auto_349c12ce4e",
     "auto_5b9ec32c3a": "msg.auto_5b9ec32c3a",
     "auto_742e941465": "msg.auto_742e941465",
-    "auto_7581c6cb74": "⏳ Loading category…",
-    "auto_7d8934a45d": "⏳ Loading inventory…",
+    "auto_7581c6cb74": "⏳ Chargement de la catégorie…",
+    "auto_7d8934a45d": "⏳ Chargement de l'inventaire…",
     "auto_92248ed4b0": "msg.auto_92248ed4b0",
     "auto_9b3b905f3b": "msg.auto_9b3b905f3b",
-    "auto_b95899d0eb": "⚠️ Cookie kit is not available right now.",
-    "auto_bfed05f982": "⏳ Generating full inventory…",
-    "auto_c61051830f": "🫙 Aucun article tarifé dans cette catégorie.",
-    "auto_d43fb921bf": "🫙 Aucun article tarifé dans l’inventaire.",
+    "auto_b95899d0eb": "⚠️ Le kit de cookies n'est pas disponible pour le moment.",
+    "auto_bfed05f982": "⏳ Génération de l'inventaire complet…",
+    "auto_c61051830f": "🫙 Aucun article avec prix dans cette catégorie.",
+    "auto_d43fb921bf": "🫙 Aucun article avec prix dans l'inventaire.",
     "auto_d84b7d087c": "msg.auto_d84b7d087c",
-    "auto_e030221412": "⏳ Building inventory…",
+    "auto_e030221412": "⏳ Construction de l'inventaire…",
     "auto_e4d1ae989d": "msg.auto_e4d1ae989d",
-    "auto_ec50e4a25a": "⏳ Refreshing category…",
-    "auto_f3d5341cc3": "❌ Failed to build inventory. Try again later.",
+    "auto_ec50e4a25a": "⏳ Actualisation de la catégorie…",
+    "auto_f3d5341cc3": "❌ Échec de la construction de l'inventaire. Réessayez plus tard.",
     "auto_f707b4e058": "msg.auto_f707b4e058",
-    "delete_pick_account": "Select an account to delete:"
+    "delete_pick_account": "Sélectionnez un compte à supprimer :",
+    "settings": "⚙️ Paramètres",
+    "welcome": "\uD83D\uDC4B Bienvenue dans le bot Raika !\n\n\uD83D\uDCF0 Notre chaîne d'actualités - t.me/RaikaChecker\n\nEn utilisant le bot, vous acceptez automatiquement les <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Conditions d'utilisation</a>"
   },
   "buttons": {
     "all_items": "📦 Tous les articles",
     "all_off": "buttons.all_off",
     "all_on": "🟢 Tous",
-    "back": "buttons.back",
+    "back": "🔙 Retour",
     "back_to_profile": "buttons.back_to_profile",
-    "home": "🏠 Retour au menu principal",
+    "home": "\uD83D\uDD19 Retour",
     "next": "✅ Suivant",
     "refresh": "🔄 Actualiser",
     "refresh_category": "🔄 Actualiser la catégorie"
   },
   "caption": {
-    "auto_76b7d0778c": "Inventaire complet",
-    "accounts_list": "📋 Accounts"
+    "auto_76b7d0778c": "Inventaire Complet",
+    "accounts_list": "📋 Comptes"
   },
   "captions": {
     "accounts_list": "captions.accounts_list"
   },
   "common": {
-    "no": "No",
-    "yes": "Yes",
+    "no": "Non",
+    "yes": "Oui",
     "male": "Homme",
     "female": "Femme",
     "unknown": "Inconnu",
@@ -126,40 +128,40 @@
     "banned": "Banni"
   },
   "cookie": {
-    "instructions": "Use the kit below to extract your .ROBLOSECURITY cookie in Chromium and upload it here as a .txt.",
-    "kit_caption": "Kit to extract cookie (.ROBLOSECURITY). Run batnik.bat, log in, press Enter, then send cookies.txt here."
+    "instructions": "Utilisez le kit ci-dessous pour extraire votre cookie .ROBLOSECURITY dans Chromium et téléchargez-le ici en .txt.",
+    "kit_caption": "Kit pour extraire le cookie (.ROBLOSECURITY). Exécutez batnik.bat, connectez-vous, appuyez sur Entrée, puis envoyez cookies.txt ici."
   },
   "err": {
-    "download_file": "❌ Failed to download the file: {error}",
-    "profile_load": "❌ Failed to load profile.",
-    "read_file": "❌ Failed to read the file: {error}"
+    "download_file": "❌ Échec du téléchargement du fichier : {error}",
+    "profile_load": "❌ Échec du chargement du profil.",
+    "read_file": "❌ Échec de la lecture du fichier : {error}"
   },
   "messages": {
-    "choose_categories": "Choisir des catégories (activer/désactiver) :",
-    "choose_language": "Choisis ta langue :",
-    "welcome": "👋 Welcome! Choose an action below 👇"
+    "choose_categories": "Choisissez les catégories (activer/désactiver) :",
+    "choose_language": "Choisissez votre langue :",
+    "welcome": "\uD83D\uDC4B Bienvenue dans le bot Raika !\n\n\uD83D\uDCF0 Notre chaîne d'actualités - t.me/RaikaChecker\n\nEn utilisant le bot, vous acceptez automatiquement les <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Conditions d'utilisation</a>"
   },
   "nav": {
     "categories": "nav.categories",
-    "inventory_categories": "🧩 Inventaire (choisir des catégories)",
+    "inventory_categories": "🧩 Inventaire (choisir les catégories)",
     "to_accounts": "📋 Retour à la liste des comptes",
-    "to_home": "🏠 Retour au menu principal"
+    "to_home": "\uD83D\uDD19 Retour"
   },
   "status": {
     "account_deleted": "🗑 Compte supprimé.",
-    "added_result": "✅ Added: {ok}\n❌ Bad: {bad}",
-    "done_back_home": "✅ Done. Back to home?",
-    "file_empty": "⚠️ File is empty.",
-    "loading_profile": "Loading profile…",
-    "no_accounts": "⚠️ No linked accounts yet.",
-    "pick_file": "📄 Send a .txt file with the cookie."
+    "added_result": "✅ Ajoutés : {ok}\n❌ Incorrects : {bad}",
+    "done_back_home": "✅ Terminé. Retour à l'accueil ?",
+    "file_empty": "⚠️ Le fichier est vide.",
+    "loading_profile": "Chargement du profil…",
+    "no_accounts": "⚠️ Aucun compte lié pour le moment.",
+    "pick_file": "📄 Envoyez un fichier .txt avec le cookie."
   },
-  "welcome": "👋 Welcome! Choose an action below 👇",
+  "welcome": "\uD83D\uDC4B Bienvenue dans le bot Raika !\n\n\uD83D\uDCF0 Notre chaîne d'actualités - t.me/RaikaChecker\n\nEn utilisant le bot, vous acceptez automatiquement les <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Conditions d'utilisation</a>",
   "cat": {
     "accessories": "Accessoires",
     "animations/emotes": "Animations / Émotes",
     "audio": "Audio",
-    "bundles/packages": "Bundles / Packs",
+    "bundles/packages": "Bundles / Packages",
     "classic_clothes": "Vêtements classiques",
     "emotes": "Émotes",
     "faces": "Visages",
@@ -169,10 +171,13 @@
     "heads": "Têtes"
   },
   "public": {
-    "ask_id": "🆔 Envoie un ID Roblox pour afficher les infos publiques.",
-    "note_limited": "ℹ️ Mode public : certaines données ne sont pas disponibles sans cookie.",
-    "bad_id": "⚠️ ID invalide. Envoie un nombre (ex. : 123456789).",
-    "not_found": "❌ Utilisateur introuvable ou indisponible.",
-    "inventory_private": "⚠️ This user's inventory is private on Roblox."
+    "ask_id": "🆔 Envoyez un ID Roblox pour afficher les infos publiques.",
+    "note_limited": "ℹ️ Mode public : certaines données ne sont pas disponibles sans cookie.",
+    "bad_id": "⚠️ ID invalide. Envoyez un numéro (ex. : 123456789).",
+    "not_found": "❌ Utilisateur non trouvé ou indisponible.",
+    "inventory_private": "⚠️ L'inventaire de cet utilisateur est privé sur Roblox."
+  },
+  "settings": {
+    "title": "⚙️ Paramètres"
   }
 }
