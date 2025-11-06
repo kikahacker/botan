@@ -810,7 +810,6 @@ async def cb_menu(call: types.CallbackQuery) -> None:
     elif action == 'script':
         try:
             text = L("cookie.instructions")
-            await edit_or_send(call.message, text, reply_markup=await kb_main_i18n(tg), photo=_asset_or_none('script'))
             zip_path = create_cookie_zip(tg)
             if os.path.exists(zip_path):
                 await call.message.answer_document(FSInputFile(zip_path, filename='cookie_kit.zip'),
@@ -821,6 +820,7 @@ async def cb_menu(call: types.CallbackQuery) -> None:
                     pass
             else:
                 await call.message.answer(L('msg.auto_b95899d0eb'))
+            await edit_or_send(call.message, text, reply_markup=kb_only_back(), photo=_asset_or_none('script'))
         except Exception as e:
             logger.error(f'menu:script zip error: {e}')
             await call.message.answer(L('msg.cookie_script_error'))
