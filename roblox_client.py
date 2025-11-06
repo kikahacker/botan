@@ -175,7 +175,7 @@ async def _get_inventory_pages_fast(
         limit: int = INV_BATCH_SIZE,
 ) -> List[int]:
     """
-    БЫСТРАЯ версия - с уменьшенными таймаутами и лимитами
+    БЫСТРАЯ версия - с уменьшенными таймаутами и лимитами + АВТОСМЕНА ПРОКСИ
     """
     endpoint = INVENTORY_URL.format(uid=uid, asset_type=asset_type)
     items: List[int] = []
@@ -195,6 +195,7 @@ async def _get_inventory_pages_fast(
         last_err: Optional[str] = None
 
         for attempt in range(1, INV_MAX_RETRIES + 1):
+            # НОВАЯ прокси на КАЖДУЮ попытку!
             proxy = PROXY_POOL.any()
             client = await get_client(proxy)
             try:
@@ -221,20 +222,20 @@ async def _get_inventory_pages_fast(
                     cursor = js.get("nextPageCursor")
                     ok = True
                     log.info(
-                        f"[inv_fast] page uid={uid} type={asset_type} page={page_num + 1} items={len(data)} next={bool(cursor)} dt={dt:.3f}s")
+                        f"[inv_fast] page uid={uid} type={asset_type} page={page_num + 1} items={len(data)} next={bool(cursor)} dt={dt:.3f}s proxy_used=True")
                     break
 
-                # временные статусы — повторяем
+                # временные статусы — повторяем с НОВОЙ прокси
                 if status in (429, 500, 502, 503, 504):
                     last_err = f"http {status}"
-                    log.warning(f"[inv_fast] uid={uid} type={asset_type} {last_err}, attempt={attempt}")
+                    log.warning(f"[inv_fast] uid={uid} type={asset_type} {last_err}, attempt={attempt}, proxy_changed=True")
                     await _sleep_backoff(attempt)
-                    continue
+                    continue  # на следующей попытке будет НОВАЯ прокси
 
-                # 403 — может быть как временным (proxy/geo), так и из-за куки
+                # 403 — меняем прокси
                 if status == 403:
                     last_err = "http 403"
-                    log.warning(f"[inv_fast] uid={uid} type={asset_type} {last_err}, attempt={attempt}")
+                    log.warning(f"[inv_fast] uid={uid} type={asset_type} {last_err}, attempt={attempt}, proxy_changed=True")
                     await _sleep_backoff(attempt)
                     continue
 
@@ -245,7 +246,7 @@ async def _get_inventory_pages_fast(
 
             except Exception as e:
                 last_err = f"exc {type(e).__name__}: {e}"
-                log.warning(f"[inv_fast] uid={uid} type={asset_type} {last_err}, attempt={attempt}")
+                log.warning(f"[inv_fast] uid={uid} type={asset_type} {last_err}, attempt={attempt}, proxy_changed=True")
                 await _sleep_backoff(attempt)
 
         if not ok:
@@ -316,14 +317,20 @@ async def _post_catalog_details_once(items, cookie, proxy, csrf=None):
 
 
 async def _catalog_batch_fast(items, cookie, retries: int) -> List[Dict[str, Any]]:
+    """
+    БЫСТРАЯ версия с АВТОСМЕНОЙ ПРОКСИ при ретраях
+    """
     attempt = 0
     csrf = None
     while attempt <= retries:
+        # НОВАЯ прокси на КАЖДУЮ попытку!
         proxy = PROXY_POOL.any()
         try:
             resp = await _post_catalog_details_once(items, cookie, proxy, csrf=csrf)
             if resp.status_code == 403 and CSRF_HEADER in resp.headers:
                 csrf = resp.headers.get(CSRF_HEADER)
+                # При CSRF-retry тоже меняем прокси!
+                proxy = PROXY_POOL.any()
                 resp = await _post_catalog_details_once(items, cookie, proxy, csrf=csrf)
             resp.raise_for_status()
             js = resp.json()
@@ -335,14 +342,15 @@ async def _catalog_batch_fast(items, cookie, retries: int) -> List[Dict[str, Any
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429 and attempt < retries:
                 attempt += 1
-                await asyncio.sleep(0.1 * attempt)  # уменьшил задержку
-                csrf = None
-                continue
+                await asyncio.sleep(0.1 * attempt)
+                csrf = None  # сбрасываем CSRF при смене прокси
+                continue  # новая прокси на следующей итерации
             return []
         except Exception:
             if attempt < retries:
                 attempt += 1
-                await asyncio.sleep(0.1 * attempt)  # уменьшил задержку
+                await asyncio.sleep(0.1 * attempt)
+                csrf = None  # сбрасываем CSRF
                 continue
             return []
     return []
@@ -568,6 +576,7 @@ async def get_total_spent_robux(uid: int, cookie: str) -> int:
     pages = 0
     consecutive_errors = 0
     while pages < 2000:
+        # НОВАЯ прокси на каждый запрос
         proxy = PROXY_POOL.any()
         client = await get_client(proxy)
         try:

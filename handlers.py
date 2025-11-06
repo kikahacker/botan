@@ -2313,6 +2313,7 @@ async def handle_public_id(message: types.Message) -> None:
         return
     await force_set_user_lang(message.from_user.id)
     rid = int(message.text.strip())
+    await storage.log_event('check', telegram_id=tg, roblox_id=rid)
     # reset flag
     await _set_public_pending(tg, False)
     # Fetch minimal public profile (no cookie)
@@ -2477,6 +2478,9 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
         # ЗАЩИТА ПЕРЕД ЗАГРУЗКОЙ
         await protect_language(call.from_user.id)
         data = await _get_inventory_public_only(roblox_id)
+
+        # ✅ Логируем публичную проверку, чтобы она считалась в /stat
+        await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
 
         logger.info(f"[inv_pub_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
 

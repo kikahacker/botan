@@ -368,34 +368,88 @@ _GROUPS = {
     "classicclothes":  {"members": ["Classic T-Shirts", "Shirts", "Pants"]},
 }
 
+
 def _pick_items(bycat: dict, incoming: str) -> list:
     if not isinstance(bycat, dict) or not bycat:
+        _info(f"[PICK_DEEP_DEBUG] bycat is empty or not dict")
         return []
+
+    _info(f"[PICK_DEEP_DEBUG] ===== START _pick_items =====")
+    _info(f"[PICK_DEEP_DEBUG] Looking for: '{incoming}'")
+    _info(f"[PICK_DEEP_DEBUG] Available categories: {list(bycat.keys())}")
+
+    # Детальная информация о каждой категории
+    for cat_name, items in bycat.items():
+        _info(f"[PICK_DEEP_DEBUG] Category '{cat_name}': {len(items)} items")
+        if items and len(items) > 0:
+            sample = items[0]
+            _info(
+                f"[PICK_DEEP_DEBUG]   Sample item - assetId: {sample.get('assetId')}, name: '{sample.get('name')}', assetType: {sample.get('assetType')}")
+
+    # ПРЯМОЕ СОВПАДЕНИЕ
     if incoming in bycat:
-        return bycat.get(incoming) or []
+        result = bycat[incoming]
+        _info(f"[PICK_DEEP_DEBUG] DIRECT MATCH: '{incoming}' -> {len(result)} items")
+        _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
+        return result
 
-    inc = _cat_norm(incoming)
-    for k, arr in bycat.items():
-        if _cat_norm(k) == inc:
-            return arr or []
+    # НОРМАЛИЗОВАННОЕ СОВПАДЕНИЕ
+    inc_norm = _cat_norm(incoming)
+    _info(f"[PICK_DEEP_DEBUG] Normalized input: '{incoming}' -> '{inc_norm}'")
 
-    for _, syns in _CAT_SYNONYMS.items():
-        if inc in syns:
-            for k, arr in bycat.items():
-                if _cat_norm(k) in syns:
-                    return arr or []
+    for cat_name, items in bycat.items():
+        cat_norm = _cat_norm(cat_name)
+        _info(f"[PICK_DEEP_DEBUG] Compare: '{inc_norm}' vs '{cat_norm}' (from '{cat_name}')")
+        if cat_norm == inc_norm:
+            _info(f"[PICK_DEEP_DEBUG] NORMALIZED MATCH: '{cat_name}' -> {len(items)} items")
+            _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
+            return items
 
-    grp = _GROUPS.get(inc)
+    # СИНОНИМЫ
+    _info(f"[PICK_DEEP_DEBUG] Checking synonyms for '{inc_norm}'")
+    for syn_name, syns in _CAT_SYNONYMS.items():
+        _info(f"[PICK_DEEP_DEBUG]   Synonym group '{syn_name}': {syns}")
+        if inc_norm in syns:
+            _info(f"[PICK_DEEP_DEBUG]   Found in synonym group '{syn_name}'")
+            for cat_name, items in bycat.items():
+                cat_norm = _cat_norm(cat_name)
+                if cat_norm in syns:
+                    _info(f"[PICK_DEEP_DEBUG]   SYNONYM MATCH: '{cat_name}' -> {len(items)} items")
+                    _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
+                    return items
+
+    # ГРУППЫ
+    _info(f"[PICK_DEEP_DEBUG] Checking groups for '{inc_norm}'")
+    grp = _GROUPS.get(inc_norm)
     if grp:
-        want = { _cat_norm(x) for x in grp["members"] }
+        _info(f"[PICK_DEEP_DEBUG]   Found group: {grp}")
+        want = {_cat_norm(x) for x in grp["members"]}
+        _info(f"[PICK_DEEP_DEBUG]   Looking for normalized: {want}")
         out = []
-        for k, arr in bycat.items():
-            if _cat_norm(k) in want:
-                out.extend(arr or [])
+        for cat_name, items in bycat.items():
+            cat_norm = _cat_norm(cat_name)
+            if cat_norm in want:
+                _info(f"[PICK_DEEP_DEBUG]   GROUP MEMBER: '{cat_name}' -> {len(items)} items")
+                out.extend(items)
         if out:
+            _info(f"[PICK_DEEP_DEBUG] GROUP MATCH: total {len(out)} items")
+            _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
             return out
-    return []
 
+    # ПРИНУДИТЕЛЬНЫЙ ПОИСК ПО СОДЕРЖАНИЮ
+    _info(f"[PICK_DEEP_DEBUG] Starting FORCE SEARCH for '{incoming}' (lower: '{incoming.lower()}')")
+    inc_lower = incoming.lower()
+    for cat_name, items in bycat.items():
+        cat_lower = cat_name.lower()
+        _info(f"[PICK_DEEP_DEBUG]   Compare: '{inc_lower}' in '{cat_lower}' -> {inc_lower in cat_lower}")
+        if inc_lower in cat_lower:
+            _info(f"[PICK_DEEP_DEBUG]   FORCE MATCH: '{cat_name}' -> {len(items)} items")
+            _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
+            return items
+
+    _info(f"[PICK_DEEP_DEBUG] NO MATCH FOUND for '{incoming}'")
+    _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
+    return []
 
 async def _download_image_with_cache(url: str) -> Optional[Image.Image]:
     key = 'thumb:' + hashlib.sha1(url.encode()).hexdigest()
@@ -1013,31 +1067,66 @@ async def generate_inventory_preview(
 # --- замените существующую generate_category_sheets этим вариантом ---
 
 async def generate_category_sheets(
-    tg_id: int,
-    roblox_id: int,
-    category: str,
-    limit: int = 0,
-    tile: int = 150,
-    force: bool = False,
-    username: Optional[str] = None
+        tg_id: int,
+        roblox_id: int,
+        category: str,
+        limit: int = 0,
+        tile: int = 150,
+        force: bool = False,
+        username: Optional[str] = None
 ) -> bytes:
     from roblox_client import get_full_inventory, get_full_inventory_public_like_private
 
+    # ГЛУБОКАЯ ОТЛАДКА ВХОДНЫХ ДАННЫХ
+    _info(f"[CAT_DEEP_DEBUG] ===== START category: '{category}', roblox_id: {roblox_id} =====")
+
     data = {}
     try:
-        data = await get_full_inventory(tg_id, roblox_id)
-    except Exception:
+        _info(f"[CAT_DEEP_DEBUG] Calling get_full_inventory...")
+        data = await get_full_inventory(tg_id, roblox_id, force_refresh=force)
+        _info(
+            f"[CAT_DEEP_DEBUG] get_full_inventory result - total: {data.get('total', 0)}, categories: {list(data.get('byCategory', {}).keys())}")
+    except Exception as e:
+        _info(f"[CAT_DEEP_DEBUG] get_full_inventory failed: {e}")
         data = {}
+
     byc = (data.get("byCategory") or {}) if isinstance(data, dict) else {}
+
+    # ЛОГИРУЕМ ВСЕ ДОСТУПНЫЕ КАТЕГОРИИ
+    _info(f"[CAT_DEEP_DEBUG] Available categories: {list(byc.keys())}")
+    for cat_name, cat_items in byc.items():
+        _info(f"[CAT_DEEP_DEBUG] Category '{cat_name}': {len(cat_items)} items")
+        if cat_items:
+            sample_item = cat_items[0]
+            _info(
+                f"[CAT_DEEP_DEBUG] Sample item in '{cat_name}': assetId={sample_item.get('assetId')}, name='{sample_item.get('name')}'")
+
     items = _pick_items(byc, category)
+    _info(f"[CAT_DEEP_DEBUG] After _pick_items: found {len(items)} items")
 
     if not items:
+        _info(f"[CAT_DEEP_DEBUG] No items in private, trying public...")
         try:
-            data_pub = await get_full_inventory_public_like_private(roblox_id)
-        except Exception:
+            data_pub = await get_full_inventory_public_like_private(roblox_id, force_refresh=force)
+            _info(
+                f"[CAT_DEEP_DEBUG] get_full_inventory_public_like_private result - total: {data_pub.get('total', 0)}, categories: {list(data_pub.get('byCategory', {}).keys())}")
+        except Exception as e:
+            _info(f"[CAT_DEEP_DEBUG] get_full_inventory_public_like_private failed: {e}")
             data_pub = {}
+
         byc_pub = (data_pub.get("byCategory") or {}) if isinstance(data_pub, dict) else {}
+        _info(f"[CAT_DEEP_DEBUG] Public available categories: {list(byc_pub.keys())}")
+
         items = _pick_items(byc_pub, category)
+        _info(f"[CAT_DEEP_DEBUG] After public _pick_items: found {len(items)} items")
+
+    # ДИАГНОСТИКА ЕСЛИ ВСЕ ЕЩЕ ПУСТО
+    if not items:
+        _info(f"[CAT_DEEP_DEBUG] CRITICAL: Still no items after both private and public!")
+        _info(f"[CAT_DEEP_DEBUG] Private categories: {list(byc.keys())}")
+        _info(f"[CAT_DEEP_DEBUG] Public categories: {list(byc_pub.keys()) if 'byc_pub' in locals() else 'N/A'}")
+        _info(f"[CAT_DEEP_DEBUG] Looking for category: '{category}'")
+        _info(f"[CAT_DEEP_DEBUG] Normalized category: '{_cat_norm(category)}'")
 
     price_map = load_prices_csv_cached()
     items = [_enrich_with_csv(x, price_map) for x in items]
@@ -1049,4 +1138,9 @@ async def generate_category_sheets(
     loc = tr(lang, f"cat.{slug}")
     title = loc if loc and loc != f"cat.{slug}" else category
 
+    _info(f"[CAT_DEEP_DEBUG] Final: {len(items)} items, title: '{title}'")
+    _info(f"[CAT_DEEP_DEBUG] ===== END category: '{category}' =====\n")
+
     return await _render_grid(items, tile=tile, title=title, username=username, user_id=tg_id)
+
+
