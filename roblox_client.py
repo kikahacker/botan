@@ -7,9 +7,9 @@ def _to_int(v):
     except Exception:
         return 0
 
-_COOKIE_CACHE: dict[str, dict] = {}
-_COOKIE_CACHE_TIME: float = 0.0
-_COOKIE_CACHE_TTL: float = 300.0  # seconds
+_COOKIE_CACHE: Dict[int, str] = {}
+_COOKIE_CACHE_TIME: Dict[int, float] = {}
+_COOKIE_CACHE_TTL = 300  # seconds
 import asyncio
 import csv
 import hashlib
@@ -155,7 +155,7 @@ try:
 except NameError:
     _COOKIE_CACHE: dict[str, dict] = {}
     _COOKIE_CACHE_TIME: float = 0.0
-    _COOKIE_CACHE_TTL: float = 300.0  # seconds
+    COOKIE_CACHE_TTL = 300  # seconds
 
 async def _sleep_backoff(attempt: int) -> None:
     """

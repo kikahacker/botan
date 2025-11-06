@@ -1961,6 +1961,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
         # ЗАЩИТА ПЕРЕД ЗАГРУЗКОЙ
         await protect_language(call.from_user.id)
         data = await _get_inventory_cached(tg, roblox_id)
+        await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
 
         logger.info(f"[inv_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
 
