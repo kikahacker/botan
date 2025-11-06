@@ -7,6 +7,9 @@ def _to_int(v):
     except Exception:
         return 0
 
+_COOKIE_CACHE: dict[str, dict] = {}
+_COOKIE_CACHE_TIME: float = 0.0
+_COOKIE_CACHE_TTL: float = 300.0  # seconds
 import asyncio
 import csv
 import hashlib
@@ -30,14 +33,21 @@ CATALOG_DETAILS_URL = "https://catalog.roblox.com/v1/catalog/items/details"
 CSRF_HEADER = "x-csrf-token"
 BATCH_SIZE = 120
 
-INV_TTL = int(getattr(CFG, "CACHE_INV_TTL", 3600))
-CATALOG_CONCURRENCY = int(getattr(CFG, "CATALOG_CONCURRENCY", 24))
-CATALOG_RETRIES = int(getattr(CFG, "CATALOG_RETRIES", 6))
+INV_TTL = int(getattr(CFG, "CACHE_INV_TTL", 1800))  # уменьшил для скорости
+CATALOG_CONCURRENCY = int(getattr(CFG, "CATALOG_CONCURRENCY", 64))  # увеличил
+CATALOG_RETRIES = int(getattr(CFG, "CATALOG_RETRIES", 2))  # уменьшил
 
 # === Retry/backoff knobs (can be overridden via ENV) ===
-INV_MAX_RETRIES = int(os.getenv("INV_MAX_RETRIES", "4"))
-INV_BACKOFF_BASE_MS = int(os.getenv("INV_BACKOFF_BASE_MS", "300"))
-INV_BACKOFF_CAP_MS = int(os.getenv("INV_BACKOFF_CAP_MS", "2500"))
+INV_MAX_RETRIES = int(os.getenv("INV_MAX_RETRIES", "2"))  # уменьшил
+INV_BACKOFF_BASE_MS = int(os.getenv("INV_BACKOFF_BASE_MS", "150"))  # уменьшил
+INV_BACKOFF_CAP_MS = int(os.getenv("INV_BACKOFF_CAP_MS", "1000"))  # уменьшил
+
+# === Новые настройки для скорости ===
+INV_PARALLEL_TYPES = int(os.getenv("INV_PARALLEL_TYPES", "16"))  # параллелизм типов
+INV_BATCH_SIZE = int(os.getenv("INV_BATCH_SIZE", "200"))  # размер батча
+INV_TIMEOUT_PER_PAGE = float(os.getenv("INV_TIMEOUT_PER_PAGE", "4.0"))  # таймаут страницы
+PUBLIC_MODE_MAX_COOKIES = int(os.getenv("PUBLIC_MODE_MAX_COOKIES", "2"))  # максимум куки
+PUBLIC_MODE_TIMEOUT = float(os.getenv("PUBLIC_MODE_TIMEOUT", "8.0"))  # общий таймаут
 
 log = logging.getLogger("roblox_client")
 os.makedirs('logs', exist_ok=True)
@@ -46,10 +56,11 @@ if not log.handlers:
     _fh = logging.FileHandler(os.path.join('logs', 'roblox_client.log'), encoding='utf-8')
     _fh.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s", "%H:%M:%S"))
     log.addHandler(_fh)
+
 ASSET_TYPE_TO_CATEGORY = {
-    2:  "Classic Clothes",
-    3:  "Audio",
-    8:  "Hats",
+    2: "Classic Clothes",
+    3: "Audio",
+    8: "Hats",
     11: "Classic Clothes",
     12: "Classic Clothes",
     17: "Heads",
@@ -69,8 +80,8 @@ ASSET_TYPE_TO_CATEGORY = {
     50: "Accessories",
     61: "Emotes",
     # excluded (оставлены для полноты)
-    4:  "Meshes",
-    9:  "Places",
+    4: "Meshes",
+    9: "Places",
     10: "Models",
     13: "Decals",
     21: "Badges",
@@ -85,6 +96,7 @@ _ACCESSORY_FAMILY = {
     "Back Accessory", "Waist Accessory", "Shirt Accessories", "Pants Accessories",
     "Gear Accessories", "Accessories"
 }
+
 
 def _canon_cat(name: str) -> str:
     n = (name or "").strip()
@@ -103,7 +115,8 @@ def _asbool(v: str, default: bool = False) -> bool:
         return default
     return str(v).strip().lower() in ("1", "true", "yes", "y", "on")
 
-PRICE_LOG_ENABLED = _asbool(os.getenv("PRICE_LOG", "true"))  # лог в файл включён по умолчанию
+
+PRICE_LOG_ENABLED = _asbool(os.getenv("PRICE_LOG", "false"))  # ВЫКЛЮЧИЛ для скорости
 LOG_DIR = os.getenv("IMAGEGEN_LOG_DIR", "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -118,6 +131,7 @@ if not _price_logger.handlers:
     _fh.setFormatter(_fmt)
     _price_logger.addHandler(_fh)
 
+
 def _price_log(line: str):
     if PRICE_LOG_ENABLED:
         _price_logger.info(line)
@@ -126,16 +140,26 @@ def _price_log(line: str):
 def _category_for_asset_type(asset_type: int) -> str:
     return ASSET_TYPE_TO_CATEGORY.get(int(asset_type), "Accessories")
 
+
 def _cookie_headers(cookie: Optional[str]) -> Dict[str, str]:
     return {"Cookie": f".ROBLOSECURITY={cookie}"} if cookie else {}
 
 
 # ===================== Надёжная пагинация инвентаря =====================
 
+# --- Cookie cache (used by public/private full-inventory helpers)
+try:
+    _COOKIE_CACHE
+    _COOKIE_CACHE_TIME
+    _COOKIE_CACHE_TTL
+except NameError:
+    _COOKIE_CACHE: dict[str, dict] = {}
+    _COOKIE_CACHE_TIME: float = 0.0
+    _COOKIE_CACHE_TTL: float = 300.0  # seconds
+
 async def _sleep_backoff(attempt: int) -> None:
     """
     Экспоненциальный бэкофф с полным джиттером.
-    0.3s, 0.6s, 1.2s ... capped by INV_BACKOFF_CAP_MS.
     """
     base = INV_BACKOFF_BASE_MS / 1000.0
     cap = INV_BACKOFF_CAP_MS / 1000.0
@@ -143,23 +167,26 @@ async def _sleep_backoff(attempt: int) -> None:
     delay = random.uniform(0.6 * delay, 1.2 * delay)
     await asyncio.sleep(delay)
 
-async def _get_inventory_pages(
-    uid: int,
-    asset_type: int,
-    cookie: Optional[str],
-    limit: int = 100,
+
+async def _get_inventory_pages_fast(
+        uid: int,
+        asset_type: int,
+        cookie: Optional[str],
+        limit: int = INV_BATCH_SIZE,
 ) -> List[int]:
     """
-    Тянем ВСЕ страницы по одному типу ассетов с ретраями и логами причин.
-    На фаталах не кидаем исключения — возвращаем то, что успели собрать (возможно пусто).
+    БЫСТРАЯ версия - с уменьшенными таймаутами и лимитами
     """
     endpoint = INVENTORY_URL.format(uid=uid, asset_type=asset_type)
     items: List[int] = []
     cursor: Optional[str] = None
 
-    log.info(f"[inv] begin uid={uid} type={asset_type} limit={limit}")
+    log.info(f"[inv_fast] begin uid={uid} type={asset_type} limit={limit}")
     t_start = time.time()
-    while True:
+
+    max_pages = 3  # максимум страниц для скорости
+
+    for page_num in range(max_pages):
         params = {"limit": limit, "sortOrder": "Desc"}
         if cursor:
             params["cursor"] = cursor
@@ -167,7 +194,6 @@ async def _get_inventory_pages(
         ok = False
         last_err: Optional[str] = None
 
-        # каждый "шаг" (страница) — с несколькими попытками
         for attempt in range(1, INV_MAX_RETRIES + 1):
             proxy = PROXY_POOL.any()
             client = await get_client(proxy)
@@ -177,21 +203,15 @@ async def _get_inventory_pages(
                     endpoint,
                     params=params,
                     headers=_cookie_headers(cookie),
-                    timeout=httpx.Timeout(8.0, connect=2.0, read=6.0),
+                    timeout=httpx.Timeout(INV_TIMEOUT_PER_PAGE, connect=1.2, read=3.0),  # уменьшил таймауты
                 )
                 status = resp.status_code
                 dt = time.time() - t_req
-                try:
-                    _js = resp.json() if status == 200 else {}
-                    _len = len((_js or {}).get('data') or [])
-                    _next = bool((_js or {}).get('nextPageCursor'))
-                except Exception:
-                    _len, _next = 0, False
-                log.info(f"[inv] page uid={uid} type={asset_type} status={status} items={_len} next={_next} dt={dt:.3f}s")
 
                 if status == 200:
                     js = resp.json() or {}
-                    for it in js.get("data") or []:
+                    data = js.get("data") or []
+                    for it in data:
                         aid = it.get("assetId") or it.get("id")
                         try:
                             if aid is not None:
@@ -200,43 +220,41 @@ async def _get_inventory_pages(
                             pass
                     cursor = js.get("nextPageCursor")
                     ok = True
+                    log.info(
+                        f"[inv_fast] page uid={uid} type={asset_type} page={page_num + 1} items={len(data)} next={bool(cursor)} dt={dt:.3f}s")
                     break
 
                 # временные статусы — повторяем
                 if status in (429, 500, 502, 503, 504):
                     last_err = f"http {status}"
-                    log.warning(f"[inv] uid={uid} type={asset_type} {last_err}, attempt={attempt}")
+                    log.warning(f"[inv_fast] uid={uid} type={asset_type} {last_err}, attempt={attempt}")
                     await _sleep_backoff(attempt)
                     continue
 
                 # 403 — может быть как временным (proxy/geo), так и из-за куки
                 if status == 403:
                     last_err = "http 403"
-                    log.warning(f"[inv] uid={uid} type={asset_type} {last_err} (cookie/proxy?), attempt={attempt}")
+                    log.warning(f"[inv_fast] uid={uid} type={asset_type} {last_err}, attempt={attempt}")
                     await _sleep_backoff(attempt)
                     continue
 
                 # остальное — считаем фаталом
                 last_err = f"http {status}"
-                log.error(f"[inv] uid={uid} type={asset_type} fatal {last_err}: {resp.text[:200]}")
+                log.error(f"[inv_fast] uid={uid} type={asset_type} fatal {last_err}")
                 return items
 
             except Exception as e:
                 last_err = f"exc {type(e).__name__}: {e}"
-                log.warning(f"[inv] uid={uid} type={asset_type} {last_err}, attempt={attempt}")
+                log.warning(f"[inv_fast] uid={uid} type={asset_type} {last_err}, attempt={attempt}")
                 await _sleep_backoff(attempt)
 
         if not ok:
-            # выгорели все попытки для этой страницы
-            log.error(f"[inv] uid={uid} type={asset_type} giving up after retries; collected={len(items)} last_err={last_err}")
+            log.error(f"[inv_fast] uid={uid} type={asset_type} giving up; collected={len(items)}")
             return items
 
         # следующая страница?
         if not cursor:
             break
-
-        # в редких случаях полезно чуть уступить API
-        await asyncio.sleep(0)
 
     # uniq
     seen = set()
@@ -245,31 +263,43 @@ async def _get_inventory_pages(
         if a not in seen:
             out.append(a)
             seen.add(a)
-    log.info(f"[inv] end uid={uid} type={asset_type} collected={len(items)} uniq={len(out)} dt={time.time()-t_start:.3f}s")
+    log.info(
+        f"[inv_fast] end uid={uid} type={asset_type} collected={len(items)} uniq={len(out)} dt={time.time() - t_start:.3f}s")
     return out
 
 
-async def fetch_full_inventory_parallel(uid: int, asset_types: List[int], cookie: Optional[str]) -> Dict[int, List[int]]:
+async def fetch_full_inventory_parallel_fast(uid: int, asset_types: List[int], cookie: Optional[str]) -> Dict[
+    int, List[int]]:
     """
-    Параллельно тянем инвентарь по типам, логируем результат/ошибки, не кидаем исключения.
+    БЫСТРАЯ версия - грузит типы ассетов чанками с ограничением параллелизма
     """
+    sem = asyncio.Semaphore(INV_PARALLEL_TYPES)
+
     async def task(t: int):
-        try:
-            t0 = time.time()
-            log.info(f"[inv_par] start uid={uid} type={t}")
-            lst = await _get_inventory_pages(uid, t, cookie)
-            log.info(f"[inv_par] done uid={uid} type={t} items={len(lst)} dt={time.time()-t0:.3f}s")
-            return (t, lst)
-        except Exception as e:
-            log.error(f"[inv_par] crashed uid={uid} type={t}: {type(e).__name__}: {e}", exc_info=True)
-            return (t, [])
+        async with sem:
+            try:
+                t0 = time.time()
+                log.info(f"[inv_par_fast] start uid={uid} type={t}")
+                lst = await _get_inventory_pages_fast(uid, t, cookie, limit=INV_BATCH_SIZE)
+                log.info(f"[inv_par_fast] done uid={uid} type={t} items={len(lst)} dt={time.time() - t0:.3f}s")
+                return (t, lst)
+            except Exception as e:
+                log.error(f"[inv_par_fast] crashed uid={uid} type={t}: {e}")
+                return (t, [])
 
-    res = await asyncio.gather(*[task(t) for t in asset_types], return_exceptions=False)
-    out: Dict[int, List[int]] = {}
-    for t, lst in res:
-        if lst:
-            out[t] = lst
-    return out
+    # Разбиваем на чанки для лучшего контроля
+    chunks = [asset_types[i:i + INV_PARALLEL_TYPES] for i in range(0, len(asset_types), INV_PARALLEL_TYPES)]
+    all_results = {}
+
+    for chunk in chunks:
+        chunk_results = await asyncio.gather(*[task(t) for t in chunk])
+        for t, lst in chunk_results:
+            if lst:
+                all_results[t] = lst
+        # Небольшая пауза между чанками
+        await asyncio.sleep(0.05)
+
+    return all_results
 
 
 async def _post_catalog_details_once(items, cookie, proxy, csrf=None):
@@ -281,14 +311,14 @@ async def _post_catalog_details_once(items, cookie, proxy, csrf=None):
         CATALOG_DETAILS_URL,
         json={"items": items},
         headers=headers,
-        timeout=httpx.Timeout(5.5, connect=1.5, read=3.5),
+        timeout=httpx.Timeout(4.0, connect=1.2, read=2.8),  # уменьшил таймауты
     )
 
 
-async def _catalog_batch(items, cookie, retries: int) -> List[Dict[str, Any]]:
+async def _catalog_batch_fast(items, cookie, retries: int) -> List[Dict[str, Any]]:
     attempt = 0
     csrf = None
-    while True:
+    while attempt <= retries:
         proxy = PROXY_POOL.any()
         try:
             resp = await _post_catalog_details_once(items, cookie, proxy, csrf=csrf)
@@ -305,20 +335,22 @@ async def _catalog_batch(items, cookie, retries: int) -> List[Dict[str, Any]]:
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429 and attempt < retries:
                 attempt += 1
-                await asyncio.sleep(0.15 * attempt)
+                await asyncio.sleep(0.1 * attempt)  # уменьшил задержку
                 csrf = None
                 continue
             return []
         except Exception:
             if attempt < retries:
                 attempt += 1
-                await asyncio.sleep(0.15 * attempt)
+                await asyncio.sleep(0.1 * attempt)  # уменьшил задержку
                 continue
             return []
+    return []
 
 
 # ==== Local price cache (prices.csv) ====
 _price_cache = None
+
 
 def _load_prices_csv(path: str = PRICE_DUMP_PATH):
     global _price_cache
@@ -359,6 +391,7 @@ def _ensure_prices_csv_header(path: str) -> None:
     except Exception as e:
         log.warning(f"prices.csv header init failed: {e}")
 
+
 def _append_prices_csv_bulk(details: list, path: str = PRICE_DUMP_PATH) -> int:
     """Append fetched price details to CSV (id,name,price,collectible) if missing in local cache."""
     try:
@@ -387,19 +420,14 @@ def _append_prices_csv_bulk(details: list, path: str = PRICE_DUMP_PATH) -> int:
         return 0
 
 
-
 async def fetch_catalog_details_fast(asset_ids: List[int], cookie: Optional[str]) -> List[Dict[str, Any]]:
     if not asset_ids:
         return []
-    sem = asyncio.Semaphore(CATALOG_CONCURRENCY)
-
-    async def run(items):
-        if not asset_ids:
-            return []
 
     local_prices = _load_prices_csv()
     found_local = []
     need_fetch = []
+
     # de-dup incoming ids
     seen = set()
     for aid in asset_ids:
@@ -428,7 +456,7 @@ async def fetch_catalog_details_fast(asset_ids: List[int], cookie: Optional[str]
 
         async def run(items):
             async with sem:
-                return await _catalog_batch(items, cookie, CATALOG_RETRIES)
+                return await _catalog_batch_fast(items, cookie, CATALOG_RETRIES)
 
         tasks = []
         for i in range(0, len(need_fetch), BATCH_SIZE):
@@ -475,10 +503,7 @@ def _price_pick(detail: dict) -> int:
 
 
 def _is_collectible(detail: dict) -> bool:
-    """True только если в itemRestrictions реально есть тег 'Collectible'.
-    Раньше мы также считали collectible при наличии collectibleItemId — можно включить фоллбэк через
-    USE_COLLECTIBLE_ITEMID_FALLBACK=1.
-    """
+    """True только если в itemRestrictions реально есть тег 'Collectible'."""
     ir = detail.get("itemRestrictions") or []
     try:
         for x in ir:
@@ -515,12 +540,13 @@ import datetime
 ECON_TX_URL = "https://economy.roblox.com/v2/users/{uid}/transactions"
 SOCIAL_LINKS_URL = "https://users.roblox.com/v1/users/{uid}/social-links"
 
+
 async def get_social_links(uid: int) -> dict:
     """Возвращает непустые соцсети пользователя в виде {platform: url}."""
     try:
         proxy = PROXY_POOL.any()
         client = await get_client(proxy)
-        r = await client.get(SOCIAL_LINKS_URL.format(uid=uid), timeout=httpx.Timeout(8.0, connect=2.0, read=6.0))
+        r = await client.get(SOCIAL_LINKS_URL.format(uid=uid), timeout=httpx.Timeout(6.0, connect=1.5, read=4.5))
         if r.status_code != 200:
             return {}
         js = r.json() or {}
@@ -549,7 +575,7 @@ async def get_total_spent_robux(uid: int, cookie: str) -> int:
                 ECON_TX_URL.format(uid=uid),
                 params={"transactionType": "Purchase", "limit": 100, "cursor": cursor or ""},
                 headers=_cookie_headers(cookie),
-                timeout=httpx.Timeout(10.0, connect=2.0, read=8.0),
+                timeout=httpx.Timeout(8.0, connect=1.5, read=6.5),
             )
             if r.status_code == 429:
                 await asyncio.sleep(0.6)
@@ -584,8 +610,6 @@ async def get_total_spent_robux(uid: int, cookie: str) -> int:
 async def get_full_inventory(tg_id: int, roblox_id: int, force_refresh: bool = False) -> dict:
     """
     Возвращает агрегированный инвентарь пользователя с ценами, сгруппированный по категориям.
-    Структура:
-        {"total": int, "byCategory": { <CategoryName>: [ {assetId, priceInfo{value}, name, assetType}, ... ] } }
     """
     try:
         enc = await storage.get_encrypted_cookie(tg_id, roblox_id)
@@ -604,8 +628,8 @@ async def get_full_inventory(tg_id: int, roblox_id: int, force_refresh: bool = F
         if cached:
             return cached
 
-    # 1) собираем assetIds по всем типам параллельно
-    per_type = await fetch_full_inventory_parallel(roblox_id, asset_types, cookie)
+    # 1) собираем assetIds по всем типам параллельно (БЫСТРАЯ версия)
+    per_type = await fetch_full_inventory_parallel_fast(roblox_id, asset_types, cookie)
     all_ids = [a for ids in per_type.values() for a in ids]
     if not all_ids:
         data = {"total": 0, "byCategory": {}}
@@ -647,7 +671,7 @@ async def get_full_inventory(tg_id: int, roblox_id: int, force_refresh: bool = F
                 "priceInfo": {"value": int(price)},
                 "name": d.get("name") or "",
                 "assetType": int(at),
-                'itemId': _to_int(d.get('itemId') or d.get('collectibleItemId') or 0) })
+                'itemId': _to_int(d.get('itemId') or d.get('collectibleItemId') or 0)})
         if arr:
             by_cat.setdefault(cat, []).extend(arr)
             total_count += len(arr)
@@ -658,25 +682,196 @@ async def get_full_inventory(tg_id: int, roblox_id: int, force_refresh: bool = F
 
 
 # === Helper: fetch inventory for a target Roblox ID using a provided ENCRYPTED cookie ===
-async def get_full_inventory_by_encrypted_cookie(enc_cookie: str, roblox_id: int, force_refresh: bool=False) -> dict:
-    """Try to fetch full inventory for *roblox_id* using the given encrypted cookie ('.ROBLOSECURITY').
-    This bypasses per-user cookie lookup and is used in public mode as a fallback.
+async def get_full_inventory_by_encrypted_cookie(enc_cookie: str, roblox_id: int, force_refresh: bool = False) -> dict:
+    """Try to fetch full inventory for *roblox_id* using the given encrypted cookie."""
+    try:
+        # Декодируем куки
+        cookie = decrypt_text(enc_cookie) if 'decrypt_text' in globals() else enc_cookie
+        if not cookie:
+            return {"total": 0, "byCategory": {}}
+
+        # Используем ТОЧНО ТУ ЖЕ ЛОГИКУ, что и в get_full_inventory
+        asset_types = _parse_asset_types_from_cfg()
+
+        # 1) собираем assetIds по всем типам параллельно (БЫСТРАЯ версия)
+        per_type = await fetch_full_inventory_parallel_fast(roblox_id, asset_types, cookie)
+        all_ids = [a for ids in per_type.values() for a in ids]
+        if not all_ids:
+            return {"total": 0, "byCategory": {}}
+
+        # 2) тянем детали по всем assetId
+        details = await fetch_catalog_details_fast(all_ids, cookie)
+        by_id = {int(d.get("id")): d for d in details if d.get("id") is not None}
+
+        # 3) собираем по категориям (ТОЧНО КАК В ОСНОВНОЙ ФУНКЦИИ)
+        by_cat: dict[str, list] = {}
+        total_count = 0
+
+        def _price_pick_local(detail: dict) -> int:
+            try:
+                p = detail.get("price")
+                lp = detail.get("lowestPrice")
+                lrp = detail.get("lowestResalePrice")
+                for v in (p, lp, lrp):
+                    if v is not None:
+                        return int(v)
+            except Exception:
+                pass
+            return 0
+
+        for at, ids in per_type.items():
+            cat = _canon_cat(ASSET_TYPE_TO_CATEGORY.get(int(at), "Other"))
+            arr = []
+            if not cat:
+                continue
+            for aid in ids:
+                d = by_id.get(int(aid))
+                if not d:
+                    continue
+                price = _price_pick_local(d)
+                arr.append({
+                    "assetId": int(aid),
+                    "priceInfo": {"value": int(price)},
+                    "name": d.get("name") or "",
+                    "assetType": int(at),
+                    'itemId': _to_int(d.get('itemId') or d.get('collectibleItemId') or 0)
+                })
+            if arr:
+                by_cat.setdefault(cat, []).extend(arr)
+                total_count += len(arr)
+
+        return {"total": int(total_count), "byCategory": by_cat}
+
+    except Exception as e:
+        log.error(f"Failed to get inventory by encrypted cookie: {e}")
+        return {"total": 0, "byCategory": {}}
+
+
+# Глобальный кэш рабочих куки
+_COOKIE_CACHE: Dict[int, str] = {}
+_COOKIE_CACHE_TIME: Dict[int, float] = {}
+COOKIE_CACHE_TTL = 300  # 5 минут
+
+
+# Улучшенная функция get_inventory_public_ultra_fast
+async def get_inventory_public_ultra_fast(roblox_id: int) -> dict:
+    """
+    УЛЬТРА-БЫСТРЫЙ public-режим с кэшированием рабочей куки
     """
     try:
-        cookie = decrypt_text(enc_cookie) if 'decrypt_text' in globals() else None
-        if not cookie:
-            # Maybe it's already plain? Try as-is.
-            cookie = enc_cookie
-        # Use the same lower-level pipeline as usual
-        items = await fetch_full_inventory_parallel(roblox_id, cookie, force_refresh=force_refresh)
-        # Enrich via catalog
-        detailed = await fetch_catalog_details_fast(items)
-        # Group by Category like in get_full_inventory
-        grouped = {}
-        for it in detailed:
-            cat = it.get('AssetType', '') or ''
-            grouped.setdefault(cat, []).append(it)
-        return {'byCategory': grouped}
+        # Используем таймаут для всего public режима
+        return await asyncio.wait_for(
+            _get_inventory_public_ultra_fast_internal(roblox_id),
+            timeout=PUBLIC_MODE_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        log.error(f"[ULTRA_FAST] TIMEOUT for {roblox_id} after {PUBLIC_MODE_TIMEOUT}s")
+        return {"total": 0, "byCategory": {}}
     except Exception as e:
-        # Keep contract same as get_full_inventory (bubble up)
-        raise
+        log.error(f"[ULTRA_FAST] ERROR for {roblox_id}: {e}")
+        return {"total": 0, "byCategory": {}}
+
+
+async def _get_inventory_public_ultra_fast_internal(roblox_id: int) -> dict:
+    now = time.time()
+
+    # 1. Проверяем кэш (самый быстрый путь)
+    cached_cookie = _COOKIE_CACHE.get(roblox_id)
+    if cached_cookie and (now - _COOKIE_CACHE_TIME.get(roblox_id, 0)) < COOKIE_CACHE_TTL:
+        try:
+            result = await get_full_inventory_by_encrypted_cookie(cached_cookie, roblox_id)
+            if result.get("total", 0) > 0:
+                log.info(f"[ULTRA_FAST] Cache HIT for {roblox_id}, items: {result['total']}")
+                return result
+            else:
+                log.info(f"[ULTRA_FAST] Cache MISS (no items) for {roblox_id}")
+        except Exception as e:
+            log.warning(f"[ULTRA_FAST] Cache FAIL for {roblox_id}: {e}")
+        # Удаляем нерабочую куки из кэша
+        _COOKIE_CACHE.pop(roblox_id, None)
+
+    # 2. Ищем новую рабочую куки
+    log.info(f"[ULTRA_FAST] Searching working cookie for {roblox_id}")
+    cookies = await storage.get_multiple_cookies_quick(limit=PUBLIC_MODE_MAX_COOKIES)
+
+    if not cookies:
+        log.error(f"[ULTRA_FAST] No cookies in DB for {roblox_id}")
+        return {"total": 0, "byCategory": {}}
+
+    # Пробуем куки по очереди
+    working_cookie = None
+    working_result = None
+
+    for i, enc_cookie in enumerate(cookies):
+        try:
+            log.info(f"[ULTRA_FAST] Trying cookie {i + 1}/{len(cookies)} for {roblox_id}")
+            result = await get_full_inventory_by_encrypted_cookie(enc_cookie, roblox_id)
+
+            if result.get("total", 0) > 0:
+                working_cookie = enc_cookie
+                working_result = result  # Сохраняем результат
+                log.info(f"[ULTRA_FAST] SUCCESS with cookie {i + 1}, items: {result['total']}")
+                break
+            else:
+                log.info(f"[ULTRA_FAST] Cookie {i + 1} worked but no items")
+        except Exception as e:
+            log.warning(f"[ULTRA_FAST] Cookie {i + 1} failed: {e}")
+            continue
+
+    # 3. Сохраняем в кэш и возвращаем результат
+    if working_cookie and working_result:
+        _COOKIE_CACHE[roblox_id] = working_cookie
+        _COOKIE_CACHE_TIME[roblox_id] = now
+        return working_result  # Возвращаем сохраненный результат
+
+    log.error(f"[ULTRA_FAST] ALL cookies failed for {roblox_id}")
+    return {"total": 0, "byCategory": {}}
+
+async def clear_cookie_cache(roblox_id: Optional[int] = None):
+    """Очищает кэш куки (для дебага или принудительного обновления)"""
+    if roblox_id:
+        _COOKIE_CACHE.pop(roblox_id, None)
+        _COOKIE_CACHE_TIME.pop(roblox_id, None)
+        log.info(f"[CACHE] Cleared cache for {roblox_id}")
+    else:
+        _COOKIE_CACHE.clear()
+        _COOKIE_CACHE_TIME.clear()
+        log.info("[CACHE] Cleared ALL cookie cache")
+
+
+# --- Public wrapper that mirrors private pipeline using DB cookies ---
+async def get_full_inventory_public_like_private(roblox_id: int, cookies_limit: int | None = None, force_refresh: bool = False) -> dict:
+    """Use the same full-inventory pipeline as private, but pick any working encrypted cookie from DB."""
+    try:
+        limit = cookies_limit or (PUBLIC_MODE_MAX_COOKIES if 'PUBLIC_MODE_MAX_COOKIES' in globals() else 10)
+        log.info(f"[PUBLIC_LIKE_PRIV] Searching working cookie for {roblox_id} (limit={limit})")
+        # get encrypted cookies from storage
+        try:
+            cookies = await storage.get_multiple_cookies_quick(limit=limit)
+        except Exception as e:
+            log.warning(f"[PUBLIC_LIKE_PRIV] storage.get_multiple_cookies_quick failed: {e}")
+            cookies = []
+        if not cookies:
+            log.warning("[PUBLIC_LIKE_PRIV] No cookies available in DB")
+            return {"total": 0, "byCategory": {}}
+
+        # try cookies sequentially until one succeeds
+        for idx, enc_cookie in enumerate(cookies, start=1):
+            try:
+                log.info(f"[PUBLIC_LIKE_PRIV] Try cookie {idx}/{len(cookies)} for {roblox_id}")
+                result = await get_full_inventory_by_encrypted_cookie(enc_cookie, roblox_id, force_refresh=force_refresh)
+                total = int(result.get("total", 0) or 0) if isinstance(result, dict) else 0
+                if total > 0 and isinstance(result.get("byCategory"), dict) and result["byCategory"]:
+                    log.info(f"[PUBLIC_LIKE_PRIV] SUCCESS with cookie {idx}, items: {total}")
+                    return result
+                else:
+                    log.info(f"[PUBLIC_LIKE_PRIV] Cookie {idx} returned empty/hidden inventory")
+            except Exception as e:
+                log.warning(f"[PUBLIC_LIKE_PRIV] Cookie {idx} failed: {type(e).__name__}: {e}")
+                continue
+
+        log.warning(f"[PUBLIC_LIKE_PRIV] All cookies failed for {roblox_id}")
+        return {"total": 0, "byCategory": {}}
+    except Exception as e:
+        log.error(f"[PUBLIC_LIKE_PRIV] Unexpected error for {roblox_id}: {type(e).__name__}: {e}", exc_info=True)
+        return {"total": 0, "byCategory": {}}

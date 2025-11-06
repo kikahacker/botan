@@ -341,6 +341,62 @@ def _write_ready_item(aid: int, im: Image.Image):
 # =========================
 # Network fetch with cache (THUMB_SIZE enforced)
 # =========================
+def _cat_norm(s: str) -> str:
+    s = str(s or "").lower()
+    for ch in (" ", "_", "-", ".", "/"):
+        s = s.replace(ch, "")
+    return s
+
+_CAT_SYNONYMS = {
+    "heads": {"heads", "head"},
+    "hats": {"hats", "headaccessories"},
+    "hair": {"hair", "hairs", "hairaccessories"},
+    "faces": {"faces", "face", "faceaccessories"},
+    "gear": {"gear", "gears", "tools"},
+    "bundlespackages": {"bundles", "packages", "bundlespackages"},
+}
+
+_GROUPS = {
+    "accessories": {
+        "members": [
+            "Head Accessories", "Hair Accessories", "Face Accessories",
+            "Neck Accessories", "Shoulder Accessories",
+            "Front Accessories", "Back Accessories", "Waist Accessories",
+        ]
+    },
+    "bundlespackages": {"members": ["Bundles", "Packages"]},
+    "classicclothes":  {"members": ["Classic T-Shirts", "Shirts", "Pants"]},
+}
+
+def _pick_items(bycat: dict, incoming: str) -> list:
+    if not isinstance(bycat, dict) or not bycat:
+        return []
+    if incoming in bycat:
+        return bycat.get(incoming) or []
+
+    inc = _cat_norm(incoming)
+    for k, arr in bycat.items():
+        if _cat_norm(k) == inc:
+            return arr or []
+
+    for _, syns in _CAT_SYNONYMS.items():
+        if inc in syns:
+            for k, arr in bycat.items():
+                if _cat_norm(k) in syns:
+                    return arr or []
+
+    grp = _GROUPS.get(inc)
+    if grp:
+        want = { _cat_norm(x) for x in grp["members"] }
+        out = []
+        for k, arr in bycat.items():
+            if _cat_norm(k) in want:
+                out.extend(arr or [])
+        if out:
+            return out
+    return []
+
+
 async def _download_image_with_cache(url: str) -> Optional[Image.Image]:
     key = 'thumb:' + hashlib.sha1(url.encode()).hexdigest()
     b = await cache.get_bytes(key, THUMB_TTL)
@@ -850,6 +906,22 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
     # обогащаем КАЖДЫЙ айтем ценой из CSV (itemId/collectibleItemId/assetId)
     items = [_enrich_with_csv(it, price_map) for it in items]
     n = len(items)
+
+    # Guard: nothing to render -> return compact placeholder instead of crashing on 0px width
+    if n == 0:
+        top = HEADER_H if SHOW_HEADER else 0
+        bottom = FOOTER_H if SHOW_FOOTER else 0
+        W = max(420, 2 * tile)
+        H = max(160, top + bottom + 2)
+        canvas = Image.new('RGBA', (W, H))
+        canvas.alpha_composite(_get_canvas_bg(W, H), (0, 0))
+        _draw_header(canvas, 0, title)
+        _draw_footer(canvas, username, user_id)
+        out = io.BytesIO()
+        canvas.convert('RGB').save(out, 'PNG', optimize=True, quality=90)
+        _info(f"[grid] placeholder rendered for empty items, bytes={out.tell()}")
+        return out.getvalue()
+
     if not KEEP_INPUT_ORDER:
         items = sorted(items, key=lambda x: x.get('priceInfo', {}).get('value') or 0, reverse=True)
     ids = [int(x['assetId']) for x in items if 'assetId' in x]
@@ -916,19 +988,29 @@ async def generate_full_inventory_grid(
     default_title = tr(lang, 'inventory.full_title')
     return await _render_grid(items, tile=tile, title=(title or default_title), username=username, user_id=user_id)
 
+
+# Добавить в функцию generate_inventory_preview параметр is_public
 async def generate_inventory_preview(
-    tg_id: int,
-    roblox_id: int,
-    categories_limit: int = 8,
-    username: Optional[str] = None
+        tg_id: int,
+        roblox_id: int,
+        categories_limit: int = 8,
+        username: Optional[str] = None,
+        is_public: bool = False  # НОВЫЙ ПАРАМЕТР
 ) -> bytes:
-    from roblox_client import get_full_inventory
-    data = await get_full_inventory(tg_id, roblox_id)
+    if is_public:
+        from roblox_client import get_inventory_public_ultra_fast
+        data = await get_inventory_public_ultra_fast(roblox_id)
+    else:
+        from roblox_client import get_full_inventory
+        data = await get_full_inventory(tg_id, roblox_id)
+
     items: List[Dict[str, Any]] = []
     for arr in (data.get('byCategory') or {}).values():
         items.extend(arr)
     lang = get_current_lang()
     return await _render_grid(items, tile=150, title=tr(lang, 'inventory.title'), username=username, user_id=tg_id)
+
+# --- замените существующую generate_category_sheets этим вариантом ---
 
 async def generate_category_sheets(
     tg_id: int,
@@ -939,16 +1021,32 @@ async def generate_category_sheets(
     force: bool = False,
     username: Optional[str] = None
 ) -> bytes:
-    from roblox_client import get_full_inventory
-    data = await get_full_inventory(tg_id, roblox_id)
-    items = (data.get('byCategory') or {}).get(category, [])
+    from roblox_client import get_full_inventory, get_full_inventory_public_like_private
+
+    data = {}
+    try:
+        data = await get_full_inventory(tg_id, roblox_id)
+    except Exception:
+        data = {}
+    byc = (data.get("byCategory") or {}) if isinstance(data, dict) else {}
+    items = _pick_items(byc, category)
+
+    if not items:
+        try:
+            data_pub = await get_full_inventory_public_like_private(roblox_id)
+        except Exception:
+            data_pub = {}
+        byc_pub = (data_pub.get("byCategory") or {}) if isinstance(data_pub, dict) else {}
+        items = _pick_items(byc_pub, category)
+
     price_map = load_prices_csv_cached()
     items = [_enrich_with_csv(x, price_map) for x in items]
     if limit and limit > 0:
         items = items[:limit]
-    # Localize category title
+
     lang = get_current_lang()
-    slug = str(category or '').lower().replace(' ', '_')
-    loc = tr(lang, f'cat.{slug}')
-    title = loc if loc and loc != f'cat.{slug}' else category
+    slug = str(category or "").lower().replace(" ", "_")
+    loc = tr(lang, f"cat.{slug}")
+    title = loc if loc and loc != f"cat.{slug}" else category
+
     return await _render_grid(items, tile=tile, title=title, username=username, user_id=tg_id)

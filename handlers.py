@@ -10,6 +10,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from unittest.mock import call
 from PIL import Image
 import httpx
+
 from aiogram import Router, types, F
 from i18n import t, tr, get_user_lang, set_user_lang, set_current_lang
 from aiogram.filters import CommandStart, Command
@@ -131,25 +132,39 @@ from aiogram.dispatcher.middlewares.base import BaseMiddleware
 
 
 class LangMiddleware(BaseMiddleware):
-
     async def __call__(self, handler, event, data):
-        user = getattr(event, 'from_user', None) or getattr(getattr(event, 'message', None), 'from_user', None)
+        user = None
+        if hasattr(event, 'from_user') and event.from_user:
+            user = event.from_user
+        elif hasattr(event, 'message') and hasattr(event.message, 'from_user'):
+            user = event.message.from_user
+
         if user:
             try:
                 lang = await get_user_lang(storage, user.id, fallback='en')
-            except Exception:
-                lang = 'en'
-            _CURRENT_LANG.set(lang)
-            set_current_lang(lang)
+                _CURRENT_LANG.set(lang)
+                set_current_lang(lang)
+                print(f"🔒 MIDDLEWARE: Set lang={lang} for user={user.id}")
+            except Exception as e:
+                print(f"🔒 MIDDLEWARE ERROR: {e}")
+                _CURRENT_LANG.set('en')
+                set_current_lang('en')
 
-        return await handler(event, data)
+        result = await handler(event, data)
 
+        # После обработки снова проверяем язык
+        if user:
+            try:
+                current_lang = _CURRENT_LANG.get()
+                stored_lang = await get_user_lang(storage, user.id, fallback='en')
+                if current_lang != stored_lang:
+                    print(f"🔒 MIDDLEWARE POST: Language changed from {current_lang} to {stored_lang}, correcting...")
+                    _CURRENT_LANG.set(stored_lang)
+                    set_current_lang(stored_lang)
+            except Exception as e:
+                print(f"🔒 MIDDLEWARE POST ERROR: {e}")
 
-try:
-    router.message.middleware(LangMiddleware())
-    router.callback_query.middleware(LangMiddleware())
-except Exception:
-    pass
+        return result
 
 
 # === Automatic language enforcement on outgoing messages ===
@@ -163,47 +178,105 @@ async def _ensure_lang_for_user_id(user_id: int, fallback: str = 'en') -> str:
     return lang
 
 def _patch_aiogram_message_methods():
-    # Monkey-patch aiogram.types.Message methods to always set user's lang
-    from aiogram.types import Message
+    # Monkey-patch aiogram methods to always set user's lang
+    from aiogram.types import Message, CallbackQuery
+    from aiogram import Bot
 
-    async def _wrap_answer(self, *args, **kwargs):
-        user = getattr(self, 'from_user', None)
-        if user:
-            await _ensure_lang_for_user_id(user.id)
-        return await Message.__orig_answer(self, *args, **kwargs)
+    async def _ensure_lang_for_user_id(user_id: int, fallback: str = 'en') -> str:
+        try:
+            lang = await get_user_lang(storage, int(user_id), fallback=fallback)
+        except Exception:
+            lang = fallback
+        _CURRENT_LANG.set(lang)
+        set_current_lang(lang)
+        return lang
 
-    async def _wrap_reply(self, *args, **kwargs):
-        user = getattr(self, 'from_user', None)
-        if user:
-            await _ensure_lang_for_user_id(user.id)
-        return await Message.__orig_reply(self, *args, **kwargs)
-
-    async def _wrap_edit_text(self, *args, **kwargs):
-        user = getattr(self, 'from_user', None)
-        if user:
-            await _ensure_lang_for_user_id(user.id)
-        return await Message.__orig_edit_text(self, *args, **kwargs)
-
-    async def _wrap_answer_photo(self, *args, **kwargs):
-        user = getattr(self, 'from_user', None)
-        if user:
-            await _ensure_lang_for_user_id(user.id)
-        return await Message.__orig_answer_photo(self, *args, **kwargs)
-
+    # Patch Message methods
     if not getattr(Message, '_rbx_lang_patch_done', False):
         Message.__orig_answer = Message.answer
         Message.__orig_reply = Message.reply
         Message.__orig_edit_text = Message.edit_text
         Message.__orig_answer_photo = Message.answer_photo
+        Message.__orig_edit_media = Message.edit_media
+
+        async def _wrap_answer(self, *args, **kwargs):
+            user = getattr(self, 'from_user', None)
+            if user:
+                await _ensure_lang_for_user_id(user.id)
+            return await Message.__orig_answer(self, *args, **kwargs)
+
+        async def _wrap_reply(self, *args, **kwargs):
+            user = getattr(self, 'from_user', None)
+            if user:
+                await _ensure_lang_for_user_id(user.id)
+            return await Message.__orig_reply(self, *args, **kwargs)
+
+        async def _wrap_edit_text(self, *args, **kwargs):
+            user = getattr(self, 'from_user', None)
+            if user:
+                await _ensure_lang_for_user_id(user.id)
+            return await Message.__orig_edit_text(self, *args, **kwargs)
+
+        async def _wrap_answer_photo(self, *args, **kwargs):
+            user = getattr(self, 'from_user', None)
+            if user:
+                await _ensure_lang_for_user_id(user.id)
+            return await Message.__orig_answer_photo(self, *args, **kwargs)
+
+        async def _wrap_edit_media(self, *args, **kwargs):
+            user = getattr(self, 'from_user', None)
+            if user:
+                await _ensure_lang_for_user_id(user.id)
+            return await Message.__orig_edit_media(self, *args, **kwargs)
+
         Message.answer = _wrap_answer
         Message.reply = _wrap_reply
         Message.edit_text = _wrap_edit_text
         Message.answer_photo = _wrap_answer_photo
+        Message.edit_media = _wrap_edit_media
         Message._rbx_lang_patch_done = True
 
+    # Patch Bot methods for send_message, send_photo etc.
+    if not getattr(Bot, '_rbx_lang_patch_done', False):
+        Bot.__orig_send_message = Bot.send_message
+        Bot.__orig_send_photo = Bot.send_photo
+        Bot.__orig_edit_message_text = Bot.edit_message_text
+        Bot.__orig_edit_message_media = Bot.edit_message_media
+
+        async def _wrap_bot_send_message(self, chat_id, *args, **kwargs):
+            await _ensure_lang_for_user_id(chat_id)
+            return await Bot.__orig_send_message(self, chat_id, *args, **kwargs)
+
+        async def _wrap_bot_send_photo(self, chat_id, *args, **kwargs):
+            await _ensure_lang_for_user_id(chat_id)
+            return await Bot.__orig_send_photo(self, chat_id, *args, **kwargs)
+
+        async def _wrap_bot_edit_message_text(self, text, chat_id, *args, **kwargs):
+            await _ensure_lang_for_user_id(chat_id)
+            return await Bot.__orig_edit_message_text(self, text, chat_id, *args, **kwargs)
+
+        async def _wrap_bot_edit_message_media(self, media, chat_id, *args, **kwargs):
+            await _ensure_lang_for_user_id(chat_id)
+            return await Bot.__orig_edit_message_media(self, media, chat_id, *args, **kwargs)
+
+        Bot.send_message = _wrap_bot_send_message
+        Bot.send_photo = _wrap_bot_send_photo
+        Bot.edit_message_text = _wrap_bot_edit_message_text
+        Bot.edit_message_media = _wrap_bot_edit_message_media
+        Bot._rbx_lang_patch_done = True
+
+# Перезапустите патчинг
 _patch_aiogram_message_methods()
 
-
+async def force_set_user_lang(user_id: int) -> str:
+    """Принудительно устанавливает язык пользователя в контекст"""
+    try:
+        lang = await get_user_lang(storage, user_id, fallback='en')
+    except Exception:
+        lang = 'en'
+    _CURRENT_LANG.set(lang)
+    set_current_lang(lang)
+    return lang
 
 # === Public info helpers ===
 async def _set_public_pending(tg_id: int, flag: bool, ttl: int = 600):
@@ -254,21 +327,15 @@ def LL(*keys, **kw) -> str:
 
 
 def _mask_email(email: str) -> str:
-    if not email or email == L('common.dash'):
-        return L('common.dash')
-    try:
-        name, domain = email.split('@', 1)
-        if len(name) <= 2:
-            m = (name[:1] + L('common.ellipsis')) if name else L('common.ellipsis')
-        else:
-            m = name[0] + '*' * (len(name) - 2) + name[-1]
-        return f"{m}@{domain}"
-    except Exception:
-        return email
+    return email
 
 
 def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gender_raw, birthdate, age, email,
                              email_verified, robux, spent_val, banned) -> str:
+    # ДЕБАГ
+    current_lang = _CURRENT_LANG.get()
+    print(f"🔍 render_profile_text_i18n using language: {current_lang}")
+
     # Map raw gender text like "👨 Мужской" / "👩 Женский" to common keys
     gkey = 'unknown'
     gr = (gender_raw or '').lower()
@@ -277,20 +344,42 @@ def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gende
     elif 'female' in gr or 'жен' in gr:
         gkey = 'female'
     skey = 'banned' if banned else 'active'
-    text = L('profile.card',
-             uname=uname or L('common.dash'),
-             display_name=dname or L('common.dash'),
-             rid=roblox_id,
-             created=created,
-             country=country or L('common.dash'),
-             gender=L(f'common.{gkey}'),
-             birthday=birthdate or L('common.dash'),
-             age=age if age not in (None, '') else L('common.dash'),
-             email=_mask_email(email),
-             email_verified=(L('common.yes') if email_verified else L('common.no')),
-             robux=f"{robux} R$",
-             spent=(f"{spent_val} R$" if isinstance(spent_val, (int, float)) and spent_val >= 0 else L('common.dash')),
-             status=L(f'common.{skey}'))
+
+    # Для русского языка используем правильные параметры
+    if current_lang == 'ru':
+        text = L('profile.card',
+                 uname=uname or L('common.dash'),
+                 display_name=dname or L('common.dash'),
+                 rid=roblox_id,
+                 created=created,
+                 country=country or L('common.dash'),
+                 gender=L(f'common.{gkey}'),
+                 birthday=birthdate or L('common.dash'),
+                 age=age if age not in (None, '') else L('common.dash'),
+                 email=_mask_email(email),
+                 email_verified=L('common.yes') if email_verified else L('common.no'),
+                 robux=robux,
+                 spent=spent_val if isinstance(spent_val, (int, float)) and spent_val >= 0 else L('common.dash'),
+                 status=L(f'common.{skey}'))
+    else:
+        # Для английского и других языков
+        text = L('profile.card',
+                 uname=uname or L('common.dash'),
+                 display_name=dname or L('common.dash'),
+                 rid=roblox_id,
+                 created=created,
+                 country=country or L('common.dash'),
+                 gender=L(f'common.{gkey}'),
+                 birthday=birthdate or L('common.dash'),
+                 age=age if age not in (None, '') else L('common.dash'),
+                 email=_mask_email(email),
+                 email_verified=(L('common.yes') if email_verified else L('common.no')),
+                 robux=f"{robux} R$",
+                 spent=(
+                     f"{spent_val} R$" if isinstance(spent_val, (int, float)) and spent_val >= 0 else L('common.dash')),
+                 status=L(f'common.{skey}'))
+
+    print(f"🔍 Generated profile text with lang {current_lang}, first 200 chars: {text[:200]}")
     return text
 
 
@@ -366,8 +455,15 @@ def cat_label(cat_raw: str) -> str:
         slug = _category_slug(cat_raw)
     except Exception:
         slug = str(cat_raw).lower().replace(' ', '_')
-    return L(f'cat.{slug}') or cat_raw
-    return (name or '').lower().replace(' ', '_')
+
+    # Получаем перевод
+    translated = L(f'cat.{slug}')
+
+    # Если перевод не найден или равен ключу, возвращаем оригинальное название
+    if not translated or translated == f'cat.{slug}':
+        return cat_raw
+
+    return translated
 
 
 def _unslug(slug: str) -> str:
@@ -387,25 +483,33 @@ async def _set_selected_cats(tg_id: int, roblox_id: int, selected: set[str]):
     await storage.set_cached_data(tg_id, key, list(selected), 60 * 30)
 
 
-def _build_cat_kb(selected: set[str], roblox_id: int) -> InlineKeyboardMarkup:
+def _build_cat_kb_with_prefix(selected: set[str], roblox_id: int, prefix: str) -> InlineKeyboardMarkup:
     rows = []
     row = []
     for cat in _all_categories():
         slug = _category_slug(cat)
         on = slug in selected
         txt = f"{('✅' if on else '🚫')} {cat_label(cat)}"
-        row.append(InlineKeyboardButton(text=txt, callback_data=f'inv_cfg_toggle:{roblox_id}:{slug}'))
+        row.append(InlineKeyboardButton(text=txt, callback_data=f'{prefix}_toggle:{roblox_id}:{slug}'))
         if len(row) == 2:
             rows.append(row)
             row = []
     if row:
         rows.append(row)
     rows.append(
-        [InlineKeyboardButton(text=LL('buttons.all_on', 'btn.all_on'), callback_data=f'inv_cfg_allon:{roblox_id}'),
-         InlineKeyboardButton(text=LL('buttons.all_off', 'btn.none'), callback_data=f'inv_cfg_alloff:{roblox_id}')])
-    rows.append([InlineKeyboardButton(text=LL('buttons.next', 'btn.next'), callback_data=f'inv_cfg_next:{roblox_id}'),
+        [InlineKeyboardButton(text=LL('buttons.all_on', 'btn.all_on'), callback_data=f'{prefix}_allon:{roblox_id}'),
+         InlineKeyboardButton(text=LL('buttons.all_off', 'btn.none'), callback_data=f'{prefix}_alloff:{roblox_id}')])
+    rows.append([InlineKeyboardButton(text=LL('buttons.next', 'btn.next'), callback_data=f'{prefix}_next:{roblox_id}'),
                  InlineKeyboardButton(text=L('btn.back_to_profile'), callback_data=f'acct:{roblox_id}')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _build_cat_kb(selected: set[str], roblox_id: int) -> InlineKeyboardMarkup:
+    return _build_cat_kb_with_prefix(selected, roblox_id, 'inv_cfg')
+
+def _build_cat_kb_public(selected: set[str], roblox_id: int) -> InlineKeyboardMarkup:
+    return _build_cat_kb_with_prefix(selected, roblox_id, 'inv_pub_cfg')
+
 
 
 def clean_cookie_value(cookie_value: str) -> str:
@@ -418,6 +522,10 @@ def clean_cookie_value(cookie_value: str) -> str:
         cleaned = cleaned.replace(pat, '')
     return cleaned.strip()
 
+def kb_only_back() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=LL('buttons.back', 'btn.back'), callback_data='menu:home')]
+    ])
 
 async def validate_and_clean_cookie(cookie_value: str) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
     """
@@ -440,7 +548,8 @@ async def validate_and_clean_cookie(cookie_value: str) -> Tuple[bool, Optional[s
 
 
 async def edit_or_send(message: types.Message, text: str, reply_markup: Optional[InlineKeyboardMarkup] = None,
-                       photo: Optional[FSInputFile] = None, parse_mode: str = 'HTML'):
+                       photo: Optional[FSInputFile] = None, parse_mode: str = 'HTML',
+                       disable_web_page_preview: bool = True):  # ← ДОБАВЬТЕ ПАРАМЕТР
     """
     Ставит твой интерфейс «на рельсы»: если сообщение можно отредактировать — редактируем,
     если нет — отправляем новое. Поддерживает смену медиа.
@@ -453,17 +562,21 @@ async def edit_or_send(message: types.Message, text: str, reply_markup: Optional
                 return message
             except Exception as e:
                 logger.debug(f'edit_media fallback -> answer_photo: {e}')
-                return await message.answer_photo(photo, caption=text, reply_markup=reply_markup, parse_mode=parse_mode)
+                return await message.answer_photo(photo, caption=text, reply_markup=reply_markup,
+                                                 parse_mode=parse_mode, disable_web_page_preview=disable_web_page_preview)
         else:
             try:
-                await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+                await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode,
+                                       disable_web_page_preview=disable_web_page_preview)  # ← ДОБАВЬТЕ ЗДЕСЬ
                 return message
             except Exception as e:
                 logger.debug(f'edit_text fallback -> answer: {e}')
-                return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
+                return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode,
+                                           disable_web_page_preview=disable_web_page_preview)  # ← И ЗДЕСЬ
     except Exception as e:
         logger.warning(f'edit_or_send failed: {e}')
-        return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
+        return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode,
+                                   disable_web_page_preview=disable_web_page_preview)  # ← И ЗДЕСЬ
 
 
 def kb_main() -> InlineKeyboardMarkup:
@@ -495,6 +608,7 @@ def kb_settings() -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == 'menu:settings')
 async def cb_settings(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
@@ -591,13 +705,11 @@ def _kb_inventory_categories(roblox_id: int, by_cat: Dict[str, List[Dict[str, An
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _get_inventory_cached(tg_id: int, roblox_id: int, force_refresh: bool = False) -> dict:
+    """Try to get inventory with language protection"""
+    # ЗАЩИТА ЯЗЫКА ПЕРЕД НАЧАЛОМ
+    await protect_language(tg_id)
 
-async def _get_inventory_cached(tg_id: int, roblox_id: int) -> dict:
-    """Try to get inventory:
-    1) via cookie bound to (tg_id, roblox_id);
-    2) if not available/failed/empty — iterate any valid cookie from DB;
-    If still no items, treat as private.
-    """
     # Try direct (bound) cookie first
     try:
         data = await roblox_client.get_full_inventory(tg_id, roblox_id)
@@ -606,39 +718,15 @@ async def _get_inventory_cached(tg_id: int, roblox_id: int) -> dict:
             return data
     except Exception:
         data = None
-    # Fallback: try any cookie present in DB
+
+    # Fallback: ultra-fast public mode with cookie cache
     try:
-        # Pull any cookie for this roblox_id first (same owner), else ANY cookie in DB
-        enc = await storage.get_any_encrypted_cookie_by_roblox_id(roblox_id)
-        tried = set()
-        candidates = []
-        if enc:
-            candidates.append(enc)
-            tried.add(enc)
-        # Optional: scan all owners for more cookies (best-effort)
-        if hasattr(storage, 'list_all_owners'):
-            try:
-                owners = await storage.list_all_owners()
-            except Exception:
-                owners = []
-        else:
-            owners = []
-        # For performance, we only try up to 5 random cookies (deterministic order here).
-        if owners:
-            for oid in owners[:5]:
-                # For each owner, try to fetch their cookie for their FIRST account (cheap)
-                # We'll query DB directly through helper below.
-                pass
-        # If we don't have iteration helpers, at least use the one cookie we found above.
-        for enc_cookie in candidates or []:
-            try:
-                data2 = await roblox_client.get_full_inventory_by_encrypted_cookie(enc_cookie, roblox_id)
-                if isinstance(data2, dict) and (data2.get('byCategory') or {}):
-                    return data2
-            except Exception:
-                continue
-    except Exception:
-        pass
+        data2 = await roblox_client.get_inventory_public_ultra_fast(roblox_id)
+        if isinstance(data2, dict) and (data2.get('byCategory') or {}):
+            return data2
+    except Exception as e:
+        logging.warning(f"Ultra-fast public mode failed for {roblox_id}: {e}")
+
     # If we reached here — most likely private
     return {'byCategory': {}}
 
@@ -649,6 +737,7 @@ def _asset_or_none(name: str) -> Optional[FSInputFile]:
 
 @router.message(CommandStart())
 async def cmd_start(message: types.Message) -> None:
+    await protect_language(message.from_user.id)
     await storage.track_bot_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username,
@@ -661,11 +750,13 @@ async def cmd_start(message: types.Message) -> None:
     photo = _asset_or_none('main')
     text = LL("messages.welcome", "welcome")
     tg = message.from_user.id
-    await edit_or_send(message, text, reply_markup=await kb_main_i18n(tg), photo=photo)
+    await edit_or_send(message, text, reply_markup=await kb_main_i18n(tg), photo=photo,
+                       parse_mode="HTML", disable_web_page_preview=True)  # ← ДОБАВЬТЕ ЭТО
 
 
 @router.callback_query(F.data == 'menu:home')
 async def cb_home(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
@@ -673,23 +764,26 @@ async def cb_home(call: types.CallbackQuery) -> None:
     photo = _asset_or_none('main')
     text = LL("messages.welcome", "welcome")
     tg = call.from_user.id
-    await edit_or_send(call.message, text, reply_markup=await kb_main_i18n(tg), photo=photo)
+    await edit_or_send(call.message, text, reply_markup=await kb_main_i18n(tg), photo=photo,
+                       parse_mode="HTML", disable_web_page_preview=True)  # ← ДОБАВЬТЕ ЭТО
 
 
 
 @router.callback_query(F.data == 'menu:public')
 async def cb_public_open(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
         pass
     tg = call.from_user.id
     await _set_public_pending(tg, True, ttl=600)
-    await edit_or_send(call.message, L('public.ask_id'), reply_markup=await kb_main_i18n(tg))
+    await edit_or_send(call.message, L('public.ask_id'), reply_markup=kb_only_back())
 
 
 @router.callback_query(F.data.startswith('menu:'))
 async def cb_menu(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
@@ -702,7 +796,7 @@ async def cb_menu(call: types.CallbackQuery) -> None:
             photo = _asset_or_none('accounts')
             if not accounts:
                 msg = L("status.no_accounts")
-                await edit_or_send(call.message, msg, reply_markup=await kb_main_i18n(tg), photo=photo)
+                await edit_or_send(call.message, msg, reply_markup=kb_only_back(), photo=photo)
                 return
             rows = [[InlineKeyboardButton(text=u if u else f'ID: {r}', callback_data=f'acct:{r}')] for r, u in accounts]
             rows.append(
@@ -731,13 +825,13 @@ async def cb_menu(call: types.CallbackQuery) -> None:
             logger.error(f'menu:script zip error: {e}')
             await call.message.answer(L('msg.cookie_script_error'))
     elif action == 'add':
-        await edit_or_send(call.message, L("status.pick_file"), reply_markup=await kb_main_i18n(tg),
+        await edit_or_send(call.message, L("status.pick_file"), reply_markup=kb_only_back(),
                            photo=_asset_or_none('add'))
     elif action == 'delete':
         try:
             accounts = await storage.list_users(tg)
             if not accounts:
-                await edit_or_send(call.message, L('status.no_accounts_to_delete'), reply_markup=await kb_main_i18n(tg),
+                await edit_or_send(call.message, L('status.no_accounts_to_delete'), reply_markup=kb_only_back(),
                                    photo=_asset_or_none('delete'))
                 return
             rows = [[InlineKeyboardButton(text=u if u else f'ID: {r}', callback_data=f'delacct:{r}')] for r, u in
@@ -753,6 +847,7 @@ async def cb_menu(call: types.CallbackQuery) -> None:
 
 @router.message(F.document & F.document.file_name.endswith('.txt'))
 async def handle_txt_upload(message: types.Message) -> None:
+    await protect_language(message.from_user.id)
     tg = message.from_user.id
 
     doc = message.document
@@ -815,6 +910,7 @@ async def handle_txt_upload(message: types.Message) -> None:
 
 @router.callback_query(F.data.startswith('delacct:'))
 async def cb_delete_account(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
@@ -831,17 +927,29 @@ async def cb_delete_account(call: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith('acct:'))
 async def cb_show_account(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
         pass
+
+    # СИЛЬНАЯ установка языка
     tg = call.from_user.id
+
+
+    # ДЕБАГ
+
     roblox_id = int(call.data.split(':', 1)[1])
+    invalidate_profile_mem(tg, roblox_id)
+
     # ---------- FAST PATH: cache first ----------
-    lang = await use_lang_from_call(call)
+    lang = _CURRENT_LANG.get()
+    print(f"🔍 Using language: {lang} for profile generation")
+
     # try our new mem cache
     rec = _profile_mem_get2(tg, roblox_id, lang)
     if isinstance(rec, dict) and rec.get("text"):
+        print(f"🔍 Using cached profile with lang: {lang}")
         pid = rec.get("photo_id")
         try:
             if pid:
@@ -852,40 +960,11 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             await call.message.answer(rec["text"], reply_markup=kb_navigation(roblox_id))
         return
     # try existing project mem cache if present
-    try:
-        _rec_old = get_profile_mem(tg, roblox_id)  # may not exist
-    except Exception:
-        _rec_old = None
-    if isinstance(_rec_old, dict) and _rec_old.get("text"):
-        pid = _rec_old.get("photo_id")
-        try:
-            if pid:
-                await call.message.answer_photo(pid, caption=_rec_old["text"], reply_markup=kb_navigation(roblox_id))
-            else:
-                await call.message.answer(_rec_old["text"], reply_markup=kb_navigation(roblox_id))
-        except Exception:
-            await call.message.answer(_rec_old["text"], reply_markup=kb_navigation(roblox_id))
-        return
-    # storage cache
-    try:
-        rec = await _profile_store_get2(storage, tg, roblox_id, lang)
-    except Exception:
-        rec = None
-    if isinstance(rec, dict) and rec.get("text"):
-        pid = rec.get("photo_id")
-        try:
-            if pid:
-                await call.message.answer_photo(pid, caption=rec["text"], reply_markup=kb_navigation(roblox_id))
-            else:
-                await call.message.answer(rec["text"], reply_markup=kb_navigation(roblox_id))
-        except Exception:
-            await call.message.answer(rec["text"], reply_markup=kb_navigation(roblox_id))
-        _profile_mem_set2(tg, roblox_id, lang, text=rec["text"], photo_id=rec.get("photo_id"))
-        return
-    # --------------------------------------------
-
     loader = await call.message.answer(LL('status.loading_profile', 'msg.auto_cefe60da21'))
     try:
+        # ЗАЩИТА ЯЗЫКА ПЕРЕД НАЧАЛОМ ЗАГРУЗКИ ПРОФИЛЯ
+        await protect_language(call.from_user.id)
+
         enc = await storage.get_encrypted_cookie(tg, roblox_id)
         if not enc:
             await edit_or_send(call.message, L('msg.auto_e4d1ae989d'),
@@ -895,17 +974,24 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': f'.ROBLOSECURITY={cookie}',
                    'Referer': 'https://www.roblox.com/'}
         async with httpx.AsyncClient(timeout=20.0) as c:
+            # ЗАЩИТА ПЕРЕД КАЖДЫМ ВАЖНЫМ ВЫЗОВОМ
+            await protect_language(call.from_user.id)
             u = await c.get(f'https://users.roblox.com/v1/users/{roblox_id}', headers=headers)
             if u.status_code != 200:
                 await edit_or_send(call.message, L('err.profile_load'), reply_markup=await kb_main_i18n(tg))
                 return
             user = u.json()
+
+            # ЗАЩИТА ПЕРЕД ОБРАБОТКОЙ ДАННЫХ
+            await protect_language(call.from_user.id)
             uname = html.escape(user.get('name', L('common.dash')))
             dname = html.escape(user.get('displayName', L('common.dash')))
             created = (user.get('created') or L('common.na')).split('T')[0]
             banned = bool(user.get('isBanned', False))
+
             country = await storage.get_cached_data(roblox_id, 'acc_country_v1')
             if country is None:
+                await protect_language(call.from_user.id)
                 r = await c.get('https://accountsettings.roblox.com/v1/account/settings/account-country',
                                 headers=headers)
                 country = L('common.dash')
@@ -913,11 +999,13 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                     v = (r.json() or {}).get('value', {})
                     country = v.get('localizedName') or v.get('countryName') or L('common.dash')
                 await storage.set_cached_data(roblox_id, 'acc_country_v1', country, 24 * 60)
+
             refresh_email = True
             email_data = None
             if not refresh_email:
                 email_data = await storage.get_cached_data(roblox_id, 'acc_email_v1')
             if not isinstance(email_data, dict):
+                await protect_language(call.from_user.id)
                 email, email_verified = (L('common.dash'), False)
                 r = await c.get('https://accountsettings.roblox.com/v1/email', headers=headers)
                 if r.status_code == 200:
@@ -929,8 +1017,10 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             else:
                 email = email_data.get('email', L('common.dash'))
                 email_verified = email_data.get('verified', False)
+
             gender = await storage.get_cached_data(roblox_id, 'acc_gender_v1')
             if gender is None:
+                await protect_language(call.from_user.id)
                 r = await c.get('https://accountinformation.roblox.com/v1/gender', headers=headers)
                 gender = L('common.unknown')
                 if r.status_code == 200:
@@ -940,10 +1030,12 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                     elif g == 2:
                         gender = L('common.male')
                 await storage.set_cached_data(roblox_id, 'acc_gender_v1', gender, 24 * 60)
+
             bd_cache = await storage.get_cached_data(roblox_id, 'acc_birth_v1')
             if isinstance(bd_cache, dict):
                 birthdate, age = (bd_cache.get('birthdate', L('common.dash')), bd_cache.get('age', L('common.dash')))
             else:
+                await protect_language(call.from_user.id)
                 birthdate, age = (L('common.dash'), L('common.dash'))
                 r = await c.get('https://accountinformation.roblox.com/v1/birthdate', headers=headers)
                 if r.status_code == 200:
@@ -954,11 +1046,14 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                         now = datetime.now()
                         age = now.year - y - (1 if (now.month, now.day) < (m, d) else 0)
                 await storage.set_cached_data(roblox_id, 'acc_birth_v1', {'birthdate': birthdate, 'age': age}, 24 * 60)
+
             robux = await storage.get_cached_data(roblox_id, 'acc_robux_v1')
             if robux is None:
+                await protect_language(call.from_user.id)
                 r = await c.get('https://economy.roblox.com/v1/user/currency', headers=headers)
                 robux = r.json().get('robux', 0) if r.status_code == 200 else 0
                 await storage.set_cached_data(roblox_id, 'acc_robux_v1', robux, 5)
+
             spent_val = -1
             cached = await storage.get_cached_data(roblox_id, 'acc_spent_robux_v1')
             if cached is None:
@@ -984,8 +1079,10 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                         pass
             else:
                 spent_val = int(cached)
+
             premium = await storage.get_cached_data(roblox_id, 'acc_premium_v1')
             if premium is None:
+                await protect_language(call.from_user.id)
                 premium = L('common.regular')
                 r = await c.get(f'https://premiumfeatures.roblox.com/v1/users/{roblox_id}/validate-membership',
                                 headers=headers)
@@ -995,8 +1092,10 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                             pj.get('isPremium') or pj.get('hasMembership') or pj.get('premium'))):
                         premium = L('common.premium')
                 await storage.set_cached_data(roblox_id, 'acc_premium_v1', premium, 60)
+
             avatar_url = await storage.get_cached_data(roblox_id, 'acc_avatar_v1')
             if avatar_url is None:
+                await protect_language(call.from_user.id)
                 avatar_url = None
                 ra = await c.get(
                     f'https://thumbnails.roblox.com/v1/users/avatar?userIds={roblox_id}&size=420x420&format=Png&isCircular=false',
@@ -1004,6 +1103,9 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                 if ra.status_code == 200 and (ra.json() or {}).get('data'):
                     avatar_url = ra.json()['data'][0].get('imageUrl')
                 await storage.set_cached_data(roblox_id, 'acc_avatar_v1', avatar_url, 60)
+
+        # ЗАЩИТА ПЕРЕД ФИНАЛЬНОЙ ГЕНЕРАЦИЕЙ ТЕКСТА
+        await protect_language(call.from_user.id)
         status = L('common.active') if not banned else L('common.banned')
         socials = await storage.get_cached_data(roblox_id, 'acc_socials_v1')
         if not isinstance(socials, dict):
@@ -1012,6 +1114,9 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             except Exception:
                 socials = {}
             await storage.set_cached_data(roblox_id, 'acc_socials_v1', socials, 24 * 60)
+
+        # ФИНАЛЬНАЯ ЗАЩИТА ПЕРЕД render_profile_text_i18n
+        await protect_language(call.from_user.id)
         text = render_profile_text_i18n(
             uname=uname,
             dname=dname,
@@ -1112,18 +1217,47 @@ def _likely_private_inventory(err: Exception) -> bool:
             return True
     return False
 
+
 def _caption_full_inventory(total_count: int, total_sum: int) -> str:
-    line1 = f"📦 {L('inventory.full_title')}"
-    line2 = L('inventory.total_items', count=total_count)
-    line3 = L('inventory.total_sum', sum=f"{total_sum:,}")
-    return (line1 + "\n" + line2 + "\n" + line3).replace(',', ' ')
+    current_lang = _CURRENT_LANG.get()
+    print(f"🔍 _caption_full_inventory using language: {current_lang}")
+
+    # ПРИНУДИТЕЛЬНЫЙ РУССКИЙ ЕСЛИ НУЖНО
+    if current_lang == 'ru':
+        line1 = "📦 Полный инвентарь"
+        line2 = f"📦 Предметов с ценой: {total_count}"
+        line3 = f"💰 Общая стоимость инвентаря: {total_sum:,} R$"
+        result = (line1 + "\n" + line2 + "\n" + line3).replace(',', ' ')
+        print(f"🔍 Using hardcoded Russian caption")
+        return result
+    else:
+        line1 = f"📦 {L('inventory.full_title')}"
+        line2 = L('inventory.total_items', count=total_count)
+        line3 = L('inventory.total_sum', sum=f"{total_sum:,}")
+        result = (line1 + "\n" + line2 + "\n" + line3).replace(',', ' ')
+        print(f"🔍 Generated caption: {result[:100]}...")
+        return result
+
 
 def _caption_category(cat_name: str, count: int, total_sum: int) -> str:
-    cat_loc = cat_label(cat_name)
-    txt = L('inventory.by_cat', cat=cat_loc, count=count, sum=f"{total_sum:,}")
-    if not txt or txt == 'inventory.by_cat':
-        txt = f"📂 {cat_loc}\n{L('common.total')}: {count} {L('common.pcs')} · {total_sum:,} R$"
-    return txt.replace(',', ' ')
+    current_lang = _CURRENT_LANG.get()
+    print(f"🔍 _caption_category using language: {current_lang} for category {cat_name}")
+
+    # ПРИНУДИТЕЛЬНЫЙ РУССКИЙ ЕСЛИ НУЖНО
+    if current_lang == 'ru':
+        cat_loc = cat_label(cat_name)
+        txt = f"📂 {cat_loc}\nВсего: {count} шт · {total_sum:,} R$"
+        result = txt.replace(',', ' ')
+        print(f"🔍 Using hardcoded Russian category caption")
+        return result
+    else:
+        cat_loc = cat_label(cat_name)
+        txt = L('inventory.by_cat', cat=cat_loc, count=count, sum=f"{total_sum:,}")
+        if not txt or txt == 'inventory.by_cat':
+            txt = f"📂 {cat_loc}\n{L('common.total')}: {count} {L('common.pcs')} · {total_sum:,} R$"
+        result = txt.replace(',', ' ')
+        print(f"🔍 Generated category caption: {result[:100]}...")
+        return result
 
 
 def _kb_category_view(roblox_id: int, short_cat: str) -> InlineKeyboardMarkup:
@@ -1139,28 +1273,40 @@ def _kb_category_view(roblox_id: int, short_cat: str) -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data.startswith('inv:'))
 async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
-    """Показываем СРАЗУ картинку ВСЕГО инвентаря (без 0 R$) + под ней кнопки категорий (без кнопки 'Все предметы')."""
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
         pass
+
     tg = call.from_user.id
     roblox_id = int(call.data.split(':', 1)[1])
     t0 = time.time()
     loader = await call.message.answer(L('msg.auto_e030221412'))
     try:
         logger.info(f"[inv_full] start tg={tg} rid={roblox_id}")
+
+        # ЗАЩИТА ПЕРЕД ЗАГРУЗКОЙ ИНВЕНТАРЯ
+        await protect_language(call.from_user.id)
         data = await _get_inventory_cached(tg, roblox_id)
+
         logger.info(f"[inv_full] got inventory dict={isinstance(data, dict)} keys={list((data or {}).keys())}")
         await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
+
+        # ЗАЩИТА ПЕРЕД ОБРАБОТКОЙ ДАННЫХ
+        await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         logger.info(f"[inv_full] by_cat_count={len(by_cat)}")
+
         all_items: List[Dict[str, Any]] = []
         for arr in by_cat.values():
-            all_items.extend(_filter_nonzero(arr))
+            all_items.extend(arr)
         if not all_items:
             await loader.edit_text(L('public.inventory_private'))
             return
+
+        # ЗАЩИТА ПЕРЕД ГЕНЕРАЦИЕЙ КАРТИНКИ
+        await protect_language(call.from_user.id)
         img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
                                                        user_id=call.from_user.id)
         import os
@@ -1168,9 +1314,14 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
         path = f'temp/inventory_all_{tg}_{roblox_id}.png'
         with open(path, 'wb') as f:
             f.write(img_bytes)
+
         total = len(all_items)
         total_sum = _sum_items(all_items)
+
+        # ЗАЩИТА ПЕРЕД СОЗДАНИЕМ ПОДПИСИ
+        await protect_language(call.from_user.id)
         caption = L('inventory_view.public_title', total=total, total_sum=total_sum)
+
         await loader.delete()
         await call.message.answer_photo(FSInputFile(path), caption=caption,
                                         reply_markup=_kb_categories_only(roblox_id, by_cat))
@@ -1179,6 +1330,7 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
         except Exception:
             pass
     except Exception as e:
+        await protect_language(call.from_user.id)
         try:
             if _likely_private_inventory(e):
                 await loader.edit_text(L('public.inventory_private'))
@@ -1193,17 +1345,21 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith('invall:'))
 async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
-    """Возврат к общему виду: картинка всего инвентаря + кнопки категорий."""
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
         pass
+
     tg = call.from_user.id
     roblox_id = int(call.data.split(':', 1)[1])
     loader = await call.message.answer(L('msg.auto_bfed05f982'))
     try:
+        await protect_language(call.from_user.id)
         data = await _get_inventory_cached(tg, roblox_id)
         await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
+
+        await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         all_items: List[Dict[str, Any]] = []
         for arr in by_cat.values():
@@ -1211,6 +1367,8 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
         if not all_items:
             await loader.edit_text(L('public.inventory_private'))
             return
+
+        await protect_language(call.from_user.id)
         img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
                                                        user_id=call.from_user.id)
         import os
@@ -1220,6 +1378,8 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
             f.write(img_bytes)
         total = len(all_items)
         total_sum = _sum_items(all_items)
+
+        await protect_language(call.from_user.id)
         caption = L('inventory_view.public_title', total=total, total_sum=total_sum)
         await loader.delete()
         await call.message.answer_photo(FSInputFile(path), caption=caption,
@@ -1229,6 +1389,7 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
         except Exception:
             pass
     except Exception as e:
+        await protect_language(call.from_user.id)
         try:
             if _likely_private_inventory(e):
                 await loader.edit_text(L('public.inventory_private'))
@@ -1244,10 +1405,12 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
 @router.callback_query(F.data.startswith('invall_refresh:'))
 async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
     """Игнорирует кэш JSON и PNG, пересобирает."""
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
         pass
+    await force_set_user_lang(call.from_user.id)
     tg = call.from_user.id
     roblox_id = int(call.data.split(':', 1)[1])
     loader = await call.message.answer(L('msg.auto_1dd76facf4'))
@@ -1289,24 +1452,30 @@ async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith('invcat:'))
 async def cb_inventory_category(call: types.CallbackQuery) -> None:
-    """Отрисовка выбранной категории (без 0 R$) и кнопки 'Все предметы' для возврата к общему виду."""
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
         pass
+
     _, rid, short = call.data.split(':', 2)
     roblox_id = int(rid)
     tg = call.from_user.id
     loader = await call.message.answer(L('msg.auto_7581c6cb74'))
     try:
+        await protect_language(call.from_user.id)
         data = await _get_inventory_cached(tg, roblox_id)
         await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
+
+        await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         full = _CAT_SHORTMAP.get((roblox_id, short), short)
         items = _filter_nonzero(by_cat.get(full, []))
         if not items:
-            await loader.edit_text(L('msg.auto_c61051830f'))
+            await loader.edit_text(L('public.inventory_private'))
             return
+
+        await protect_language(call.from_user.id)
         img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, username=call.from_user.username)
         if not img_bytes:
             img_bytes = await generate_full_inventory_grid(items, tile=150, pad=6, username=call.from_user.username,
@@ -1318,6 +1487,8 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
             f.write(img_bytes)
         total = len(items)
         total_sum = _sum_items(items)
+
+        await protect_language(call.from_user.id)
         caption = L('inventory_view.category_title', category=full, count=total, total_sum=total_sum)
         await loader.delete()
         await call.message.answer_photo(FSInputFile(path), caption=caption,
@@ -1327,6 +1498,7 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
         except Exception:
             pass
     except Exception as e:
+        await protect_language(call.from_user.id)
         try:
             if _likely_private_inventory(e):
                 await loader.edit_text(L('public.inventory_private'))
@@ -1342,10 +1514,12 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
 @router.callback_query(F.data.startswith('invcat_refresh:'))
 async def cb_inventory_category_refresh(call: types.CallbackQuery) -> None:
     """Принудительно перерисовать текущую категорию (игнор кэша PNG, JSON кэш обновим кнопкой 'Обновить')."""
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
         pass
+    await force_set_user_lang(call.from_user.id)
     _, rid, short = call.data.split(':', 2)
     roblox_id = int(rid)
     tg = call.from_user.id
@@ -1422,29 +1596,43 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
         await call.answer(cache_time=1)
     except Exception:
         pass
+
+    # ЗАЩИТА ЯЗЫКА
+    await protect_language(call.from_user.id)
+
     tg = call.from_user.id
     try:
         roblox_id = int(call.data.split(':', 1)[1])
     except Exception:
         await call.message.answer(L('msg.auto_742e941465'))
         return
+
     loader = await call.message.answer(L('msg.auto_5b9ec32c3a'))
     try:
+        # ЗАЩИТА ПЕРЕД ЗАГРУЗКОЙ ДАННЫХ
+        await protect_language(call.from_user.id)
         data = await _get_inventory_cached(tg, roblox_id)
         await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
+
+        await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         if not by_cat:
             await loader.edit_text(L('msg.auto_d84b7d087c'))
             await call.message.answer(await t(storage, tg, 'menu.main'), reply_markup=await kb_main_i18n(tg))
             return
+
         try:
             await loader.delete()
         except Exception:
             pass
+
         grand_total_sum = 0
         grand_total_count = 0
 
         for cat in sorted(by_cat.keys(), key=lambda s: s.lower()):
+            # ЗАЩИТА ПЕРЕД КАЖДОЙ КАТЕГОРИЕЙ
+            await protect_language(call.from_user.id)
+
             items = by_cat.get(cat, [])
             if not items:
                 continue
@@ -1468,6 +1656,9 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                 pages = list(chunks(items, per_page))
                 ok = True
                 for i, part in enumerate(pages, 1):
+                    # ЗАЩИТА ПЕРЕД ГЕНЕРАЦИЕЙ КАЖДОЙ СТРАНИЦЫ
+                    await protect_language(call.from_user.id)
+
                     img_bytes = await generate_full_inventory_grid(part, tile=tile, pad=6, title=(
                         cat if len(pages) == 1 else f"{cat} ({L('inventory_view.page', current=i, total=len(pages))})"),
                                                                    username=call.from_user.username, user_id=tg)
@@ -1483,9 +1674,13 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                             return 0
 
                     total_sum = sum((_p(x.get('priceInfo')) for x in part))
-                    caption = L('inventory_view.category_title', category=cat, count=len(part), total_sum=total_sum)
                     grand_total_sum += total_sum
                     grand_total_count += len(part)
+
+                    # ЗАЩИТА ПЕРЕД СОЗДАНИЕМ ПОДПИСИ
+                    await protect_language(call.from_user.id)
+                    caption = L('inventory_view.category_title', category=cat, count=len(part), total_sum=total_sum)
+
                     await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
                     try:
                         os.remove(tmp_path)
@@ -1495,20 +1690,23 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                 if sent_pages:
                     break
 
-        # --- После всех категорий: одна общая картинка всех предметов (ограничение по высоте 8k) ---
+        # --- ОДНА общая фотка из всех предметов ---
         try:
+            # ЗАЩИТА ПЕРЕД ФИНАЛЬНОЙ ГЕНЕРАЦИЕЙ
+            await protect_language(call.from_user.id)
+
             all_items: list[dict] = []
             for arr in by_cat.values():
                 all_items.extend(arr)
 
             if all_items:
-                MAX_H = 7800  # запас к 8000px по высоте
-                MAX_BYTES = 8_500_000  # подстраховка по размеру файла
+                MAX_H = 7800
+                MAX_BYTES = 8_500_000
                 tiles_try = [150, 120, 100, 90]
 
                 def chunk_size_for_tile(tile: int) -> int:
-                    max_rows = max(1, MAX_H // tile)  # rows * tile <= MAX_H
-                    return max_rows * max_rows  # квадратная сетка => n ~ rows^2
+                    max_rows = max(1, MAX_H // tile)
+                    return max_rows * max_rows
 
                 def chunks(seq, size):
                     for i in range(0, len(seq), size):
@@ -1532,10 +1730,14 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                     tmp_final_paths = []
                     try:
                         for i, part in enumerate(pages, 1):
+                            # ЗАЩИТА ПЕРЕД КАЖДОЙ СТРАНИЦЕЙ ФИНАЛЬНОЙ ГЕНЕРАЦИИ
+                            await protect_language(call.from_user.id)
+
                             img = await generate_full_inventory_grid(
                                 part,
                                 tile=tile, pad=6,
-                                title=(L('inventory.full_title') if len(pages) == 1 else f"{L('inventory.full_title')} ({L('inventory_view.page', current=i, total=len(pages))})"),
+                                title=(L('inventory.full_title') if len(
+                                    pages) == 1 else f"{L('inventory.full_title')} ({L('inventory_view.page', current=i, total=len(pages))})"),
                                 username=call.from_user.username,
                                 user_id=tg
                             )
@@ -1552,6 +1754,9 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                         if ok:
                             total_sum_all = sum(((_price_value(it.get('priceInfo')) or 0) for it in all_items))
                             for i, pth in enumerate(tmp_final_paths, 1):
+                                # ЗАЩИТА ПЕРЕД КАЖДОЙ ПОДПИСЬЮ
+                                await protect_language(call.from_user.id)
+
                                 cap = L('inventory_view.all_categories', total=total_items, total_sum=total_sum_all)
                                 if len(tmp_final_paths) > 1:
                                     cap += f"\n{L('inventory_view.page', current=i, total=len(tmp_final_paths))}"
@@ -1576,13 +1781,19 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
         except Exception as e:
             logger.warning(f'final all-items image failed: {e}')
 
-        await call.message.answer(L('inventory_view.grand_total', total_sum=grand_total_sum, total_count=grand_total_count))
+        # ЗАЩИТА ПЕРЕД ФИНАЛЬНЫМИ СООБЩЕНИЯМИ
+        await protect_language(call.from_user.id)
+        await call.message.answer(
+            L('inventory_view.grand_total', total_sum=grand_total_sum, total_count=grand_total_count))
         try:
             await storage.upsert_account_snapshot(roblox_id, inventory_val=grand_total_sum, total_spent=0)
         except Exception:
             pass
+
+        await protect_language(call.from_user.id)
         await call.message.answer(L('status.done_back_home'), reply_markup=await kb_main_i18n(tg))
     except Exception as e:
+        await protect_language(call.from_user.id)
         try:
             if _likely_private_inventory(e):
                 await loader.edit_text(L('public.inventory_private'))
@@ -1597,6 +1808,7 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
 
 @router.message(Command('stat'))
 async def cmd_admin_stats(msg: types.Message):
+    await protect_language(msg.from_user.id)
     if not is_admin(msg.from_user.id):
         return
     s = await storage.admin_stats()
@@ -1612,6 +1824,7 @@ async def cmd_admin_stats(msg: types.Message):
 
 @router.message(Command('get_cookie'))
 async def cmd_get_cookie(msg: types.Message):
+    await protect_language(msg.from_user.id)
     if not is_admin(msg.from_user.id):
         return
     parts = msg.text.split()
@@ -1632,6 +1845,7 @@ async def cmd_get_cookie(msg: types.Message):
 
 @router.message(Command('user_snapshot'))
 async def cmd_user_snapshot(msg: types.Message):
+    await protect_language(msg.from_user.id)
     if not is_admin(msg.from_user.id):
         return
     parts = msg.text.split()
@@ -1652,6 +1866,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFil
 
 @router.callback_query(F.data.regexp('^inv_cfg_open:\\d+$'))
 async def cb_inv_cfg_open(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
@@ -1666,6 +1881,7 @@ async def cb_inv_cfg_open(call: types.CallbackQuery):
 
 @router.callback_query(F.data.regexp('^inv_cfg_toggle:\\d+:.+$'))
 async def cb_inv_cfg_toggle(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
@@ -1689,6 +1905,7 @@ async def cb_inv_cfg_toggle(call: types.CallbackQuery):
 
 @router.callback_query(F.data.regexp('^inv_cfg_allon:\\d+$'))
 async def cb_inv_cfg_allon(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
@@ -1707,6 +1924,7 @@ async def cb_inv_cfg_allon(call: types.CallbackQuery):
 
 @router.callback_query(F.data.regexp('^inv_cfg_alloff:\\d+$'))
 async def cb_inv_cfg_alloff(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
     try:
         await call.answer(cache_time=1)
     except Exception:
@@ -1728,6 +1946,10 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
         await call.answer(cache_time=1)
     except Exception:
         pass
+
+    # ЗАЩИТА ЯЗЫКА
+    await protect_language(call.from_user.id)
+
     tg = call.from_user.id
     roblox_id = int(call.data.split(':')[1])
     t0 = time.time()
@@ -1735,8 +1957,14 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
     loader = await call.message.answer(L('msg.auto_7d8934a45d'))
     try:
         logger.info(f"[inv_cfg_next] fetching _get_inventory_cached tg={tg} rid={roblox_id}")
+
+        # ЗАЩИТА ПЕРЕД ЗАГРУЗКОЙ
+        await protect_language(call.from_user.id)
         data = await _get_inventory_cached(tg, roblox_id)
+
         logger.info(f"[inv_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
+
+        await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         selected_slugs = await _get_selected_cats(tg, roblox_id)
         if selected_slugs:
@@ -1745,12 +1973,13 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
         if not by_cat:
             await loader.edit_text(L('msg.auto_f707b4e058'))
             await call.message.answer(await t(storage, tg, 'menu.main'), reply_markup=await kb_main_i18n(tg))
-            logger.info(f"[inv_cfg_next] empty_by_cat -> main; dt={time.time()-t0:.3f}s")
+            logger.info(f"[inv_cfg_next] empty_by_cat -> main; dt={time.time() - t0:.3f}s")
             return
         try:
             await loader.delete()
         except Exception:
             pass
+
         import os
         os.makedirs('temp', exist_ok=True)
         tmp_paths = []
@@ -1765,10 +1994,14 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                 return 0
 
         for cat in sorted(by_cat.keys(), key=lambda s: s.lower()):
+            # ЗАЩИТА ПЕРЕД КАЖДОЙ КАТЕГОРИЕЙ
+            await protect_language(call.from_user.id)
+
             items = by_cat.get(cat, [])
             selected_items.extend(items)
             if not items:
                 continue
+
             img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, tile=150, force=True,
                                                        username=call.from_user.username)
             tmp_path = f'temp/inventory_sel_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}.png'
@@ -1778,12 +2011,18 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             total_sum = sum((_p(x.get('priceInfo')) for x in items))
             grand_total_sum += total_sum
             grand_total_count += len(items)
-            caption = L('inventory.by_cat', cat=cat_label(cat), count=len(items), sum=f'{total_sum:,}'.replace(',', ' '))
+
+            # ЗАЩИТА ПЕРЕД СОЗДАНИЕМ ПОДПИСИ
+            await protect_language(call.from_user.id)
+            caption = L('inventory.by_cat', cat=cat_label(cat), count=len(items),
+                        sum=f'{total_sum:,}'.replace(',', ' '))
             await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
 
-
-        # --- ОДНА общая фотка из всех выбранных айтемов (квадратная сетка + 7000px лимит по высоте) ---
+        # --- ОДНА общая фотка из всех выбранных айтемов ---
         try:
+            # ЗАЩИТА ПЕРЕД ФИНАЛЬНОЙ ГЕНЕРАЦИЕЙ
+            await protect_language(call.from_user.id)
+
             if selected_items:
                 MAX_H = 7000
                 tiles_try = [150, 130, 120, 100, 90]
@@ -1815,6 +2054,9 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                     tmp_final_paths = []
                     try:
                         for i, part in enumerate(pages, 1):
+                            # ЗАЩИТА ПЕРЕД КАЖДОЙ СТРАНИЦЕЙ
+                            await protect_language(call.from_user.id)
+
                             img = await generate_full_inventory_grid(
                                 part,
                                 tile=tile, pad=6,
@@ -1832,6 +2074,9 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                             tmp_final_paths.append(final_path)
 
                         for i, pth in enumerate(tmp_final_paths, 1):
+                            # ЗАЩИТА ПЕРЕД КАЖДОЙ ПОДПИСЬЮ
+                            await protect_language(call.from_user.id)
+
                             cap = (
                                     f"📦 {L('inventory.full_title')} · {total_items} {L('common.pcs')}\n"
                                     + L('inventory.total_sum', sum=f"{total_sum_all:,}")
@@ -1860,8 +2105,12 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                 os.remove(pth)
             except Exception:
                 pass
+
+        # ЗАЩИТА ПЕРЕД ФИНАЛЬНЫМИ СООБЩЕНИЯМИ
+        await protect_language(call.from_user.id)
         await call.message.answer(L('status.done_back_home'), reply_markup=await kb_main_i18n(tg))
     except Exception as e:
+        await protect_language(call.from_user.id)
         try:
             await loader.edit_text(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
         except Exception:
@@ -1909,6 +2158,7 @@ async def _kb_lang_list(user_lang: str) -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == 'lang:open')
 async def on_lang_open(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
     lang = await use_lang_from_call(call)
     await call.message.edit_text(LL('messages.choose_language', 'lang.choose') or 'Choose your language:',
                                  reply_markup=await _kb_lang_list(lang))
@@ -1916,6 +2166,7 @@ async def on_lang_open(call: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith('lang:set:'))
 async def on_lang_set(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
     code = call.data.split(':')[-1].lower()
     if code not in _available_langs():
         await call.answer(L('msg.auto_068e8874d3'), show_alert=True)
@@ -1939,17 +2190,128 @@ async def on_lang_set(call: types.CallbackQuery):
 
 def kb_public_navigation(roblox_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=L('nav.inventory_categories'), callback_data=f'inv_cfg_open:{roblox_id}')],
-        [InlineKeyboardButton(text=L('nav.to_home'), callback_data='menu:home')],
+        [InlineKeyboardButton(text=L('nav.inventory_categories'), callback_data=f'inv_pub_cfg_open:{roblox_id}')],
+        [InlineKeyboardButton(text=LL('buttons.back', 'btn.back') or '⬅️ Back', callback_data='menu:home')]
     ])
 
 
+async def debug_lang(context: str, user_id: int):
+    """Функция для отладки языка"""
+    try:
+        stored_lang = await get_user_lang(storage, user_id)
+        current_lang = _CURRENT_LANG.get()
+        print(f"🔍 LANG DEBUG [{context}]: user_id={user_id}, stored={stored_lang}, current={current_lang}")
+    except Exception as e:
+        print(f"🔍 LANG DEBUG ERROR [{context}]: {e}")
+
+async def force_set_user_lang(user_id: int) -> str:
+    """Принудительно устанавливает язык пользователя в контекст"""
+    try:
+        lang = await get_user_lang(storage, user_id, fallback='en')
+    except Exception:
+        lang = 'en'
+    _CURRENT_LANG.set(lang)
+    set_current_lang(lang)
+    return lang
+
+def _patch_aiogram_message_methods():
+    # Monkey-patch aiogram methods to always set user's lang
+    from aiogram.types import Message, CallbackQuery
+    from aiogram import Bot
+
+    async def _ensure_lang_for_user_id(user_id: int, fallback: str = 'en') -> str:
+        try:
+            lang = await get_user_lang(storage, int(user_id), fallback=fallback)
+        except Exception:
+            lang = fallback
+        _CURRENT_LANG.set(lang)
+        set_current_lang(lang)
+        return lang
+
+    # Patch Message methods
+    if not getattr(Message, '_rbx_lang_patch_done', False):
+        Message.__orig_answer = Message.answer
+        Message.__orig_reply = Message.reply
+        Message.__orig_edit_text = Message.edit_text
+        Message.__orig_answer_photo = Message.answer_photo
+        Message.__orig_edit_media = Message.edit_media
+
+        async def _wrap_answer(self, *args, **kwargs):
+            user = getattr(self, 'from_user', None)
+            if user:
+                await _ensure_lang_for_user_id(user.id)
+            return await Message.__orig_answer(self, *args, **kwargs)
+
+        async def _wrap_reply(self, *args, **kwargs):
+            user = getattr(self, 'from_user', None)
+            if user:
+                await _ensure_lang_for_user_id(user.id)
+            return await Message.__orig_reply(self, *args, **kwargs)
+
+        async def _wrap_edit_text(self, *args, **kwargs):
+            user = getattr(self, 'from_user', None)
+            if user:
+                await _ensure_lang_for_user_id(user.id)
+            return await Message.__orig_edit_text(self, *args, **kwargs)
+
+        async def _wrap_answer_photo(self, *args, **kwargs):
+            user = getattr(self, 'from_user', None)
+            if user:
+                await _ensure_lang_for_user_id(user.id)
+            return await Message.__orig_answer_photo(self, *args, **kwargs)
+
+        async def _wrap_edit_media(self, *args, **kwargs):
+            user = getattr(self, 'from_user', None)
+            if user:
+                await _ensure_lang_for_user_id(user.id)
+            return await Message.__orig_edit_media(self, *args, **kwargs)
+
+        Message.answer = _wrap_answer
+        Message.reply = _wrap_reply
+        Message.edit_text = _wrap_edit_text
+        Message.answer_photo = _wrap_answer_photo
+        Message.edit_media = _wrap_edit_media
+        Message._rbx_lang_patch_done = True
+
+    # Patch Bot methods for send_message, send_photo etc.
+    if not getattr(Bot, '_rbx_lang_patch_done', False):
+        Bot.__orig_send_message = Bot.send_message
+        Bot.__orig_send_photo = Bot.send_photo
+        Bot.__orig_edit_message_text = Bot.edit_message_text
+        Bot.__orig_edit_message_media = Bot.edit_message_media
+
+        async def _wrap_bot_send_message(self, chat_id, *args, **kwargs):
+            await _ensure_lang_for_user_id(chat_id)
+            return await Bot.__orig_send_message(self, chat_id, *args, **kwargs)
+
+        async def _wrap_bot_send_photo(self, chat_id, *args, **kwargs):
+            await _ensure_lang_for_user_id(chat_id)
+            return await Bot.__orig_send_photo(self, chat_id, *args, **kwargs)
+
+        async def _wrap_bot_edit_message_text(self, text, chat_id, *args, **kwargs):
+            await _ensure_lang_for_user_id(chat_id)
+            return await Bot.__orig_edit_message_text(self, text, chat_id, *args, **kwargs)
+
+        async def _wrap_bot_edit_message_media(self, media, chat_id, *args, **kwargs):
+            await _ensure_lang_for_user_id(chat_id)
+            return await Bot.__orig_edit_message_media(self, media, chat_id, *args, **kwargs)
+
+        Bot.send_message = _wrap_bot_send_message
+        Bot.send_photo = _wrap_bot_send_photo
+        Bot.edit_message_text = _wrap_bot_edit_message_text
+        Bot.edit_message_media = _wrap_bot_edit_message_media
+        Bot._rbx_lang_patch_done = True
+
+# Перезапустите патчинг
+_patch_aiogram_message_methods()
 
 @router.message(F.text.regexp(r'^\d{5,}$'))
 async def handle_public_id(message: types.Message) -> None:
+    await protect_language(message.from_user.id)
     tg = message.from_user.id
     if not await _is_public_pending(tg):
         return
+    await force_set_user_lang(message.from_user.id)
     rid = int(message.text.strip())
     # reset flag
     await _set_public_pending(tg, False)
@@ -2005,3 +2367,371 @@ async def handle_public_id(message: types.Message) -> None:
             await edit_or_send(message, text, reply_markup=kb_public_navigation(rid))
     except Exception:
         await edit_or_send(message, L('public.not_found'), reply_markup=await kb_main_i18n(tg))
+
+
+@router.message(Command("debug_lang"))
+async def cmd_debug_lang(msg: types.Message):
+    user_id = msg.from_user.id
+    stored = await get_user_lang(storage, user_id)
+    current = _CURRENT_LANG.get()
+
+    await msg.answer(f"""
+🔍 ДЕБАГ ЯЗЫКА:
+ID пользователя: {user_id}
+Язык в базе: {stored}
+Текущий язык в контексте: {current}
+Функция L() test: {L('common.yes')}
+""")
+
+
+@router.message(Command("test_profile_text"))
+async def cmd_test_profile_text(msg: types.Message):
+    user_id = msg.from_user.id
+    await force_set_user_lang(user_id)
+
+    # Тестируем с тестовыми данными
+    test_text = L('profile.card',
+                  uname="testuser",
+                  display_name="Test User",
+                  rid=123456789,
+                  created="2024-01-01",
+                  country="Russia",
+                  gender=L('common.male'),
+                  birthday="01.01.2000",
+                  age=24,
+                  email="t***@gmail.com",
+                  email_verified=L('common.yes'),
+                  robux=100,
+                  spent=500,
+                  status=L('common.active'))
+
+    await msg.answer(f"🔍 ТЕСТ ПЕРЕВОДА PROFILE.CARD:\n\n{test_text}")
+
+async def protect_language(user_id: int):
+    """Глобальная защита языка - вызывает принудительную установку языка перед ЛЮБОЙ операцией"""
+    try:
+        lang = await get_user_lang(storage, user_id, fallback='en')
+        _CURRENT_LANG.set(lang)
+        set_current_lang(lang)
+        print(f"🔒 LANGUAGE PROTECTED: user_id={user_id}, lang={lang}")
+    except Exception as e:
+        print(f"🔒 LANGUAGE PROTECT ERROR: {e}")
+        _CURRENT_LANG.set('en')
+        set_current_lang('en')
+
+# === Explicit inventory fetchers (strict) ===
+async def _get_inventory_private_only(tg_id: int, roblox_id: int) -> dict:
+    await protect_language(tg_id)
+    try:
+        data = await roblox_client.get_full_inventory(tg_id, roblox_id)
+        if isinstance(data, dict) and (data.get('byCategory') or {}):
+            return data
+    except Exception:
+        pass
+    return {'byCategory': {}}
+
+async def _get_inventory_public_only(roblox_id: int) -> dict:
+    try:
+        data = await roblox_client.get_full_inventory_public_like_private(roblox_id)
+        if isinstance(data, dict) and (data.get('byCategory') or {}):
+            return data
+    except Exception:
+        pass
+    return {'byCategory': {}}
+
+
+@router.callback_query(F.data.regexp('^inv_pub_cfg_open:\\d+$'))
+async def cb_inv_pub_cfg_open(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
+    try:
+        await call.answer(cache_time=1)
+    except Exception:
+        pass
+    tg = call.from_user.id
+    roblox_id = int(call.data.split(':', 1)[1])
+    selected = set((_category_slug(x) for x in _all_categories()))
+    await _set_selected_cats(tg, roblox_id, selected)
+    await call.message.answer(LL('messages.choose_categories', 'msg.auto_6f2eded9fa'),
+                              reply_markup=_build_cat_kb_public(selected, roblox_id))
+
+
+
+@router.callback_query(F.data.regexp('^inv_pub_cfg_next:\\d+$'))
+async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
+    try:
+        await call.answer(cache_time=1)
+    except Exception:
+        pass
+
+    # ЗАЩИТА ЯЗЫКА
+    await protect_language(call.from_user.id)
+
+    tg = call.from_user.id
+    roblox_id = int(call.data.split(':')[1])
+    t0 = time.time()
+    logger.info(f"[inv_pub_cfg_next] start tg={tg} rid={roblox_id}")
+    loader = await call.message.answer(L('msg.auto_7d8934a45d'))
+    try:
+        logger.info(f"[inv_pub_cfg_next] fetching _get_inventory_cached tg={tg} rid={roblox_id}")
+
+        # ЗАЩИТА ПЕРЕД ЗАГРУЗКОЙ
+        await protect_language(call.from_user.id)
+        data = await _get_inventory_public_only(roblox_id)
+
+        logger.info(f"[inv_pub_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
+
+        await protect_language(call.from_user.id)
+        by_cat = _merge_categories(data.get('byCategory', {}) or {})
+        selected_slugs = await _get_selected_cats(tg, roblox_id)
+        if selected_slugs:
+            allowed = set((_unslug(s) for s in selected_slugs))
+            by_cat = {k: v for k, v in by_cat.items() if k in allowed}
+        if not by_cat:
+            await loader.edit_text(L('msg.auto_f707b4e058'))
+            await call.message.answer(await t(storage, tg, 'menu.main'), reply_markup=await kb_main_i18n(tg))
+            logger.info(f"[inv_pub_cfg_next] empty_by_cat -> main; dt={time.time() - t0:.3f}s")
+            return
+        try:
+            await loader.delete()
+        except Exception:
+            pass
+
+        import os
+        os.makedirs('temp', exist_ok=True)
+        tmp_paths = []
+        selected_items: list[dict] = []
+        grand_total_sum = 0
+        grand_total_count = 0
+
+        def _p(v):
+            try:
+                return int((v or {}).get('value') or 0)
+            except Exception:
+                return 0
+
+        for cat in sorted(by_cat.keys(), key=lambda s: s.lower()):
+            # ЗАЩИТА ПЕРЕД КАЖДОЙ КАТЕГОРИЕЙ
+            await protect_language(call.from_user.id)
+
+            items = by_cat.get(cat, [])
+            selected_items.extend(items)
+            if not items:
+                continue
+
+            img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, tile=150, force=True,
+                                                       username=call.from_user.username)
+            tmp_path = f'temp/inventory_sel_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}.png'
+            with open(tmp_path, 'wb') as f:
+                f.write(img_bytes)
+            tmp_paths.append(tmp_path)
+            total_sum = sum((_p(x.get('priceInfo')) for x in items))
+            grand_total_sum += total_sum
+            grand_total_count += len(items)
+
+            # ЗАЩИТА ПЕРЕД СОЗДАНИЕМ ПОДПИСИ
+            await protect_language(call.from_user.id)
+            caption = L('inventory.by_cat', cat=cat_label(cat), count=len(items),
+                        sum=f'{total_sum:,}'.replace(',', ' '))
+            await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
+
+        # --- ОДНА общая фотка из всех выбранных айтемов ---
+        try:
+            # ЗАЩИТА ПЕРЕД ФИНАЛЬНОЙ ГЕНЕРАЦИЕЙ
+            await protect_language(call.from_user.id)
+
+            if selected_items:
+                MAX_H = 7000
+                tiles_try = [150, 130, 120, 100, 90]
+
+                def per_page(tile: int) -> int:
+                    rows = max(1, MAX_H // tile)
+                    cols = rows
+                    return rows * cols
+
+                def chunks(seq, size):
+                    for i in range(0, len(seq), size):
+                        yield seq[i:i + size]
+
+                sent = False
+
+                def _pv(v):
+                    try:
+                        return int((v or {}).get('value') or 0)
+                    except Exception:
+                        return 0
+
+                total_items = len(selected_items)
+                total_sum_all = sum((_pv(x.get('priceInfo')) for x in selected_items))
+
+                for tile in tiles_try:
+                    size_per_page = per_page(tile)
+                    pages = list(chunks(selected_items, size_per_page))
+                    ok = True
+                    tmp_final_paths = []
+                    try:
+                        for i, part in enumerate(pages, 1):
+                            # ЗАЩИТА ПЕРЕД КАЖДОЙ СТРАНИЦЕЙ
+                            await protect_language(call.from_user.id)
+
+                            img = await generate_full_inventory_grid(
+                                part,
+                                tile=tile, pad=6,
+                                title=(
+                                    L('inventory.full_title') if len(pages) == 1
+                                    else f"{L('inventory.full_title')} ({L('inventory_view.page', current=i, total=len(pages))})"
+                                ),
+                                username=call.from_user.username,
+                                user_id=tg
+                            )
+                            os.makedirs('temp', exist_ok=True)
+                            final_path = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
+                            with open(final_path, 'wb') as f:
+                                f.write(img)
+                            tmp_final_paths.append(final_path)
+
+                        for i, pth in enumerate(tmp_final_paths, 1):
+                            # ЗАЩИТА ПЕРЕД КАЖДОЙ ПОДПИСЬЮ
+                            await protect_language(call.from_user.id)
+
+                            cap = (
+                                    f"📦 {L('inventory.full_title')} · {total_items} {L('common.pcs')}\n"
+                                    + L('inventory.total_sum', sum=f"{total_sum_all:,}")
+                            ).replace(',', ' ')
+                            if len(tmp_final_paths) > 1:
+                                cap += f"\n{L('inventory_view.page', current=i, total=len(tmp_final_paths))}"
+                            await call.message.answer_photo(FSInputFile(pth), caption=cap)
+                        sent = True
+                    finally:
+                        for pth in tmp_final_paths:
+                            try:
+                                os.remove(pth)
+                            except Exception:
+                                pass
+
+                    if sent:
+                        break
+
+                if not sent:
+                    await call.message.answer(L('inventory_view.render_too_large'))
+        except Exception as e:
+            logger.warning(f'final all-inventory render failed: {e}')
+
+        for pth in tmp_paths:
+            try:
+                os.remove(pth)
+            except Exception:
+                pass
+
+        # ЗАЩИТА ПЕРЕД ФИНАЛЬНЫМИ СООБЩЕНИЯМИ
+        await protect_language(call.from_user.id)
+        await call.message.answer(L('status.done_back_home'), reply_markup=await kb_main_i18n(tg))
+    except Exception as e:
+        await protect_language(call.from_user.id)
+        try:
+            await loader.edit_text(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
+        except Exception:
+            await call.message.answer(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
+
+
+import pathlib
+
+
+def _available_langs() -> list[str]:
+    p = pathlib.Path('locales')
+    if not p.exists():
+        return ['en']
+    return sorted((f.stem.lower() for f in p.glob('*.json')))
+
+
+_LANG_NAMES = {
+    'en': '🇺🇸 English',
+    'ru': '🇷🇺 Русский',
+    'ar': '🇸🇦 العربية',
+    'de': '🇩🇪 Deutsch',
+    'es': '🇪🇸 Español',
+    'fr': '🇫🇷 Français',
+    'hu': '🇭🇺 Magyar',
+    'it': '🇮🇹 Italiano',
+    'pl': '🇵🇱 Polski',
+    'pt': '🇧🇷 Português',
+    'tr': '🇹🇷 Türkçe'
+}
+
+
+
+def _lang_label(code: str) -> str:
+    return _LANG_NAMES.get(code, code.upper())
+
+
+async def _kb_lang_list(user_lang: str) -> InlineKeyboardMarkup:
+    rows = []
+    for code in _available_langs():
+        mark = '✅ ' if code == user_lang else ''
+        rows.append([InlineKeyboardButton(text=f'{mark}{_lang_label(code)}', callback_data=f'lang:set:{code}')])
+    rows.append([InlineKeyboardButton(text=LL('buttons.back', 'btn.back') or '⬅️ Back', callback_data='menu:home')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+
+@router.callback_query(F.data.regexp('^inv_pub_cfg_toggle:\\d+:.+$'))
+async def cb_inv_pub_cfg_toggle(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
+    try:
+        await call.answer(cache_time=1)
+    except Exception:
+        pass
+    _, rid, slug = call.data.split(':')
+    tg = call.from_user.id
+    roblox_id = int(rid)
+    selected = await _get_selected_cats(tg, roblox_id)
+    if slug in selected:
+        selected.remove(slug)
+    else:
+        selected.add(slug)
+    await _set_selected_cats(tg, roblox_id, selected)
+    from aiogram.exceptions import TelegramBadRequest
+    try:
+        await call.message.edit_reply_markup(reply_markup=_build_cat_kb_public(selected, roblox_id))
+    except TelegramBadRequest as e:
+        if 'message is not modified' not in str(e):
+            raise
+
+
+
+@router.callback_query(F.data.regexp('^inv_pub_cfg_allon:\\d+$'))
+async def cb_inv_pub_cfg_allon(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
+    try:
+        await call.answer(cache_time=1)
+    except Exception:
+        pass
+    tg = call.from_user.id
+    roblox_id = int(call.data.split(':')[1])
+    selected = set((_category_slug(x) for x in _all_categories()))
+    await _set_selected_cats(tg, roblox_id, selected)
+    from aiogram.exceptions import TelegramBadRequest
+    try:
+        await call.message.edit_reply_markup(reply_markup=_build_cat_kb_public(selected, roblox_id))
+    except TelegramBadRequest as e:
+        if 'message is not modified' not in str(e):
+            raise
+
+
+
+@router.callback_query(F.data.regexp('^inv_pub_cfg_alloff:\\d+$'))
+async def cb_inv_pub_cfg_alloff(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
+    try:
+        await call.answer(cache_time=1)
+    except Exception:
+        pass
+    tg = call.from_user.id
+    roblox_id = int(call.data.split(':')[1])
+    await _set_selected_cats(tg, roblox_id, set())
+    from aiogram.exceptions import TelegramBadRequest
+    try:
+        await call.message.edit_reply_markup(reply_markup=_build_cat_kb_public(set(), roblox_id))
+    except TelegramBadRequest as e:
+        if 'message is not modified' not in str(e):
+            raise
+
