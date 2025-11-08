@@ -2694,3 +2694,132 @@ async def _send_full_inventory_paged(*, message, items, tg_id: int, roblox_id: i
                 pass
 
     return sent_any
+
+
+# ==========================
+# Anti-Spam / Rate Limit
+# ==========================
+import asyncio, time, os
+from collections import deque
+from aiogram import BaseMiddleware
+from aiogram.types import Message, CallbackQuery
+
+# ENV knobs
+_RATE_RPS = float(os.getenv("RATE_LIMIT_RPS", "1.5"))          # average allowed events per second per user
+_RATE_BURST = int(os.getenv("RATE_LIMIT_BURST", "6"))          # short burst allowance
+_RATE_PENALTY = float(os.getenv("RATE_PENALTY_SEC", "5"))      # seconds to cool down after overflow
+_GLOBAL_MAX_WINDOW = float(os.getenv("GLOBAL_WINDOW_SEC", "2"))# global window length
+_GLOBAL_MAX_EVENTS = int(os.getenv("GLOBAL_MAX_EVENTS", "600"))# total events in window before dropping new ones
+_NOTIFY_COOLDOWN = float(os.getenv("SPAM_NOTIFY_COOLDOWN", "8")) # seconds between warnings to same user
+
+_user_buckets = {}     # uid -> {tokens, ts, until, last_warn}
+_user_locks = {}       # uid -> asyncio.Lock
+_global_events = deque()   # timestamps of recent events
+_global_lock = asyncio.Lock()
+
+def _now():
+    return time.monotonic()
+
+def _lock_for(uid: int):
+    lock = _user_locks.get(uid)
+    if lock is None:
+        lock = asyncio.Lock()
+        _user_locks[uid] = lock
+    return lock
+
+def _allow_user(uid: int) -> tuple[bool, float]:
+    """Token bucket per user.
+    returns (allowed, retry_in_sec)
+    """
+    if _RATE_RPS <= 0:
+        return True, 0.0
+    b = _user_buckets.get(uid)
+    now = _now()
+    cap = float(max(1, _RATE_BURST))
+    rate = float(max(0.1, _RATE_RPS))
+    if b is None:
+        b = {"tokens": cap, "ts": now, "until": 0.0, "last_warn": 0.0}
+        _user_buckets[uid] = b
+
+    # cooldown
+    if b["until"] > now:
+        return False, max(0.0, b["until"] - now)
+
+    # refill
+    elapsed = max(0.0, now - b["ts"])
+    b["ts"] = now
+    b["tokens"] = min(cap, b["tokens"] + elapsed * rate)
+
+    if b["tokens"] >= 1.0:
+        b["tokens"] -= 1.0
+        return True, 0.0
+
+    # overflow → penalize
+    b["until"] = now + _RATE_PENALTY
+    return False, _RATE_PENALTY
+
+async def _allow_global() -> bool:
+    now = _now()
+    async with _global_lock:
+        _global_events.append(now)
+        # drop old
+        cutoff = now - _GLOBAL_MAX_WINDOW
+        while _global_events and _global_events[0] < cutoff:
+            _global_events.popleft()
+        return len(_global_events) <= _GLOBAL_MAX_EVENTS
+
+async def _maybe_warn(message_or_cb, uid: int, retry_in: float):
+    try:
+        b = _user_buckets.get(uid) or {}
+        now = _now()
+        if now - float(b.get("last_warn", 0.0)) < _NOTIFY_COOLDOWN:
+            return
+        b["last_warn"] = now
+        _user_buckets[uid] = b
+        txt = L('anti_spam.too_fast', retry=int(retry_in))
+        if isinstance(message_or_cb, Message):
+            await edit_or_send(message_or_cb, txt, reply_markup=await kb_main_i18n(uid))
+        elif isinstance(message_or_cb, CallbackQuery):
+            try:
+                await message_or_cb.answer(txt, show_alert=False)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+class SpamGuardMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event, data):
+        uid = None
+        if isinstance(event, Message) and event.from_user:
+            uid = event.from_user.id
+        elif isinstance(event, CallbackQuery) and event.from_user:
+            uid = event.from_user.id
+        else:
+            return await handler(event, data)
+
+        # Global limiter first
+        ok_global = await _allow_global()
+        if not ok_global:
+            # silently drop
+            return
+
+        # Per-user limiter
+        lock = _lock_for(uid)
+        async with lock:
+            allowed, retry_in = _allow_user(uid)
+        if not allowed:
+            await _maybe_warn(event if isinstance(event, Message) else event, uid, retry_in)
+            return
+
+        return await handler(event, data)
+
+# Register middlewares for messages and callbacks
+try:
+    router.message.middleware(SpamGuardMiddleware())
+    router.callback_query.middleware(SpamGuardMiddleware())
+except Exception as _e:
+    try:
+        logger.warning(f"SpamGuard attach failed: {type(_e).__name__}: {_e}")
+    except Exception:
+        pass
+
