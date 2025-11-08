@@ -2353,9 +2353,7 @@ async def protect_language(user_id: int):
         lang = await get_user_lang(storage, user_id, fallback='en')
         _CURRENT_LANG.set(lang)
         set_current_lang(lang)
-        print(f"🔒 LANGUAGE PROTECTED: user_id={user_id}, lang={lang}")
     except Exception as e:
-        print(f"🔒 LANGUAGE PROTECT ERROR: {e}")
         _CURRENT_LANG.set('en')
         set_current_lang('en')
 
