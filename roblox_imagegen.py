@@ -63,6 +63,58 @@ def _enrich_with_csv(it: dict, price_map: dict) -> dict:
     else:
         _log_price_event(f"[PRICE_MISS] {name!r} (id={pid}) -> not found in CSV")
     return it
+
+def _append_price_csv(pid, name):
+    """Best-effort: append missing item to prices.csv.
+    - If CSV has headers and we can recognize them, write a dict row.
+    - Else, append a simple 3-column row: id,name,0
+    """
+    path = PRICE_CSV_PATH
+    try:
+        # Detect headers
+        headers = None
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8-sig", newline="") as rf:
+                sn = rf.read(4096)
+            # quick sniff for header line (first line)
+            first_line = sn.splitlines()[0] if sn else ""
+            # Heuristic: treat as header when contains any known fields
+            known = {"itemid","collectibleitemid","collectibleid","assetid","id","name","price","value","pricepicked","cost"}
+            parts = [p.strip().lower() for p in first_line.split(",")]
+            if parts and all(len(p) > 0 for p in parts) and any(p in known for p in parts):
+                headers = parts
+
+        # Try to write with headers if recognizable
+        if headers:
+            # Prepare dict with best-effort keys
+            row = {}
+            # prefer the first id-like header
+            id_keys = [k for k in headers if k in ("itemid","collectibleitemid","collectibleid","assetid","id")]
+            name_key = "name" if "name" in headers else None
+            price_key = None
+            for k in ("pricepicked","price","value","cost"):
+                if k in headers:
+                    price_key = k
+                    break
+            if id_keys and name_key and price_key:
+                row[id_keys[0]] = str(pid or "").strip()
+                row[name_key] = str(name or "").strip()
+                row[price_key] = "0"
+                # keep all other headers empty
+                for h in headers:
+                    row.setdefault(h, "")
+                with open(path, "a", encoding="utf-8", newline="") as wf:
+                    w = csv.DictWriter(wf, fieldnames=headers)
+                    w.writerow(row)
+                return
+        # Fallback: 3 columns raw
+        with open(path, "a", encoding="utf-8", newline="") as wf:
+            w = csv.writer(wf)
+            w.writerow([pid, name or "", 0])
+    except Exception as e:
+        _err("[price_csv_append] fail", e)
+
+
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -341,116 +393,6 @@ def _write_ready_item(aid: int, im: Image.Image):
 # =========================
 # Network fetch with cache (THUMB_SIZE enforced)
 # =========================
-def _cat_norm(s: str) -> str:
-    s = str(s or "").lower()
-    for ch in (" ", "_", "-", ".", "/"):
-        s = s.replace(ch, "")
-    return s
-
-_CAT_SYNONYMS = {
-    "heads": {"heads", "head"},
-    "hats": {"hats", "headaccessories"},
-    "hair": {"hair", "hairs", "hairaccessories"},
-    "faces": {"faces", "face", "faceaccessories"},
-    "gear": {"gear", "gears", "tools"},
-    "bundlespackages": {"bundles", "packages", "bundlespackages"},
-}
-
-_GROUPS = {
-    "accessories": {
-        "members": [
-            "Head Accessories", "Hair Accessories", "Face Accessories",
-            "Neck Accessories", "Shoulder Accessories",
-            "Front Accessories", "Back Accessories", "Waist Accessories",
-        ]
-    },
-    "bundlespackages": {"members": ["Bundles", "Packages"]},
-    "classicclothes":  {"members": ["Classic T-Shirts", "Shirts", "Pants"]},
-}
-
-
-def _pick_items(bycat: dict, incoming: str) -> list:
-    if not isinstance(bycat, dict) or not bycat:
-        _info(f"[PICK_DEEP_DEBUG] bycat is empty or not dict")
-        return []
-
-    _info(f"[PICK_DEEP_DEBUG] ===== START _pick_items =====")
-    _info(f"[PICK_DEEP_DEBUG] Looking for: '{incoming}'")
-    _info(f"[PICK_DEEP_DEBUG] Available categories: {list(bycat.keys())}")
-
-    # Детальная информация о каждой категории
-    for cat_name, items in bycat.items():
-        _info(f"[PICK_DEEP_DEBUG] Category '{cat_name}': {len(items)} items")
-        if items and len(items) > 0:
-            sample = items[0]
-            _info(
-                f"[PICK_DEEP_DEBUG]   Sample item - assetId: {sample.get('assetId')}, name: '{sample.get('name')}', assetType: {sample.get('assetType')}")
-
-    # ПРЯМОЕ СОВПАДЕНИЕ
-    if incoming in bycat:
-        result = bycat[incoming]
-        _info(f"[PICK_DEEP_DEBUG] DIRECT MATCH: '{incoming}' -> {len(result)} items")
-        _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
-        return result
-
-    # НОРМАЛИЗОВАННОЕ СОВПАДЕНИЕ
-    inc_norm = _cat_norm(incoming)
-    _info(f"[PICK_DEEP_DEBUG] Normalized input: '{incoming}' -> '{inc_norm}'")
-
-    for cat_name, items in bycat.items():
-        cat_norm = _cat_norm(cat_name)
-        _info(f"[PICK_DEEP_DEBUG] Compare: '{inc_norm}' vs '{cat_norm}' (from '{cat_name}')")
-        if cat_norm == inc_norm:
-            _info(f"[PICK_DEEP_DEBUG] NORMALIZED MATCH: '{cat_name}' -> {len(items)} items")
-            _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
-            return items
-
-    # СИНОНИМЫ
-    _info(f"[PICK_DEEP_DEBUG] Checking synonyms for '{inc_norm}'")
-    for syn_name, syns in _CAT_SYNONYMS.items():
-        _info(f"[PICK_DEEP_DEBUG]   Synonym group '{syn_name}': {syns}")
-        if inc_norm in syns:
-            _info(f"[PICK_DEEP_DEBUG]   Found in synonym group '{syn_name}'")
-            for cat_name, items in bycat.items():
-                cat_norm = _cat_norm(cat_name)
-                if cat_norm in syns:
-                    _info(f"[PICK_DEEP_DEBUG]   SYNONYM MATCH: '{cat_name}' -> {len(items)} items")
-                    _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
-                    return items
-
-    # ГРУППЫ
-    _info(f"[PICK_DEEP_DEBUG] Checking groups for '{inc_norm}'")
-    grp = _GROUPS.get(inc_norm)
-    if grp:
-        _info(f"[PICK_DEEP_DEBUG]   Found group: {grp}")
-        want = {_cat_norm(x) for x in grp["members"]}
-        _info(f"[PICK_DEEP_DEBUG]   Looking for normalized: {want}")
-        out = []
-        for cat_name, items in bycat.items():
-            cat_norm = _cat_norm(cat_name)
-            if cat_norm in want:
-                _info(f"[PICK_DEEP_DEBUG]   GROUP MEMBER: '{cat_name}' -> {len(items)} items")
-                out.extend(items)
-        if out:
-            _info(f"[PICK_DEEP_DEBUG] GROUP MATCH: total {len(out)} items")
-            _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
-            return out
-
-    # ПРИНУДИТЕЛЬНЫЙ ПОИСК ПО СОДЕРЖАНИЮ
-    _info(f"[PICK_DEEP_DEBUG] Starting FORCE SEARCH for '{incoming}' (lower: '{incoming.lower()}')")
-    inc_lower = incoming.lower()
-    for cat_name, items in bycat.items():
-        cat_lower = cat_name.lower()
-        _info(f"[PICK_DEEP_DEBUG]   Compare: '{inc_lower}' in '{cat_lower}' -> {inc_lower in cat_lower}")
-        if inc_lower in cat_lower:
-            _info(f"[PICK_DEEP_DEBUG]   FORCE MATCH: '{cat_name}' -> {len(items)} items")
-            _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
-            return items
-
-    _info(f"[PICK_DEEP_DEBUG] NO MATCH FOUND for '{incoming}'")
-    _info(f"[PICK_DEEP_DEBUG] ===== END _pick_items =====")
-    return []
-
 async def _download_image_with_cache(url: str) -> Optional[Image.Image]:
     key = 'thumb:' + hashlib.sha1(url.encode()).hexdigest()
     b = await cache.get_bytes(key, THUMB_TTL)
@@ -1044,6 +986,46 @@ async def generate_full_inventory_grid(
 
 
 # Добавить в функцию generate_inventory_preview параметр is_public
+
+# === NEW: multi-photo generator with hard cap per image ===
+async def generate_full_inventory_grids(
+    items,
+    tile: int = 150,
+    pad: int = 6,
+    username: "Optional[str]" = None,
+    user_id: "Optional[int]" = None,
+    title: "Optional[str]" = None,
+    max_items_per_image: "Optional[int]" = None
+) -> list[bytes]:
+    """
+    Split items into several images if they exceed MAX_ITEMS_PER_IMAGE (env or arg).
+    - Keeps existing single-image API intact (see generate_full_inventory_grid).
+    - Titles are auto-suffixed with localized "Page X/Y".
+    """
+    from typing import Optional, List, Dict, Any
+    lang = get_current_lang()
+    base_title = title or tr(lang, 'inventory.full_title')
+    # Env override; default 650
+    cap = max(1, int(os.getenv("MAX_ITEMS_PER_IMAGE", "650")))
+    if isinstance(max_items_per_image, int) and max_items_per_image > 0:
+        cap = max_items_per_image
+
+    n = len(items or [])
+    if n <= cap:
+        # Single page -> keep title as-is
+        img = await _render_grid(items, tile=tile, title=base_title, username=username, user_id=user_id)
+        return [img]
+
+    # Chunk into pages
+    chunks = [items[i:i+cap] for i in range(0, n, cap)]
+    total = len(chunks)
+    out: list[bytes] = []
+    for idx, chunk in enumerate(chunks, start=1):
+        page_title = f"{base_title} ({tr(lang, 'inventory_view.page', current=idx, total=total)})"
+        img = await _render_grid(chunk, tile=tile, title=page_title, username=username, user_id=user_id)
+        out.append(img)
+    return out
+
 async def generate_inventory_preview(
         tg_id: int,
         roblox_id: int,
@@ -1064,83 +1046,75 @@ async def generate_inventory_preview(
     lang = get_current_lang()
     return await _render_grid(items, tile=150, title=tr(lang, 'inventory.title'), username=username, user_id=tg_id)
 
-# --- замените существующую generate_category_sheets этим вариантом ---
 
+import re as _re_cat
+
+def _slug_cat(s: str) -> str:
+    s = str(s or '').lower()
+    s = s.replace('ё', 'е').replace('&', 'and')
+    s = _re_cat.sub(r'[^a-z0-9]+', '_', s)
+    return s.strip('_')
+
+_CAT_SYNONYMS = {
+    'bundles_packages': {'bundles_packages','bundles','packages','package','rthro','avatars'},
+    'hats': {'hats','head_accessories','головные_уборы'},
+    'heads': {'heads','head','головы'},
+    'hair': {'hair','hairs','волосы'},
+}
+
+def _resolve_category_key(bycat: dict, incoming: str) -> str | None:
+    if not isinstance(bycat, dict):
+        return None
+    if incoming in bycat:
+        return incoming
+    inc = _slug_cat(incoming)
+    # try exact slug
+    for k in bycat.keys():
+        if _slug_cat(k) == inc:
+            return k
+    # singular/plural heuristic
+    variants = {inc}
+    if inc.endswith('s'):
+        variants.add(inc[:-1])
+    else:
+        variants.add(inc + 's')
+    # add dictionary synonyms
+    for canon, syns in _CAT_SYNONYMS.items():
+        if inc in syns:
+            variants |= set(syns)
+    for k in bycat.keys():
+        if _slug_cat(k) in variants:
+            return k
+    # prefix fallback
+    for k in bycat.keys():
+        sk = _slug_cat(k)
+        if sk.startswith(inc[: max(3, min(len(inc), 8))]):
+            return k
+    return None
 async def generate_category_sheets(
-        tg_id: int,
-        roblox_id: int,
-        category: str,
-        limit: int = 0,
-        tile: int = 150,
-        force: bool = False,
-        username: Optional[str] = None
-) -> bytes:
-    from roblox_client import get_full_inventory, get_full_inventory_public_like_private
-
-    # ГЛУБОКАЯ ОТЛАДКА ВХОДНЫХ ДАННЫХ
-    _info(f"[CAT_DEEP_DEBUG] ===== START category: '{category}', roblox_id: {roblox_id} =====")
-
-    data = {}
-    try:
-        _info(f"[CAT_DEEP_DEBUG] Calling get_full_inventory...")
-        data = await get_full_inventory(tg_id, roblox_id, force_refresh=force)
-        _info(
-            f"[CAT_DEEP_DEBUG] get_full_inventory result - total: {data.get('total', 0)}, categories: {list(data.get('byCategory', {}).keys())}")
-    except Exception as e:
-        _info(f"[CAT_DEEP_DEBUG] get_full_inventory failed: {e}")
-        data = {}
-
-    byc = (data.get("byCategory") or {}) if isinstance(data, dict) else {}
-
-    # ЛОГИРУЕМ ВСЕ ДОСТУПНЫЕ КАТЕГОРИИ
-    _info(f"[CAT_DEEP_DEBUG] Available categories: {list(byc.keys())}")
-    for cat_name, cat_items in byc.items():
-        _info(f"[CAT_DEEP_DEBUG] Category '{cat_name}': {len(cat_items)} items")
-        if cat_items:
-            sample_item = cat_items[0]
-            _info(
-                f"[CAT_DEEP_DEBUG] Sample item in '{cat_name}': assetId={sample_item.get('assetId')}, name='{sample_item.get('name')}'")
-
-    items = _pick_items(byc, category)
-    _info(f"[CAT_DEEP_DEBUG] After _pick_items: found {len(items)} items")
-
-    if not items:
-        _info(f"[CAT_DEEP_DEBUG] No items in private, trying public...")
-        try:
-            data_pub = await get_full_inventory_public_like_private(roblox_id, force_refresh=force)
-            _info(
-                f"[CAT_DEEP_DEBUG] get_full_inventory_public_like_private result - total: {data_pub.get('total', 0)}, categories: {list(data_pub.get('byCategory', {}).keys())}")
-        except Exception as e:
-            _info(f"[CAT_DEEP_DEBUG] get_full_inventory_public_like_private failed: {e}")
-            data_pub = {}
-
-        byc_pub = (data_pub.get("byCategory") or {}) if isinstance(data_pub, dict) else {}
-        _info(f"[CAT_DEEP_DEBUG] Public available categories: {list(byc_pub.keys())}")
-
-        items = _pick_items(byc_pub, category)
-        _info(f"[CAT_DEEP_DEBUG] After public _pick_items: found {len(items)} items")
-
-    # ДИАГНОСТИКА ЕСЛИ ВСЕ ЕЩЕ ПУСТО
-    if not items:
-        _info(f"[CAT_DEEP_DEBUG] CRITICAL: Still no items after both private and public!")
-        _info(f"[CAT_DEEP_DEBUG] Private categories: {list(byc.keys())}")
-        _info(f"[CAT_DEEP_DEBUG] Public categories: {list(byc_pub.keys()) if 'byc_pub' in locals() else 'N/A'}")
-        _info(f"[CAT_DEEP_DEBUG] Looking for category: '{category}'")
-        _info(f"[CAT_DEEP_DEBUG] Normalized category: '{_cat_norm(category)}'")
-
+    tg_id: int,
+    roblox_id: int,
+    category: str,
+    limit: int = 0,
+    tile: int = 150,
+    force: bool = False,
+    username: Optional[str] = None
+, *, items_override: Optional[List[Dict[str, Any]]] = None) -> bytes:
+    # Use override items when provided (public flow); otherwise fetch like private
+    items = None
+    if items_override is not None:
+        items = items_override
+    else:
+        from roblox_client import get_full_inventory
+        data = await get_full_inventory(tg_id, roblox_id)
+        items = (data.get('byCategory') or {}).get(category, [])
     price_map = load_prices_csv_cached()
     items = [_enrich_with_csv(x, price_map) for x in items]
     if limit and limit > 0:
         items = items[:limit]
-
+    # Localize category title
     lang = get_current_lang()
-    slug = str(category or "").lower().replace(" ", "_")
-    loc = tr(lang, f"cat.{slug}")
-    title = loc if loc and loc != f"cat.{slug}" else category
-
-    _info(f"[CAT_DEEP_DEBUG] Final: {len(items)} items, title: '{title}'")
-    _info(f"[CAT_DEEP_DEBUG] ===== END category: '{category}' =====\n")
-
+    slug = str(category or '').lower().replace(' ', '_')
+    loc = tr(lang, f'cat.{slug}')
+    title = loc if loc and loc != f'cat.{slug}' else category
     return await _render_grid(items, tile=tile, title=title, username=username, user_id=tg_id)
-
-

@@ -1,3 +1,4 @@
+import json
 import os
 import time
 import traceback
@@ -10,7 +11,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from unittest.mock import call
 from PIL import Image
 import httpx
-
+import pathlib
 from aiogram import Router, types, F
 from i18n import t, tr, get_user_lang, set_user_lang, set_current_lang
 from aiogram.filters import CommandStart, Command
@@ -22,7 +23,23 @@ ADMINS = set((int(x) for x in os.getenv('ADMINS', '').replace(',', ' ').split() 
 _PROFILE_CACHE = {}  # {(tg_id, acc_id): (expires_ts, data)}
 _PROFILE_TTL = 6 * 60 * 60  # 6 hours
 
+LOG_DIR = pathlib.Path(os.getenv("LOG_DIR") or pathlib.Path(__file__).resolve().parent / "logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+_INVLOG_PATH = LOG_DIR / "inventory.debug.log"
 
+def _invlog(event: str, **kw):
+    try:
+        row = {"ts": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+               "event": event}
+        row.update(kw)
+        with _INVLOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception as e:
+        # не шумим, но на всякий случай в обычный лог
+        try:
+            logger.warning(f"[invlog fail] {e}")
+        except Exception:
+            pass
 def get_profile_mem(tg_id, acc_id):
     import time
     key = (tg_id, acc_id)
@@ -240,6 +257,7 @@ def _patch_aiogram_message_methods():
     if not getattr(Bot, '_rbx_lang_patch_done', False):
         Bot.__orig_send_message = Bot.send_message
         Bot.__orig_send_photo = Bot.send_photo
+        Bot.__orig_send_document = Bot.send_document
         Bot.__orig_edit_message_text = Bot.edit_message_text
         Bot.__orig_edit_message_media = Bot.edit_message_media
 
@@ -249,6 +267,32 @@ def _patch_aiogram_message_methods():
 
         async def _wrap_bot_send_photo(self, chat_id, *args, **kwargs):
             await _ensure_lang_for_user_id(chat_id)
+            # Fallback: if photo is too large for send_photo, use send_document
+            photo = kwargs.get('photo', args[0] if args else None)
+            size = None
+            try:
+                if isinstance(photo, (bytes, bytearray)):
+                    size = len(photo)
+                elif hasattr(photo, 'data'):
+                    size = len(getattr(photo, 'data'))
+                elif hasattr(photo, 'read'):
+                    try:
+                        pos = photo.tell()
+                        photo.seek(0, 2)
+                        size = photo.tell()
+                        photo.seek(pos)
+                    except Exception:
+                        size = None
+            except Exception:
+                size = None
+            if size is not None and size >= 9_500_000:
+                kw = dict(kwargs)
+                if 'photo' in kw:
+                    kw['document'] = kw.pop('photo')
+                try:
+                    return await Bot.__orig_send_document(self, chat_id, **kw)
+                except Exception:
+                    pass
             return await Bot.__orig_send_photo(self, chat_id, *args, **kwargs)
 
         async def _wrap_bot_edit_message_text(self, text, chat_id, *args, **kwargs):
@@ -1307,28 +1351,25 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
 
         # ЗАЩИТА ПЕРЕД ГЕНЕРАЦИЕЙ КАРТИНКИ
         await protect_language(call.from_user.id)
-        img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
-                                                       user_id=call.from_user.id)
-        import os
-        os.makedirs('temp', exist_ok=True)
-        path = f'temp/inventory_all_{tg}_{roblox_id}.png'
-        with open(path, 'wb') as f:
-            f.write(img_bytes)
+
+        # ЗАЩИТА ПЕРЕД ГЕНЕРАЦИЕЙ КАРТИНКИ
+        await protect_language(call.from_user.id)
 
         total = len(all_items)
         total_sum = _sum_items(all_items)
-
-        # ЗАЩИТА ПЕРЕД СОЗДАНИЕМ ПОДПИСИ
-        await protect_language(call.from_user.id)
         caption = L('inventory_view.public_title', total=total, total_sum=total_sum)
 
         await loader.delete()
-        await call.message.answer_photo(FSInputFile(path), caption=caption,
-                                        reply_markup=_kb_categories_only(roblox_id, by_cat))
-        try:
-            os.remove(path)
-        except Exception:
-            pass
+        await _send_full_inventory_paged(
+            message=call.message,
+            items=all_items,
+            tg_id=tg,
+            roblox_id=roblox_id,
+            username=call.from_user.username,
+            caption_prefix=caption,
+            kb_first=_kb_categories_only(roblox_id, by_cat)
+        )
+
     except Exception as e:
         await protect_language(call.from_user.id)
         try:
@@ -1369,25 +1410,24 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
             return
 
         await protect_language(call.from_user.id)
-        img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
-                                                       user_id=call.from_user.id)
-        import os
-        os.makedirs('temp', exist_ok=True)
-        path = f'temp/inventory_all_{tg}_{roblox_id}.png'
-        with open(path, 'wb') as f:
-            f.write(img_bytes)
+        # ЗАЩИТА ПЕРЕД ГЕНЕРАЦИЕЙ КАРТИНКИ
+        await protect_language(call.from_user.id)
+
         total = len(all_items)
         total_sum = _sum_items(all_items)
-
-        await protect_language(call.from_user.id)
         caption = L('inventory_view.public_title', total=total, total_sum=total_sum)
+
         await loader.delete()
-        await call.message.answer_photo(FSInputFile(path), caption=caption,
-                                        reply_markup=_kb_categories_only(roblox_id, by_cat))
-        try:
-            os.remove(path)
-        except Exception:
-            pass
+        await _send_full_inventory_paged(
+            message=call.message,
+            items=all_items,
+            tg_id=tg,
+            roblox_id=roblox_id,
+            username=call.from_user.username,
+            caption_prefix=caption,
+            kb_first=_kb_categories_only(roblox_id, by_cat)
+        )
+
     except Exception as e:
         await protect_language(call.from_user.id)
         try:
@@ -1424,19 +1464,25 @@ async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
                                                        user_id=call.from_user.id)
         import os
         os.makedirs('temp', exist_ok=True)
-        path = f'temp/inventory_all_{tg}_{roblox_id}.png'
-        with open(path, 'wb') as f:
-            f.write(img_bytes)
+
+        # ЗАЩИТА ПЕРЕД ГЕНЕРАЦИЕЙ КАРТИНКИ
+        await protect_language(call.from_user.id)
+
         total = len(all_items)
         total_sum = _sum_items(all_items)
         caption = L('inventory_view.public_title', total=total, total_sum=total_sum)
+
         await loader.delete()
-        await call.message.answer_photo(FSInputFile(path), caption=caption,
-                                        reply_markup=_kb_categories_only(roblox_id, by_cat))
-        try:
-            os.remove(path)
-        except Exception:
-            pass
+        await _send_full_inventory_paged(
+            message=call.message,
+            items=all_items,
+            tg_id=tg,
+            roblox_id=roblox_id,
+            username=call.from_user.username,
+            caption_prefix=caption,
+            kb_first=_kb_categories_only(roblox_id, by_cat)
+        )
+
     except Exception as e:
         try:
             if _likely_private_inventory(e):
@@ -1476,7 +1522,7 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
             return
 
         await protect_language(call.from_user.id)
-        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, username=call.from_user.username)
+        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, username=call.from_user.username, items_override=items)
         if not img_bytes:
             img_bytes = await generate_full_inventory_grid(items, tile=150, pad=6, username=call.from_user.username,
                                                            user_id=call.from_user.id)
@@ -1531,7 +1577,7 @@ async def cb_inventory_category_refresh(call: types.CallbackQuery) -> None:
         full = _CAT_SHORTMAP.get((roblox_id, short), short)
         items = _filter_nonzero(by_cat.get(full, []))
         img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, tile=150, force=True,
-                                                   username=call.from_user.username)
+                                                   username=call.from_user.username, items_override=items)
         import os
         os.makedirs('temp', exist_ok=True)
         path = f'temp/inventory_cat_{tg}_{roblox_id}.png'
@@ -1700,20 +1746,6 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                 all_items.extend(arr)
 
             if all_items:
-                MAX_H = 7800
-                MAX_BYTES = 8_500_000
-                tiles_try = [150, 120, 100, 90]
-
-                def chunk_size_for_tile(tile: int) -> int:
-                    max_rows = max(1, MAX_H // tile)
-                    return max_rows * max_rows
-
-                def chunks(seq, size):
-                    for i in range(0, len(seq), size):
-                        yield seq[i:i + size]
-
-                sent = False
-
                 def _pv(v):
                     try:
                         return int((v or {}).get('value') or 0)
@@ -1722,64 +1754,20 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
 
                 total_items = len(all_items)
                 total_sum_all = sum((_pv(x.get('priceInfo')) for x in all_items))
+                cap = L('inventory_view.all_categories', total=total_items, total_sum=total_sum_all)
 
-                for tile in tiles_try:
-                    size_per_page = chunk_size_for_tile(tile)
-                    pages = list(chunks(all_items, size_per_page))
-                    ok = True
-                    tmp_final_paths = []
-                    try:
-                        for i, part in enumerate(pages, 1):
-                            # ЗАЩИТА ПЕРЕД КАЖДОЙ СТРАНИЦЕЙ ФИНАЛЬНОЙ ГЕНЕРАЦИИ
-                            await protect_language(call.from_user.id)
-
-                            img = await generate_full_inventory_grid(
-                                part,
-                                tile=tile, pad=6,
-                                title=(L('inventory.full_title') if len(
-                                    pages) == 1 else f"{L('inventory.full_title')} ({L('inventory_view.page', current=i, total=len(pages))})"),
-                                username=call.from_user.username,
-                                user_id=tg
-                            )
-                            if len(img) > MAX_BYTES:
-                                ok = False
-                                break
-                            import os
-                            os.makedirs('temp', exist_ok=True)
-                            p = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
-                            with open(p, 'wb') as f:
-                                f.write(img)
-                            tmp_final_paths.append(p)
-
-                        if ok:
-                            total_sum_all = sum(((_price_value(it.get('priceInfo')) or 0) for it in all_items))
-                            for i, pth in enumerate(tmp_final_paths, 1):
-                                # ЗАЩИТА ПЕРЕД КАЖДОЙ ПОДПИСЬЮ
-                                await protect_language(call.from_user.id)
-
-                                cap = L('inventory_view.all_categories', total=total_items, total_sum=total_sum_all)
-                                if len(tmp_final_paths) > 1:
-                                    cap += f"\n{L('inventory_view.page', current=i, total=len(tmp_final_paths))}"
-                                await call.message.answer_photo(FSInputFile(pth), caption=cap)
-                            sent = True
-                            for p in tmp_final_paths:
-                                try:
-                                    os.remove(p)
-                                except Exception:
-                                    pass
-                            break
-                    finally:
-                        if not ok:
-                            for p in tmp_final_paths:
-                                try:
-                                    os.remove(p)
-                                except Exception:
-                                    pass
-
-                if not sent:
-                    await call.message.answer(L('inventory_view.render_too_large'))
+                await _send_full_inventory_paged(
+                    message=call.message,
+                    items=all_items,
+                    tg_id=tg,
+                    roblox_id=roblox_id,
+                    username=call.from_user.username,
+                    caption_prefix=cap,
+                    kb_first=None
+                )
         except Exception as e:
             logger.warning(f'final all-items image failed: {e}')
+            _invlog('stream.final_error', error=str(e))
 
         # ЗАЩИТА ПЕРЕД ФИНАЛЬНЫМИ СООБЩЕНИЯМИ
         await protect_language(call.from_user.id)
@@ -2004,7 +1992,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
                 continue
 
             img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, tile=150, force=True,
-                                                       username=call.from_user.username)
+                                                       username=call.from_user.username, items_override=items)
             tmp_path = f'temp/inventory_sel_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}.png'
             with open(tmp_path, 'wb') as f:
                 f.write(img_bytes)
@@ -2025,20 +2013,6 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             await protect_language(call.from_user.id)
 
             if selected_items:
-                MAX_H = 7000
-                tiles_try = [150, 130, 120, 100, 90]
-
-                def per_page(tile: int) -> int:
-                    rows = max(1, MAX_H // tile)
-                    cols = rows
-                    return rows * cols
-
-                def chunks(seq, size):
-                    for i in range(0, len(seq), size):
-                        yield seq[i:i + size]
-
-                sent = False
-
                 def _pv(v):
                     try:
                         return int((v or {}).get('value') or 0)
@@ -2047,59 +2021,22 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
 
                 total_items = len(selected_items)
                 total_sum_all = sum((_pv(x.get('priceInfo')) for x in selected_items))
+                cap = ("📦 " + L('inventory.full_title') + f" · {total_items} " + L('common.pcs') + "\n"
+                       + L('inventory.total_sum', sum=f"{total_sum_all:,}")).replace(',', ' ')
 
-                for tile in tiles_try:
-                    size_per_page = per_page(tile)
-                    pages = list(chunks(selected_items, size_per_page))
-                    ok = True
-                    tmp_final_paths = []
-                    try:
-                        for i, part in enumerate(pages, 1):
-                            # ЗАЩИТА ПЕРЕД КАЖДОЙ СТРАНИЦЕЙ
-                            await protect_language(call.from_user.id)
-
-                            img = await generate_full_inventory_grid(
-                                part,
-                                tile=tile, pad=6,
-                                title=(
-                                    L('inventory.full_title') if len(pages) == 1
-                                    else f"{L('inventory.full_title')} ({L('inventory_view.page', current=i, total=len(pages))})"
-                                ),
-                                username=call.from_user.username,
-                                user_id=tg
-                            )
-                            os.makedirs('temp', exist_ok=True)
-                            final_path = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
-                            with open(final_path, 'wb') as f:
-                                f.write(img)
-                            tmp_final_paths.append(final_path)
-
-                        for i, pth in enumerate(tmp_final_paths, 1):
-                            # ЗАЩИТА ПЕРЕД КАЖДОЙ ПОДПИСЬЮ
-                            await protect_language(call.from_user.id)
-
-                            cap = (
-                                    f"📦 {L('inventory.full_title')} · {total_items} {L('common.pcs')}\n"
-                                    + L('inventory.total_sum', sum=f"{total_sum_all:,}")
-                            ).replace(',', ' ')
-                            if len(tmp_final_paths) > 1:
-                                cap += f"\n{L('inventory_view.page', current=i, total=len(tmp_final_paths))}"
-                            await call.message.answer_photo(FSInputFile(pth), caption=cap)
-                        sent = True
-                    finally:
-                        for pth in tmp_final_paths:
-                            try:
-                                os.remove(pth)
-                            except Exception:
-                                pass
-
-                    if sent:
-                        break
-
-                if not sent:
-                    await call.message.answer(L('inventory_view.render_too_large'))
+                await _send_full_inventory_paged(
+                    message=call.message,
+                    items=selected_items,
+                    tg_id=tg,
+                    roblox_id=roblox_id,
+                    username=call.from_user.username,
+                    caption_prefix=cap,
+                    kb_first=None
+                )
         except Exception as e:
             logger.warning(f'final all-inventory render failed: {e}')
+            _invlog('stream.final_error', error=str(e))
+            _invlog('stream.final_error', error=str(e))
 
         for pth in tmp_paths:
             try:
@@ -2278,6 +2215,7 @@ def _patch_aiogram_message_methods():
     if not getattr(Bot, '_rbx_lang_patch_done', False):
         Bot.__orig_send_message = Bot.send_message
         Bot.__orig_send_photo = Bot.send_photo
+        Bot.__orig_send_document = Bot.send_document
         Bot.__orig_edit_message_text = Bot.edit_message_text
         Bot.__orig_edit_message_media = Bot.edit_message_media
 
@@ -2524,7 +2462,7 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
                 continue
 
             img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, tile=150, force=True,
-                                                       username=call.from_user.username)
+                                                       username=call.from_user.username, items_override=items)
             tmp_path = f'temp/inventory_sel_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}.png'
             with open(tmp_path, 'wb') as f:
                 f.write(img_bytes)
@@ -2545,20 +2483,6 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
             await protect_language(call.from_user.id)
 
             if selected_items:
-                MAX_H = 7000
-                tiles_try = [150, 130, 120, 100, 90]
-
-                def per_page(tile: int) -> int:
-                    rows = max(1, MAX_H // tile)
-                    cols = rows
-                    return rows * cols
-
-                def chunks(seq, size):
-                    for i in range(0, len(seq), size):
-                        yield seq[i:i + size]
-
-                sent = False
-
                 def _pv(v):
                     try:
                         return int((v or {}).get('value') or 0)
@@ -2567,59 +2491,22 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
 
                 total_items = len(selected_items)
                 total_sum_all = sum((_pv(x.get('priceInfo')) for x in selected_items))
+                cap = ("📦 " + L('inventory.full_title') + f" · {total_items} " + L('common.pcs') + "\n"
+                       + L('inventory.total_sum', sum=f"{total_sum_all:,}")).replace(',', ' ')
 
-                for tile in tiles_try:
-                    size_per_page = per_page(tile)
-                    pages = list(chunks(selected_items, size_per_page))
-                    ok = True
-                    tmp_final_paths = []
-                    try:
-                        for i, part in enumerate(pages, 1):
-                            # ЗАЩИТА ПЕРЕД КАЖДОЙ СТРАНИЦЕЙ
-                            await protect_language(call.from_user.id)
-
-                            img = await generate_full_inventory_grid(
-                                part,
-                                tile=tile, pad=6,
-                                title=(
-                                    L('inventory.full_title') if len(pages) == 1
-                                    else f"{L('inventory.full_title')} ({L('inventory_view.page', current=i, total=len(pages))})"
-                                ),
-                                username=call.from_user.username,
-                                user_id=tg
-                            )
-                            os.makedirs('temp', exist_ok=True)
-                            final_path = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
-                            with open(final_path, 'wb') as f:
-                                f.write(img)
-                            tmp_final_paths.append(final_path)
-
-                        for i, pth in enumerate(tmp_final_paths, 1):
-                            # ЗАЩИТА ПЕРЕД КАЖДОЙ ПОДПИСЬЮ
-                            await protect_language(call.from_user.id)
-
-                            cap = (
-                                    f"📦 {L('inventory.full_title')} · {total_items} {L('common.pcs')}\n"
-                                    + L('inventory.total_sum', sum=f"{total_sum_all:,}")
-                            ).replace(',', ' ')
-                            if len(tmp_final_paths) > 1:
-                                cap += f"\n{L('inventory_view.page', current=i, total=len(tmp_final_paths))}"
-                            await call.message.answer_photo(FSInputFile(pth), caption=cap)
-                        sent = True
-                    finally:
-                        for pth in tmp_final_paths:
-                            try:
-                                os.remove(pth)
-                            except Exception:
-                                pass
-
-                    if sent:
-                        break
-
-                if not sent:
-                    await call.message.answer(L('inventory_view.render_too_large'))
+                await _send_full_inventory_paged(
+                    message=call.message,
+                    items=selected_items,
+                    tg_id=tg,
+                    roblox_id=roblox_id,
+                    username=call.from_user.username,
+                    caption_prefix=cap,
+                    kb_first=None
+                )
         except Exception as e:
             logger.warning(f'final all-inventory render failed: {e}')
+            _invlog('stream.final_error', error=str(e))
+            _invlog('stream.final_error', error=str(e))
 
         for pth in tmp_paths:
             try:
@@ -2740,3 +2627,72 @@ async def cb_inv_pub_cfg_alloff(call: types.CallbackQuery):
         if 'message is not modified' not in str(e):
             raise
 
+
+
+
+async def _send_full_inventory_paged(*, message, items, tg_id: int, roblox_id: int,
+                                     username, caption_prefix, kb_first=None):
+    """
+    Universal sender: renders full inventory in multiple photos using roblox_imagegen.generate_full_inventory_grids.
+    Respects env MAX_ITEMS_PER_IMAGE (default 650). Falls back to document if Telegram rejects photo dimensions.
+    """
+    import os, io
+    from aiogram.types import FSInputFile
+    from aiogram.exceptions import TelegramBadRequest
+    from roblox_imagegen import generate_full_inventory_grids, tr, get_current_lang
+    from PIL import Image
+
+    cap_env = os.getenv("MAX_ITEMS_PER_IMAGE", "650")
+    try:
+        cap = max(1, int(cap_env))
+    except Exception:
+        cap = 650
+
+    os.makedirs("temp", exist_ok=True)
+
+    lang = get_current_lang()
+    pages = await generate_full_inventory_grids(
+        items, tile=int(os.getenv("INVENTORY_TILE", "150")),
+        username=username, user_id=tg_id, title=tr(lang, 'inventory.full_title'),
+        max_items_per_image=cap
+    )
+
+    total = len(pages) or 1
+    sent_any = False
+    for i, img_bytes in enumerate(pages, 1):
+        # Log WxH for visibility
+        w = h = None
+        try:
+            with Image.open(io.BytesIO(img_bytes)) as im:
+                w, h = im.size
+        except Exception:
+            pass
+        try:
+            b = len(img_bytes)
+        except Exception:
+            b = None
+
+        path = f"temp/inventory_all_{tg_id}_{roblox_id}_{i}.png"
+        with open(path, "wb") as f:
+            f.write(img_bytes)
+
+        cap_text = caption_prefix
+        if total > 1:
+            cap_text += "\n" + L('inventory_view.page', current=i, total=total)
+
+        try:
+            await message.answer_photo(FSInputFile(path), caption=cap_text, reply_markup=(kb_first if i == 1 else None))
+            sent_any = True
+            logger.info(f"[paged] photo ok page={i}/{total} size={w}x{h} bytes={b}")
+        except TelegramBadRequest as e:
+            logger.info(f"[paged] photo fail page={i}/{total} err={e} size={w}x{h} bytes={b}")
+            # Fallback to document for this page
+            await message.answer_document(FSInputFile(path), caption=cap_text, reply_markup=(kb_first if i == 1 else None))
+            logger.info(f"[paged] document ok page={i}/{total} size={w}x{h} bytes={b}")
+        finally:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
+    return sent_any
