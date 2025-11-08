@@ -4,7 +4,7 @@ from i18n import tr, get_current_lang
 
 from datetime import datetime as _dt2
 LOG_PRICE_PATH = os.path.join(os.path.dirname(__file__), "price_debug.log")
-PRICE_CSV_PATH = os.path.join(os.path.dirname(__file__), 'prices.csv')
+PRICE_CSV_PATH = os.getenv('PRICE_CSV_PATH', os.path.join(os.path.dirname(__file__), 'prices.csv'))
 def _log_price_event(text: str):
     ts = _dt2.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] {text}"
@@ -56,65 +56,18 @@ def _enrich_with_csv(it: dict, price_map: dict) -> dict:
     name = (it.get('name') or '').strip()
     pid = it.get('itemId') or it.get('assetId') or it.get('id')
     if rec:
-        if not it.get('name'):
-            it['name'] = rec.get('name')
+        cur_name = str(it.get('name') or '').strip()
+        csv_name = str(rec.get('name') or '').strip()
+        pid_str = str(pid)
+        # override name if empty OR looks like numeric id OR equals pid
+        if (not cur_name) or cur_name.isdigit() or (cur_name == pid_str):
+            if csv_name:
+                it['name'] = csv_name
         it['priceInfo'] = {'value': int(str((rec.get('priceInfo') or {}).get('value') or 0))}
         _log_price_event(f"[PRICE_HIT] {name!r} (id={pid}) -> price={(rec.get('priceInfo') or {}).get('value')}")
     else:
         _log_price_event(f"[PRICE_MISS] {name!r} (id={pid}) -> not found in CSV")
     return it
-
-def _append_price_csv(pid, name):
-    """Best-effort: append missing item to prices.csv.
-    - If CSV has headers and we can recognize them, write a dict row.
-    - Else, append a simple 3-column row: id,name,0
-    """
-    path = PRICE_CSV_PATH
-    try:
-        # Detect headers
-        headers = None
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8-sig", newline="") as rf:
-                sn = rf.read(4096)
-            # quick sniff for header line (first line)
-            first_line = sn.splitlines()[0] if sn else ""
-            # Heuristic: treat as header when contains any known fields
-            known = {"itemid","collectibleitemid","collectibleid","assetid","id","name","price","value","pricepicked","cost"}
-            parts = [p.strip().lower() for p in first_line.split(",")]
-            if parts and all(len(p) > 0 for p in parts) and any(p in known for p in parts):
-                headers = parts
-
-        # Try to write with headers if recognizable
-        if headers:
-            # Prepare dict with best-effort keys
-            row = {}
-            # prefer the first id-like header
-            id_keys = [k for k in headers if k in ("itemid","collectibleitemid","collectibleid","assetid","id")]
-            name_key = "name" if "name" in headers else None
-            price_key = None
-            for k in ("pricepicked","price","value","cost"):
-                if k in headers:
-                    price_key = k
-                    break
-            if id_keys and name_key and price_key:
-                row[id_keys[0]] = str(pid or "").strip()
-                row[name_key] = str(name or "").strip()
-                row[price_key] = "0"
-                # keep all other headers empty
-                for h in headers:
-                    row.setdefault(h, "")
-                with open(path, "a", encoding="utf-8", newline="") as wf:
-                    w = csv.DictWriter(wf, fieldnames=headers)
-                    w.writerow(row)
-                return
-        # Fallback: 3 columns raw
-        with open(path, "a", encoding="utf-8", newline="") as wf:
-            w = csv.writer(wf)
-            w.writerow([pid, name or "", 0])
-    except Exception as e:
-        _err("[price_csv_append] fail", e)
-
-
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -148,6 +101,7 @@ def _err(prefix: str, e: Exception):
     logger.error(f"{prefix}: {type(e).__name__}: {e}", exc_info=True)
 
 _info(f"[imagegen] cwd={os.getcwd()} READY_ITEM_DIR={os.path.abspath(READY_ITEM_DIR)} DEBUG={DEBUG_IMAGEGEN}")
+_info(f"[prices] using CSV: {PRICE_CSV_PATH}")
 
 # =========================
 # External deps
