@@ -1,4 +1,3 @@
-
 {
   "currency": {
     "robux": "R$"
@@ -172,7 +171,8 @@
     "categories": "📂 Kategóriák",
     "inventory_categories": "🧩 Leltár (kategóriák kiválasztása)",
     "to_accounts": "📋 Vissza a fióklistához",
-    "to_home": "🔙 Vissza"
+    "to_home": "🔙 Vissza",
+    "spending": "💸 Kiadások"
   },
   "status": {
     "account_deleted": "🗑 Fiók törölve.",
@@ -204,7 +204,8 @@
     "note_limited": "ℹ️ Nyilvános mód: néhány adat nem elérhető cookie nélkül.",
     "bad_id": "⚠️ Érvénytelen ID. Küldj egy számot (pl. 123456789).",
     "not_found": "❌ Felhasználó nem található vagy nem elérhető.",
-    "inventory_private": "⚠️ Ennek a felhasználónak a leltára privát a Roblox-on."
+    "inventory_private": "⚠️ Ennek a felhasználónak a leltára privát a Roblox-on.",
+    "spending_login_required": "🔐 A kiadások csak akkor érhetők el, ha ehhez a fiókhoz el van mentve a cookie."
   },
   "settings": {
     "title": "⚙️ Beállítások"
@@ -220,5 +221,8 @@
     "grand_total": "💰 Leltár összértéke: {total_sum} R$\n📦 Összes árazott tárgy: {total_count}",
     "render_too_large": "📦 Összes tárgy: a megjelenítés túl nagy. Csökkentsd a méretet vagy szűkítsd a kiválasztást.",
     "page": "Oldal {current}/{total}"
+  },
+  "spending": {
+    "header": "💸 Kiadások — összesen: {sum} R$"
   }
 }

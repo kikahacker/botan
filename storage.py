@@ -414,3 +414,45 @@ async def find_working_cookie_for_user(roblox_id: int, max_attempts: int = 3) ->
     # Если нет, берем случайные куки из БД
     random_cookies = await get_multiple_cookies_quick(limit=max_attempts)
     return random_cookies[0] if random_cookies else None
+
+async def list_accounts_distinct() -> List[Dict[str, Any]]:
+    """
+    Вернёт уникальные roblox_id у которых есть активные куки,
+    вместе с username (если есть) и snapshot (если есть).
+    Формат: [{roblox_id, username, inventory_val, owners: [telegram_id,...]}]
+    """
+    result: List[Dict[str, Any]] = []
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            # distinct accounts with active cookies
+            cur = await db.execute('SELECT DISTINCT roblox_id FROM user_cookies WHERE is_active = TRUE')
+            rids = [int(r[0]) for r in await cur.fetchall()]
+
+            # map usernames
+            uname_map = {}
+            cur = await db.execute('SELECT roblox_id, username FROM authorized_users')
+            for rid, uname in await cur.fetchall():
+                uname_map[int(rid)] = uname or ''
+
+            # map snapshots
+            snap_map = {}
+            cur = await db.execute('SELECT roblox_id, inventory_val FROM account_snapshots')
+            for rid, val in await cur.fetchall():
+                snap_map[int(rid)] = int(val or 0)
+
+            # owners (telegram ids)
+            owners_map = {}
+            cur = await db.execute('SELECT roblox_id, telegram_id FROM user_cookies WHERE is_active = TRUE')
+            for rid, tg in await cur.fetchall():
+                owners_map.setdefault(int(rid), set()).add(int(tg))
+
+            for rid in rids:
+                result.append({
+                    "roblox_id": int(rid),
+                    "username": uname_map.get(int(rid), ""),
+                    "inventory_val": int(snap_map.get(int(rid), 0)),
+                    "owners": sorted(list(owners_map.get(int(rid), [])))
+                })
+    except Exception as e:
+        logging.error(f"list_accounts_distinct failed: {e}")
+    return result

@@ -1,5 +1,33 @@
 from __future__ import annotations
 
+import logging, os, sys
+
+# ==== ROBUST LOGGER INIT (file + stdout, absolute paths) ====
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+log = logging.getLogger("roblox_client")
+log.setLevel(logging.DEBUG)
+
+# Remove old handlers to avoid duplicates on hot-reload
+for _h in list(log.handlers):
+    log.removeHandler(_h)
+
+_fh = logging.FileHandler(os.path.join(LOG_DIR, "roblox_client.log"), encoding="utf-8")
+_fh.setLevel(logging.DEBUG)
+_fh.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s", "%H:%M:%S"))
+log.addHandler(_fh)
+
+_sh = logging.StreamHandler(sys.stdout)
+_sh.setLevel(logging.DEBUG)
+_sh.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s", "%H:%M:%S"))
+log.addHandler(_sh)
+
+log.propagate = False
+log.info("=== roblox_client logger started (DEBUG mode) ===")
+# ============================================================
+
 
 def _to_int(v):
     try:
@@ -34,6 +62,17 @@ BATCH_SIZE = 120
 INV_TTL = int(getattr(CFG, "CACHE_INV_TTL", 1800))  # уменьшил для скорости
 CATALOG_CONCURRENCY = int(getattr(CFG, "CATALOG_CONCURRENCY", 64))  # увеличил
 CATALOG_RETRIES = int(getattr(CFG, "CATALOG_RETRIES", 2))  # уменьшил
+SPENDING_TTL = int(getattr(CFG, "CACHE_SPENDING_TTL", 3600))  # кэш трат — 1 час
+ENABLE_SPENDING_CACHE: bool = False  # toggle cache read/write for spending
+
+# Log initial cache settings after constants are loaded
+try:
+    log.info(f"[INIT] ENABLE_SPENDING_CACHE = {ENABLE_SPENDING_CACHE}")
+    log.info(f"[INIT] SPENDING_TTL = {SPENDING_TTL}s")
+    if not ENABLE_SPENDING_CACHE:
+        log.warning("[INIT] ⚠ Spending cache is DISABLED")
+except Exception as e:
+    log.warning(f"[INIT] Failed to log cache info: {e}")
 
 # === Retry/backoff knobs (can be overridden via ENV) ===
 INV_MAX_RETRIES = int(os.getenv("INV_MAX_RETRIES", "2"))  # уменьшил
@@ -880,3 +919,357 @@ async def get_full_inventory_public_like_private(roblox_id: int, cookies_limit: 
     except Exception as e:
         log.error(f"[PUBLIC_LIKE_PRIV] Unexpected error for {roblox_id}: {type(e).__name__}: {e}", exc_info=True)
         return {"total": 0, "byCategory": {}}
+
+
+# ===================== ИСТОРИЯ ТРАТ (PRIVATE ONLY) =====================
+
+
+
+def _pick_creator_name(tx: Dict[str, Any], details: Dict[str, Any]) -> str:
+    """
+    Try many known fields for experience/creator naming across transaction variants.
+    """
+    # 1) canonical
+    creator = details.get("creator") or {}
+    for k in ("name", "creatorName", "creatorTargetName"):
+        v = creator.get(k) if isinstance(creator, dict) else None
+        if v:
+            return str(v)
+        v2 = details.get(k)
+        if v2:
+            return str(v2)
+
+    # 2) universe / place / experience variants
+    for path in (
+        ("universe", "name"),
+        ("place", "name"),
+        ("rootPlace", "name"),
+    ):
+        d = details.get(path[0])
+        if isinstance(d, dict):
+            v = d.get(path[1])
+            if v:
+                return str(v)
+
+    for k in ("universeName", "placeName", "experienceName", "rootPlaceName"):
+        v = details.get(k)
+        if v:
+            return str(v)
+
+    # 3) seller/owner
+    seller = details.get("seller") or {}
+    if isinstance(seller, dict):
+        v = seller.get("name")
+        if v:
+            return str(v)
+    v = details.get("sellerName")
+    if v:
+        return str(v)
+
+    # 4) fallback from top-level (rare)
+    for k in ("sourceName", "universeDisplayName"):
+        v = tx.get(k)
+        if v:
+            return str(v)
+
+    return "Unknown"
+
+
+def _pick_item_name(tx: Dict[str, Any], details: Dict[str, Any]) -> str:
+    """
+    Broad item name resolver across asset/devproduct/gamepass.
+    """
+    for k in ("name", "productName", "itemName", "title"):
+        v = details.get(k) or tx.get(k)
+        if v:
+            return str(v)
+    # sometimes nested
+    dev = details.get("developerProduct") or {}
+    if isinstance(dev, dict):
+        v = dev.get("name") or dev.get("title")
+        if v:
+            return str(v)
+    return "Unknown Item"
+
+
+def _pick_experience_name(tx: Dict[str, Any], details: Dict[str, Any]) -> str:
+    for path in (("universe","name"), ("place","name"), ("rootPlace","name")):
+        d = details.get(path[0]) or {}
+        if isinstance(d, dict):
+            v = d.get(path[1])
+            if v:
+                return str(v)
+    for k in ("universeName","experienceName","placeName","rootPlaceName","universeDisplayName"):
+        v = details.get(k)
+        if v:
+            return str(v)
+    kind = (details.get("type") or tx.get("type") or "").lower()
+    if kind in ("asset", "bundle"):
+        return "Avatar Shop"
+    return "Unknown"
+
+async def _format_transaction(transaction: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Форматируем транзакцию Purchase. Поддержка currency.amount и legacy полей."""
+    try:
+        cur = transaction.get("currency") or {}
+        amount = _to_int(
+            transaction.get("currencyAmount")
+            or cur.get("amount")
+            or transaction.get("robux")
+            or 0
+        )
+        robux_spent = abs(amount)
+
+        details = transaction.get("details") or {}
+        item_name = _pick_item_name(transaction, details)
+        creator_name = _pick_creator_name(transaction, details)
+
+        kind_raw = (details.get("type") or transaction.get("type") or "").lower()
+        if kind_raw in ("asset", "bundle"):
+            kind = "asset"
+        elif kind_raw in ("developerproduct", "devproduct"):
+            kind = "devproduct"
+        elif kind_raw in ("gamepass",):
+            kind = "gamepass"
+        else:
+            kind = "unknown"
+
+        qty = _to_int(transaction.get("quantity") or details.get("quantity") or 1)
+
+        if robux_spent <= 0 and not details:
+            return None
+
+        formatted_name = f"{item_name} ({qty}x)"
+        formatted_price = f"{robux_spent} R$"
+
+        return {
+            "kind": kind,
+            "name": formatted_name,
+            "price": formatted_price,
+            "creator": creator_name,
+            "date": transaction.get("created") or transaction.get("date"),
+            "asset_id": details.get("id") or transaction.get("assetId"),
+            "raw_amount": robux_spent,
+        }
+    except Exception as e:
+        log.warning(f"[SPENDING] format_transaction error: {type(e).__name__}: {e}")
+        return None
+
+        formatted_name = f"{item_name} ({qty}x)"
+        formatted_price = f"{robux_spent} R$"
+
+        return {
+            "kind": kind,
+            "name": formatted_name,
+            "price": formatted_price,
+            "creator": creator_name,
+            "date": transaction.get("created") or transaction.get("date"),
+            "asset_id": details.get("id") or transaction.get("assetId"),
+            "raw_amount": robux_spent,
+        }
+    except Exception as e:
+        log.warning(f"[SPENDING] format_transaction error: {type(e).__name__}: {e}")
+        return None
+
+        details = transaction.get("details") or {}
+        item_name = details.get("name", "Unknown Item")
+        creator_info = details.get("creator") or {}
+        creator_name = creator_info.get("name", "Unknown")
+
+        quantity = int(transaction.get("quantity") or 1)
+        created = transaction.get("created") or transaction.get("date")
+
+        asset_id = details.get("id") or transaction.get("assetId")
+
+        # Тип покупки
+        kind = (details.get("type") or transaction.get("type") or "").lower()
+        if kind in ("asset", "bundle"):
+            kind = "asset"
+        elif kind in ("developerproduct", "devproduct"):
+            kind = "devproduct"
+        elif kind in ("gamepass",):
+            kind = "gamepass"
+        elif not kind:
+            kind = "unknown"
+
+        return {
+            "kind": kind,
+            "name": f"{item_name} ({quantity}x)",
+            "price": f"{abs(currency_amount)} R$",
+            "creator": creator_name,
+            "date": created,
+            "asset_id": asset_id,
+            "raw_amount": abs(currency_amount),
+        }
+    except Exception as e:
+        log.warning(f"[SPENDING] Format transaction error: {type(e).__name__}: {e}")
+        return None
+
+
+async def get_spending_history(uid: int, cookie: str, limit: int = 1000, use_cache: bool = None) -> List[Dict[str, Any]]:
+    """
+    История трат — максимально подробные логи по шагам.
+    """
+    import time as _t
+    start_all = _t.perf_counter()
+    if use_cache is None:
+        use_cache = ENABLE_SPENDING_CACHE
+    log.info(f"[SPENDING] START uid={uid} limit={limit} use_cache={use_cache}")
+
+    transactions: List[Dict[str, Any]] = []
+    cursor: Optional[str] = None
+    pages = 0
+    consecutive_errors = 0
+    cache_key = f"spending:{uid}:{limit}"
+    log.info(f"[SPENDING] cache={'ON' if (use_cache and ENABLE_SPENDING_CACHE) else 'OFF'} key={cache_key}")
+    if not ENABLE_SPENDING_CACHE:
+        log.warning("[SPENDING] Cache OFF: skip read & write; force live fetch")
+        try:
+            # ensure no stale file will be used elsewhere
+            import hashlib, os
+            _path = os.path.join(os.getenv("CACHE_DIR", "cache"), hashlib.sha1(cache_key.encode("utf-8")).hexdigest())
+            if os.path.exists(_path):
+                os.remove(_path)
+                log.info(f"[SPENDING] Removed existing cache file: {_path}")
+        except Exception as _e:
+            log.debug(f"[SPENDING] Cache file removal skipped: {_e}")
+
+    # Кэш
+    try:
+        if not getattr(CFG, "FORCE_REFRESH_SPENDING", True):
+            cached = await cache.get_json(cache_key, SPENDING_TTL)
+            if cached is not None:
+                log.info(f"[SPENDING] Cache {'HIT' if cached else 'EMPTY'} size={len(cached) if isinstance(cached, list) else 'N/A'} key={cache_key}")
+                if cached:
+                    return cached
+            else:
+                log.info(f"[SPENDING] Cache MISS key={cache_key}")
+    except Exception as e:
+        log.warning(f"[SPENDING] cache.get failed: {type(e).__name__}: {e}")
+
+    proxy = PROXY_POOL.any()
+    client = await get_client(proxy)
+    timeout = httpx.Timeout(8.0, connect=2.0, read=6.0)
+    url = ECON_TX_URL.format(uid=uid)
+    log.info(f"[SPENDING] HTTP begin url={url} proxy={proxy}")
+
+    while pages < 2000 and len(transactions) < limit:
+        want = min(100, max(0, limit - len(transactions)))
+        params = {"transactionType": "Purchase", "limit": want, "cursor": cursor or "", "_": str(int(_t.time()*1000))}
+        pages += 1
+        t0 = _t.perf_counter()
+        log.info(f"[SPENDING] Page#{pages} request params={params}")
+
+        try:
+            headers = _cookie_headers(cookie)
+            headers.update({"Cache-Control":"no-cache","Pragma":"no-cache"})
+            r = await client.get(url, params=params, headers=headers, timeout=timeout)
+            dt = int((_t.perf_counter() - t0) * 1000)
+            clen = r.headers.get("Content-Length") or "?"
+            log.info(f"[SPENDING] Page#{pages} HTTP {r.status_code} in {dt}ms (len={clen})")
+
+            if r.status_code == 429:
+                log.warning(f"[SPENDING] Page#{pages} 429 TooManyRequests -> sleep 1000ms")
+                await asyncio.sleep(1.0)
+                pages -= 1  # retry same page index next loop
+                continue
+
+            if r.status_code in (401, 403):
+                log.error(f"[SPENDING] AUTH_FAIL status={r.status_code} (cookie invalid)")
+                return []
+
+            r.raise_for_status()
+            raw = r.text
+            try:
+                js = r.json() or {}
+            except Exception as je:
+                log.error(f"[SPENDING] JSON parse fail: {type(je).__name__}: {je} (first 300 chars: {raw[:300]!r})")
+                break
+
+            data = js.get("data") or []
+            if pages == 1 and data:
+                try:
+                    _tx = data[0]
+                    _sample = {
+                        'created': _tx.get('created'),
+                        'type': _tx.get('type'),
+                        'currency': _tx.get('currency'),
+                        'details_keys': list((_tx.get('details') or {}).keys()),
+                    }
+                    log.debug(f"[SPENDING] sample tx page1: {_sample}")
+                except Exception:
+                    pass
+            next_cursor = js.get("nextPageCursor")
+            log.info(f"[SPENDING] Page#{pages} data_items={len(data)} next_cursor={'yes' if next_cursor else 'no'}")
+
+            if not data:
+                log.info(f"[SPENDING] Page#{pages} empty -> stop")
+                break
+
+            added = 0
+            for tx in data:
+                fmt = await _format_transaction(tx)
+                if fmt:
+                    transactions.append(fmt); added += 1
+            log.info(f"[SPENDING] Page#{pages} parsed_added={added} total={len(transactions)}")
+
+            cursor = next_cursor
+            if not cursor or len(transactions) >= limit:
+                break
+
+        except Exception as e:
+            dt = int((_t.perf_counter() - t0) * 1000)
+            consecutive_errors += 1
+            log.error(f"[SPENDING] Page#{pages} ERROR after {dt}ms ({consecutive_errors}/3): {type(e).__name__}: {e}", exc_info=True)
+            if consecutive_errors >= 3:
+                log.error("[SPENDING] Abort — too many consecutive errors")
+                break
+            await asyncio.sleep(0.5)
+
+    total_ms = int((_t.perf_counter() - start_all) * 1000)
+    log.info(f"[SPENDING] DONE uid={uid}: txs={len(transactions)} pages={pages} in {total_ms}ms")
+
+    try:
+        if use_cache and ENABLE_SPENDING_CACHE:
+            await cache.set_json(cache_key, transactions)
+            log.info(f"[SPENDING] Cached {len(transactions)} -> {cache_key}")
+        else:
+            log.info("[SPENDING] Cache disabled; skip save")
+    except Exception as e:
+        log.warning(f"[SPENDING] cache.set failed: {type(e).__name__}: {e}")
+
+    return transactions
+
+async def get_spending_history_by_encrypted_cookie(enc_cookie: str, roblox_id: int, limit: int = 1000, use_cache: bool = None) -> List[Dict[str, Any]]:
+    try:
+        cookie = decrypt_text(enc_cookie)
+        if not cookie:
+            log.error(f"[SPENDING] decrypt failed for {roblox_id}")
+            return []
+        return await get_spending_history(roblox_id, cookie, limit, use_cache=use_cache)
+    except Exception as e:
+        log.error(f"[SPENDING] by enc cookie failed: {type(e).__name__}: {e}")
+        return []
+
+def sort_spending_history(transactions: List[Dict[str, Any]], sort_by: str = "price") -> List[Dict[str, Any]]:
+    key_map = {
+        "price": lambda x: x.get("raw_amount", 0),
+        "name": lambda x: x.get("name", ""),
+        "creator": lambda x: x.get("creator", ""),
+        "date": lambda x: x.get("date", ""),
+    }
+    reverse = sort_by in ("price", "date")
+    return sorted(transactions, key=key_map.get(sort_by, lambda x: 0), reverse=reverse)
+
+def get_spending_statistics(transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if not transactions:
+        return {"total_spent": 0, "transaction_count": 0, "average_spent": 0, "total_spent_formatted": "0 R$"}
+    total = sum(int(tx.get("raw_amount", 0)) for tx in transactions)
+    count = len(transactions)
+    return {
+        "total_spent": int(total),
+        "transaction_count": int(count),
+        "average_spent": (total // count) if count else 0,
+        "total_spent_formatted": f"{int(total)} R$"
+    }
+    return transactions

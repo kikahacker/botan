@@ -76,7 +76,7 @@
     "inventory_value": "💰 Inventory value: {value} R$",
     "inventory_value_label": "💰 Inventory value:",
     "inventory_private": "🔒 Inventory is private",
-    "card": "📘 Account information\n👤 Name: {uname}\n🏷️ Display Name: {display_name}\n🆔 ID: {rid}\n📅 Created: {created}\n🌍 Country: {country}\n🧬 Gender: {gender}\n🎂 Date of birth: {birthday}\n📏 Age: {age}\n✉️ Email: {email} (Verified: {email_verified})\n💰 Robux: {robux}\n🧾 Total spent: {spent}\n🟢 Status: {status}"
+    "card": "📘 Account information\n👤 Name: {uname}\n🏷️ Display Name: {display_name}\n🆔 ID: {rid}\n📅 Created: {created}\n🌍 Country: {country}\n🧬 Gender: {gender}\n🎂 Date of birth: {birthday}\n📏 Age: {age}\n✉️ Email: {email} (Verified: {email_verified})\n💰 Robux: {robux}\n🟢 Status: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ Error while preparing the archive.",
@@ -171,7 +171,8 @@
     "categories": "📂 Categories",
     "inventory_categories": "🧩 Inventory (choose categories)",
     "to_accounts": "📋 Back to account list",
-    "to_home": "🔙 Back"
+    "to_home": "🔙 Back",
+    "spending": "💸 Spending"
   },
   "status": {
     "account_deleted": "🗑 Account deleted.",
@@ -203,7 +204,8 @@
     "note_limited": "ℹ️ Public mode: some data is unavailable without cookie.",
     "bad_id": "⚠️ Invalid ID. Send a number (e.g., 123456789).",
     "not_found": "❌ User not found or unavailable.",
-    "inventory_private": "⚠️ This user's inventory is private on Roblox."
+    "inventory_private": "⚠️ This user's inventory is private on Roblox.",
+    "spending_login_required": "🔐 Spending is available only if a cookie is saved for this account."
   },
   "settings": {
     "title": "⚙️ Settings"
@@ -219,5 +221,11 @@
     "grand_total": "💰 Total inventory value: {total_sum} R$\n📦 Total items with price: {total_count}",
     "render_too_large": "📦 All items: render too large. Reduce tile size or narrow selection.",
     "page": "Page {current}/{total}"
+  },
+  "spending": {
+    "title": "💸 Spending history (total: {total})",
+    "loading": "⏳ Loading spending history…",
+    "empty": "🫙 No purchases found.",
+    "header": "💸 Spending — total: {sum} R$"
   }
 }

@@ -1,4 +1,3 @@
-
 {
   "currency": {
     "robux": "R$"
@@ -172,7 +171,8 @@
     "categories": "📂 Kategorien",
     "inventory_categories": "🧩 Inventar (Kategorien wählen)",
     "to_accounts": "📋 Zurück zur Kontoliste",
-    "to_home": "🔙 Zurück"
+    "to_home": "🔙 Zurück",
+    "spending": "💸 Ausgaben"
   },
   "status": {
     "account_deleted": "🗑 Konto gelöscht.",
@@ -204,7 +204,8 @@
     "note_limited": "ℹ️ Öffentlicher Modus: Einige Daten sind ohne Cookie nicht verfügbar.",
     "bad_id": "⚠️ Ungültige ID. Sende eine Nummer (z.B. 123456789).",
     "not_found": "❌ Benutzer nicht gefunden oder nicht verfügbar.",
-    "inventory_private": "⚠️ Das Inventar dieses Benutzers ist bei Roblox privat."
+    "inventory_private": "⚠️ Das Inventar dieses Benutzers ist bei Roblox privat.",
+    "spending_login_required": "🔐 Ausgaben sind nur verfügbar, wenn für dieses Konto ein Cookie gespeichert ist."
   },
   "settings": {
     "title": "⚙️ Einstellungen"
@@ -220,5 +221,8 @@
     "grand_total": "💰 Gesamter Inventarwert: {total_sum} R$\n📦 Artikel mit Preis gesamt: {total_count}",
     "render_too_large": "📦 Alle Artikel: Darstellung zu groß. Verkleinere die Kachelgröße oder schränke die Auswahl ein.",
     "page": "Seite {current}/{total}"
+  },
+  "spending": {
+    "header": "💸 Ausgaben — insgesamt: {sum} R$"
   }
 }

