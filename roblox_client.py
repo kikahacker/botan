@@ -63,7 +63,7 @@ INV_TTL = int(getattr(CFG, "CACHE_INV_TTL", 1800))  # уменьшил для с
 CATALOG_CONCURRENCY = int(getattr(CFG, "CATALOG_CONCURRENCY", 64))  # увеличил
 CATALOG_RETRIES = int(getattr(CFG, "CATALOG_RETRIES", 2))  # уменьшил
 SPENDING_TTL = int(getattr(CFG, "CACHE_SPENDING_TTL", 3600))  # кэш трат — 1 час
-ENABLE_SPENDING_CACHE: bool = False  # toggle cache read/write for spending
+ENABLE_SPENDING_CACHE: bool = True  # toggle cache read/write for spending
 
 # Log initial cache settings after constants are loaded
 try:
