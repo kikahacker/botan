@@ -1033,8 +1033,6 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
     # ДЕБАГ
 
     roblox_id = int(call.data.split(':', 1)[1])
-    # log profile view
-    await storage.log_event('profile_check', call.from_user.id, roblox_id)
     invalidate_profile_mem(tg, roblox_id)
 
     # ---------- FAST PATH: cache first ----------
@@ -2944,8 +2942,8 @@ async def _admin_stats_btn(cb: types.CallbackQuery, state: FSMContext):
         f"🔥 Активных сегодня: {base.get('active_today', 0)}\n"
         f"🔐 С аккаунтами: {base.get('users_with_accounts', 0)}\n"
         f"✅ Проверок всего: {base.get('checks_total', 0)}\n"
-        f"🧑‍💼 Проверок профиля: {base.get('profile_total', 0)} ({base.get('profile_today', 0)} сегодня)"
-        f"🎒 Проверок инвентаря: {base.get('inventory_total', 0)} ({base.get('inventory_today', 0)} сегодня)"
+        f"🧑‍💼 Проверок профиля: {int(m.get('checks_profile', 0))}\n"
+        f"🎒 Проверок инвентаря: {int(m.get('checks_inventory', 0))}"
     )
     try:
         await cb.message.edit_text(text, parse_mode="HTML", reply_markup=kb_admin_main())

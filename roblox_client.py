@@ -1461,44 +1461,192 @@ async def get_game_aggregates_by_universe(universe_ids: list[int], cookie: Optio
 
 
 # ---------------- Favorites / History / Analysis (Variant B) ----------------
-
-async def get_favorite_games(user_id: int, cookie: str | None = None):
-    """Return user's favorite games (cached 1h)."""
-    import logging, httpx, time, cache
-    key = f"fav_games_v1_{user_id}"
+async def get_favorite_games(user_id: int, cookie: Optional[str] = None) -> List[Dict]:
+    """Fetch favorite games. Prefers games.roblox.com v2; falls back to legacy list-json. Cache 1h."""
+    ck = f"games:favorites:{int(user_id)}"
     try:
-        cached = await cache.get_cached_data(user_id, key)
-    except Exception:
-        cached = None
-    if isinstance(cached, list) and cached:
-        logging.info(f"[FAV] cache HIT for {user_id}, {len(cached)} games")
-        return cached
-
-    logging.info(f"[FAV] cache MISS for {user_id}")
-    games = []
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        if cookie:
-            headers['Cookie'] = f'.ROBLOSECURITY={cookie}'
-        async with httpx.AsyncClient(timeout=20.0) as c:
-            url = f'https://games.roblox.com/v2/users/{user_id}/favorite/games'
-            r = await c.get(url, headers=headers)
-            if r.status_code == 200:
-                data = r.json() or {}
-                games = data.get('data') or data.get('favorites') or []
-            else:
-                logging.warning(f"[FAV] HTTP {r.status_code} for {url}")
-    except Exception as e:
-        logging.warning(f"[FAV] fetch error for {user_id}: {e}")
-
-    try:
-        await cache.set_cached_data(user_id, key, games, 60*60)
+        cached = await cache.get_json(ck, 60*60)
+        if cached:
+            return cached
     except Exception:
         pass
 
-    return games
+    items: List[Dict] = []
+    # Try modern v2 endpoint with pagination
+    try:
+        proxy = PROXY_POOL.any()
+        client = await get_client(proxy)
+        headers = _cookie_headers(cookie)
+        url = FAVORITE_GAMES_URL.format(user_id=int(user_id))
+        cursor = None
+        pages = 0
+        while pages < 10:
+            params = {"limit": 100, "sortOrder": "Desc"}
+            if cursor: params["cursor"] = cursor
+            r = await client.get(url, params=params, headers=headers, timeout=httpx.Timeout(8.0, connect=2.0, read=6.0))
+            if r.status_code != 200:
+                break
+            js = r.json() or {}
+            data = js.get("data") or []
+            for it in data:
+                name = it.get("name") or it.get("title") or it.get("placeName") or ""
+                gid = it.get("rootPlaceId") or it.get("placeId") or it.get("id")
+                last = it.get("updated") or it.get("created") or None
+                if isinstance(last, str) and "T" in last:
+                    last = last.split("T")[0]
+                items.append({"game_id": int(gid) if gid else None, "name": name, "last_played": last})
+            cursor = js.get("nextPageCursor")
+            pages += 1
+            if not cursor or not data:
+                break
+    except Exception:
+        pass
+
+    # Fallback to legacy list-json if nothing
+    if not items:
+        try:
+            proxy = PROXY_POOL.any()
+            client = await get_client(proxy)
+            headers = _cookie_headers(cookie)
+            page = 1
+            while page <= 3:
+                params = {"assetTypeId": 9, "userId": int(user_id), "pageNumber": page}
+                r = await client.get(LEGACY_FAVORITES_JSON, params=params, headers=headers, timeout=httpx.Timeout(8.0, connect=2.0, read=6.0))
+                if r.status_code != 200:
+                    break
+                js = r.json() or {}
+                data = js.get("Data") or js.get("data") or []
+                for it in data:
+                    name = it.get("Name") or it.get("name") or ""
+                    gid = it.get("AssetId") or it.get("placeId") or it.get("Id")
+                    items.append({"game_id": int(gid) if gid else None, "name": name, "last_played": None})
+                if not data:
+                    break
+                page += 1
+        except Exception:
+            pass
+
+    try:
+        await cache.set_json(ck, items, ttl=60*60)
+    except Exception:
+        pass
+    return items
 
 
+
+
+async def get_recently_played_by_scrape(user_id: int, cookie: Optional[str]) -> List[Dict]:
+    """Scrape /home and /users/{id}/profile to collect recently played games. Cache 45 min."""
+    cache_key = f"games:recent_scrape:{int(user_id)}"
+    try:
+        cached = await cache.get_json(cache_key, 45*60)
+        if cached:
+            return cached
+    except Exception:
+        pass
+
+    items: List[Dict] = []
+    urls = [
+        "https://www.roblox.com/home",
+        f"https://www.roblox.com/users/{int(user_id)}/profile",
+    ]
+    for url in urls:
+        html_text = await _fetch_html_with_cookie(url, cookie)
+        if not html_text:
+            continue
+        _log_scrape_probe(url, html_text)
+        parsed = _parse_recent_from_html(html_text)
+        if parsed:
+            log.debug(f"[GAMES] parsed recent from {url}: {len(parsed)} items")
+            items = parsed
+            break
+
+    # normalize + dedupe
+    out: List[Dict] = []
+    seen = set()
+    for it in items:
+        pid = it.get("placeId") or it.get("game_id")
+        if not pid:
+            continue
+        try:
+            pid = int(pid)
+        except Exception:
+            continue
+        if pid in seen:
+            continue
+        seen.add(pid)
+        out.append({
+            "game_id": pid,
+            "name": it.get("name") or "",
+            "last_played": it.get("last_played"),
+        })
+
+    try:
+        await cache.set_json(cache_key, out, ttl=45*60)
+    except Exception:
+        pass
+    return out
+
+async def get_game_history(user_id: int, cookie: Optional[str] = None, limit: int = 100) -> List[Dict]:
+    """Return recent games via scrape (requires cookie). Cache handled in scrape helper; we slice by limit."""
+    history = await get_recently_played_by_scrape(user_id, cookie)
+    if not history:
+        return []
+    return history[:max(1, int(limit))]
+
+
+async def analyze_gaming_habits(user_id: int, cookie: Optional[str] = None, *, enable_scrape: bool = True) -> Dict:
+    """Compose summary from recent (scrape) and favorites. Cache 2h."""
+    ck = f"games:analysis:{int(user_id)}"
+    try:
+        cached = await cache.get_json(ck, 2*60*60)
+        if cached:
+            return cached
+    except Exception:
+        pass
+
+    recent = await get_recently_played_by_scrape(user_id, cookie) if (enable_scrape and cookie) else []
+    favorites = await get_favorite_games(user_id, cookie=cookie)
+
+    # Build counters for 'most played' by frequency within recent list
+    from collections import Counter
+    cnt = Counter()
+    names = {}
+    for it in recent:
+        gid = it.get("game_id")
+        if not gid: continue
+        cnt[int(gid)] += 1
+        if it.get("name"):
+            names[int(gid)] = it["name"]
+
+    most_played = [{"game_id": gid, "name": names.get(gid, ""), "play_count": int(n)} for gid, n in cnt.most_common(10)]
+
+    result = {
+        "total_games_played": int(sum(cnt.values())),
+        "unique_games_count": int(len(cnt)),
+        "most_played_games": most_played,
+        "favorite_games_count": int(len(favorites)),
+        "recent_games": [{"game_id": it.get("game_id"), "name": it.get("name"), "last_played": it.get("last_played")} for it in recent[:10]],
+        "favorite_games": [{"game_id": it.get("game_id"), "name": it.get("name")} for it in favorites[:30]],
+    }
+    try:
+        await cache.set_json(ck, result, ttl=2*60*60)
+    except Exception:
+        pass
+    return result
+async def get_game_history_by_encrypted_cookie(enc_cookie: str, user_id: int, limit: int = 100) -> List[Dict]:
+    try:
+        cookie = decrypt_text(enc_cookie)
+    except Exception:
+        cookie = None
+    return await get_game_history(user_id, cookie=cookie, limit=limit)
+
+async def get_gaming_habits_by_encrypted_cookie(enc_cookie: str, user_id: int) -> Dict:
+    try:
+        cookie = decrypt_text(enc_cookie)
+    except Exception:
+        cookie = None
+    return await analyze_gaming_habits(user_id, cookie=cookie, enable_scrape=True)
 def _log_scrape_probe(tag: str, text: str) -> None:
     try:
         snippet = (text or '')[:300].replace('\n',' ')
@@ -1552,3 +1700,38 @@ async def get_universe_aggregates(universe_ids: List[int], cookie: Optional[str]
     return out
 
 
+async def get_recent_enriched_by_encrypted_cookie(enc_cookie: str, user_id: int, limit: int = 20, *, include_aggregates: bool = True) -> List[Dict[str, Any]]:
+    try:
+        cookie = decrypt_text(enc_cookie)
+    except Exception:
+        cookie = None
+
+    recent = await get_game_history(user_id, cookie=cookie, limit=limit)
+    if not recent:
+        return []
+
+    place_ids = [int(r["game_id"]) for r in recent if r.get("game_id")]
+    p2u = await _map_place_to_universe(place_ids, cookie=cookie)
+
+    uni_aggr: Dict[int, Dict[str, Any]] = {}
+    if include_aggregates:
+        uids = sorted({uid for uid in p2u.values() if uid})
+        uni_aggr = await get_universe_aggregates(uids, cookie=cookie)
+
+    out: List[Dict[str, Any]] = []
+    for r in recent:
+        pid = r.get("game_id")
+        uid = p2u.get(int(pid)) if pid else None
+        ag = uni_aggr.get(int(uid)) if uid else {}
+        out.append({
+            "game_id": pid,
+            "name": r.get("name"),
+            "last_played": r.get("last_played"),
+            "universe_id": uid,
+            "universe_name": ag.get("name"),
+            "visits": ag.get("visits"),
+            "playing": ag.get("playing"),
+            "favoritesCount": ag.get("favoritesCount"),
+            "url": f"https://www.roblox.com/games/{pid}" if pid else None,
+        })
+    return out
