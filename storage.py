@@ -262,30 +262,49 @@ async def log_event(event: str, telegram_id: int | None, roblox_id: int | None) 
         await db.commit()
 
 
+
 async def admin_stats() -> dict:
     async with aiosqlite.connect(DB_STR) as db:
-        # Все пользователи бота
+        # Users
         cur = await db.execute('SELECT COUNT(*) FROM bot_users')
         total_users = (await cur.fetchone())[0]
 
-        # Новые пользователи за сегодня
-        cur = await db.execute("SELECT COUNT(*) FROM bot_users WHERE date(first_seen) = date('now','localtime')")
+        cur = await db.execute("SELECT COUNT(*) FROM bot_users WHERE date(first_seen)=date('now','localtime')")
         new_today = (await cur.fetchone())[0]
 
-        # Активные пользователи за сегодня
-        cur = await db.execute("SELECT COUNT(*) FROM bot_users WHERE date(last_seen) = date('now','localtime')")
+        cur = await db.execute("SELECT COUNT(*) FROM bot_users WHERE date(last_seen)=date('now','localtime')")
         active_today = (await cur.fetchone())[0]
 
-        # Пользователи с привязанными аккаунтами
+        # Users with linked accounts
         cur = await db.execute('SELECT COUNT(*) FROM (SELECT DISTINCT telegram_id FROM authorized_users)')
         users_with_accounts = (await cur.fetchone())[0]
 
-        # Статистика проверок
+        # Checks (overall)
         cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='check'")
         checks_total = (await cur.fetchone())[0]
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM metrics_events WHERE event='check' AND date(created_at) = date('now','localtime')")
+        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='check' AND date(created_at)=date('now','localtime')")
         checks_today = (await cur.fetchone())[0]
+
+        # Split by category
+        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='profile_check'")
+        profile_total = (await cur.fetchone())[0]
+        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='profile_check' AND date(created_at)=date('now','localtime')")
+        profile_today = (await cur.fetchone())[0]
+
+        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='inventory_check'")
+        inventory_total = (await cur.fetchone())[0]
+        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='inventory_check' AND date(created_at)=date('now','localtime')")
+        inventory_today = (await cur.fetchone())[0]
+
+        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='favorites_check'")
+        favorites_total = (await cur.fetchone())[0]
+        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='favorites_check' AND date(created_at)=date('now','localtime')")
+        favorites_today = (await cur.fetchone())[0]
+
+        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='spending_check'")
+        spending_total = (await cur.fetchone())[0]
+        cur = await db.execute("SELECT COUNT(*) FROM metrics_events WHERE event='spending_check' AND date(created_at)=date('now','localtime')")
+        spending_today = (await cur.fetchone())[0]
 
     return {
         'total_users': total_users,
@@ -293,166 +312,13 @@ async def admin_stats() -> dict:
         'active_today': active_today,
         'users_with_accounts': users_with_accounts,
         'checks_total': checks_total,
-        'checks_today': checks_today
+        'checks_today': checks_today,
+        'profile_total': profile_total,
+        'profile_today': profile_today,
+        'inventory_total': inventory_total,
+        'inventory_today': inventory_today,
+        'favorites_total': favorites_total,
+        'favorites_today': favorites_today,
+        'spending_total': spending_total,
+        'spending_today': spending_today,
     }
-
-
-async def upsert_account_snapshot(roblox_id: int, inventory_val: int, total_spent: int) -> None:
-    async with aiosqlite.connect(DB_STR) as db:
-        await db.execute(
-            '''
-            INSERT INTO account_snapshots(roblox_id, inventory_val, total_spent, updated_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(roblox_id) DO UPDATE SET
-                inventory_val=excluded.inventory_val,
-                total_spent=excluded.total_spent,
-                updated_at=CURRENT_TIMESTAMP
-            ''',
-            (roblox_id, int(inventory_val), int(total_spent))
-        )
-        await db.commit()
-
-
-async def get_account_snapshot(roblox_id: int) -> Optional[dict]:
-    async with aiosqlite.connect(DB_STR) as db:
-        cur = await db.execute(
-            'SELECT inventory_val, total_spent, updated_at FROM account_snapshots WHERE roblox_id=?',
-            (roblox_id,)
-        )
-        row = await cur.fetchone()
-        if not row:
-            return None
-        return {'inventory_val': row[0], 'total_spent': row[1], 'updated_at': row[2]}
-
-
-# =========================
-# Глобальные хелперы для перебора кук (ИСПРАВЛЕННЫЕ)
-# =========================
-
-async def get_multiple_cookies_quick(limit: int = 3) -> List[str]:
-    """Быстро получает несколько случайных куки из БД"""
-    try:
-        async with aiosqlite.connect(DB_STR) as db:
-            # Для SQLite используем RANDOM()
-            query = """
-            SELECT enc_roblosecurity FROM user_cookies 
-            WHERE is_active = TRUE
-            ORDER BY RANDOM() 
-            LIMIT ?
-            """
-            cur = await db.execute(query, (limit,))
-            rows = await cur.fetchall()
-            return [row[0] for row in rows] if rows else []
-    except Exception as e:
-        logging.error(f"Failed to get multiple cookies: {e}")
-        return []
-
-
-async def get_any_encrypted_cookie_by_roblox_id(roblox_id: int) -> Optional[str]:
-    """Быстро получает любую куки для указанного roblox_id"""
-    try:
-        async with aiosqlite.connect(DB_STR) as db:
-            query = """
-            SELECT enc_roblosecurity FROM user_cookies 
-            WHERE roblox_id = ? AND is_active = TRUE
-            LIMIT 1
-            """
-            cur = await db.execute(query, (roblox_id,))
-            row = await cur.fetchone()
-            return row[0] if row else None
-    except Exception as e:
-        logging.error(f"Failed to get cookie for {roblox_id}: {e}")
-        return None
-
-
-async def list_all_owners() -> List[int]:
-    """Все telegram_id, у которых сохранена хотя бы одна кука."""
-    try:
-        async with aiosqlite.connect(DB_STR) as db:
-            cur = await db.execute('SELECT DISTINCT telegram_id FROM user_cookies WHERE is_active = TRUE')
-            rows = await cur.fetchall()
-            return [int(r[0]) for r in rows]
-    except Exception as e:
-        logging.error(f"Failed to list owners: {e}")
-        return []
-
-
-async def list_all_cookies() -> List[Tuple[int, int, str]]:
-    """
-    Вернёт список всех кук из БД.
-    Формат: [(telegram_id, roblox_id, enc_roblosecurity), ...]
-    """
-    try:
-        async with aiosqlite.connect(DB_STR) as db:
-            cur = await db.execute(
-                'SELECT telegram_id, roblox_id, enc_roblosecurity FROM user_cookies WHERE is_active = TRUE')
-            rows = await cur.fetchall()
-            return [(int(r[0]), int(r[1]), r[2]) for r in rows]
-    except Exception as e:
-        logging.error(f"Failed to list all cookies: {e}")
-        return []
-
-
-async def get_active_cookies_count() -> int:
-    """Возвращает количество активных куки в БД"""
-    try:
-        async with aiosqlite.connect(DB_STR) as db:
-            cur = await db.execute('SELECT COUNT(*) FROM user_cookies WHERE is_active = TRUE')
-            return (await cur.fetchone())[0]
-    except Exception as e:
-        logging.error(f"Failed to count active cookies: {e}")
-        return 0
-
-
-async def find_working_cookie_for_user(roblox_id: int, max_attempts: int = 3) -> Optional[str]:
-    """Находит рабочую куки для пользователя (для ultra-fast режима)"""
-    # Сначала пробуем куки именно для этого пользователя
-    user_cookie = await get_any_encrypted_cookie_by_roblox_id(roblox_id)
-    if user_cookie:
-        return user_cookie
-
-    # Если нет, берем случайные куки из БД
-    random_cookies = await get_multiple_cookies_quick(limit=max_attempts)
-    return random_cookies[0] if random_cookies else None
-
-async def list_accounts_distinct() -> List[Dict[str, Any]]:
-    """
-    Вернёт уникальные roblox_id у которых есть активные куки,
-    вместе с username (если есть) и snapshot (если есть).
-    Формат: [{roblox_id, username, inventory_val, owners: [telegram_id,...]}]
-    """
-    result: List[Dict[str, Any]] = []
-    try:
-        async with aiosqlite.connect(DB_STR) as db:
-            # distinct accounts with active cookies
-            cur = await db.execute('SELECT DISTINCT roblox_id FROM user_cookies WHERE is_active = TRUE')
-            rids = [int(r[0]) for r in await cur.fetchall()]
-
-            # map usernames
-            uname_map = {}
-            cur = await db.execute('SELECT roblox_id, username FROM authorized_users')
-            for rid, uname in await cur.fetchall():
-                uname_map[int(rid)] = uname or ''
-
-            # map snapshots
-            snap_map = {}
-            cur = await db.execute('SELECT roblox_id, inventory_val FROM account_snapshots')
-            for rid, val in await cur.fetchall():
-                snap_map[int(rid)] = int(val or 0)
-
-            # owners (telegram ids)
-            owners_map = {}
-            cur = await db.execute('SELECT roblox_id, telegram_id FROM user_cookies WHERE is_active = TRUE')
-            for rid, tg in await cur.fetchall():
-                owners_map.setdefault(int(rid), set()).add(int(tg))
-
-            for rid in rids:
-                result.append({
-                    "roblox_id": int(rid),
-                    "username": uname_map.get(int(rid), ""),
-                    "inventory_val": int(snap_map.get(int(rid), 0)),
-                    "owners": sorted(list(owners_map.get(int(rid), [])))
-                })
-    except Exception as e:
-        logging.error(f"list_accounts_distinct failed: {e}")
-    return result

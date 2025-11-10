@@ -224,5 +224,13 @@
   },
   "spending": {
     "header": "💸 Kiadások — összesen: {sum} R$"
+  },
+  "games": {
+    "fav_title": "Kedvenc játékok",
+    "fav_summary": "• Kedvencek: {count}",
+    "empty_favorites": "Nincsenek kedvencek.",
+    "page": "Oldal {cur}/{total}",
+    "prev": "◀ Előző",
+    "next": "Következő ▶"
   }
 }

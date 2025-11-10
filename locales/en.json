@@ -172,7 +172,8 @@
     "inventory_categories": "🧩 Inventory (choose categories)",
     "to_accounts": "📋 Back to account list",
     "to_home": "🔙 Back",
-    "spending": "💸 Spending"
+    "spending": "💸 Spending",
+    "favorites": "⭐ Favorites"
   },
   "status": {
     "account_deleted": "🗑 Account deleted.",
@@ -227,5 +228,14 @@
     "loading": "⏳ Loading spending history…",
     "empty": "🫙 No purchases found.",
     "header": "💸 Spending — total: {sum} R$"
+  },
+  "games": {
+    "fav_title": "⭐ Favorites",
+    "fav_summary": "⭐ Favorites: {count}",
+    "empty_favorites": "No favorites.",
+    "page": "Page {cur}/{total}",
+    "prev": "◀ Prev",
+    "next": "Next ▶",
+    "loading": "⏳ Loading favorites…"
   }
 }

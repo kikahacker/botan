@@ -93,6 +93,7 @@ def is_admin(uid: int) -> bool:
 
 from util.crypto import decrypt_text, encrypt_text
 import storage
+import cache
 from config import CFG
 from assets_manager import assets_manager
 import roblox_client
@@ -694,11 +695,16 @@ def _lbl(key: str, fallback: str) -> str:
         return fallback
     return v
 
+
 def kb_navigation(roblox_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text=_lbl('nav.spending', '💸 Spending history'),
             callback_data=f'spend:{roblox_id}'
+        )],
+        [InlineKeyboardButton(
+            text=_lbl('nav.favorites', '⭐ Favorites'),
+            callback_data=f'fav:{roblox_id}:0'
         )],
         [InlineKeyboardButton(
             text=_lbl('nav.inventory_categories', '🧩 Inventory (choose categories)'),
@@ -713,8 +719,6 @@ def kb_navigation(roblox_id: int) -> InlineKeyboardMarkup:
             callback_data='menu:home'
         )],
     ])
-
-
 def _kb_category_footer(roblox_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=LL('buttons.all_items', 'btn.auto_da5b332518'),
@@ -1029,6 +1033,8 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
     # ДЕБАГ
 
     roblox_id = int(call.data.split(':', 1)[1])
+    # log profile view
+    await storage.log_event('profile_check', call.from_user.id, roblox_id)
     invalidate_profile_mem(tg, roblox_id)
 
     # ---------- FAST PATH: cache first ----------
@@ -2938,8 +2944,8 @@ async def _admin_stats_btn(cb: types.CallbackQuery, state: FSMContext):
         f"🔥 Активных сегодня: {base.get('active_today', 0)}\n"
         f"🔐 С аккаунтами: {base.get('users_with_accounts', 0)}\n"
         f"✅ Проверок всего: {base.get('checks_total', 0)}\n"
-        f"🧑‍💼 Проверок профиля: {int(m.get('checks_profile', 0))}\n"
-        f"🎒 Проверок инвентаря: {int(m.get('checks_inventory', 0))}"
+        f"🧑‍💼 Проверок профиля: {base.get('profile_total', 0)} ({base.get('profile_today', 0)} сегодня)"
+        f"🎒 Проверок инвентаря: {base.get('inventory_total', 0)} ({base.get('inventory_today', 0)} сегодня)"
     )
     try:
         await cb.message.edit_text(text, parse_mode="HTML", reply_markup=kb_admin_main())
@@ -3505,3 +3511,172 @@ async def cb_public_spending_locked(call: types.CallbackQuery) -> None:
     except Exception:
         rid = 0
     await edit_or_send(call.message, L('public.spending_login_required'))
+
+
+
+# ======================= FAVORITES (15 per page) =======================
+_FAV_PAGE_SIZE = 15
+
+async def _fetch_favorites(tg_id: int, rid: int):
+    # Try cookie (if bound), but favorites are usually public
+    try:
+        enc = await storage.get_encrypted_cookie(tg_id, rid)
+    except Exception:
+        enc = None
+    cookie = None
+    if enc:
+        try:
+            cookie = decrypt_text(enc)
+        except Exception:
+            cookie = None
+    try:
+        import roblox_client as rbc
+        items = await rbc.get_favorite_games(rid, cookie=cookie)
+        out = []
+        for it in items or []:
+            name = it.get("name") or "—"
+            last = it.get("last_played") or ""
+            out.append({"name": name, "last": str(last) if last else ""})
+        return out
+    except Exception:
+        return []
+
+def _fav_page_lines(items, page: int):
+    total = max(1, (len(items) + _FAV_PAGE_SIZE - 1) // _FAV_PAGE_SIZE)
+    page = max(0, min(page, total - 1))
+    start = page * _FAV_PAGE_SIZE
+    chunk = items[start:start+_FAV_PAGE_SIZE]
+    lines = []
+    for it in chunk:
+        nm = html.escape(it.get("name") or "—")
+        dt = it.get("last") or ""
+        if dt:
+            lines.append(f"• {nm} — {dt}")
+        else:
+            lines.append(f"• {nm}")
+    body = "\n".join(lines) if lines else L('games.empty_favorites')
+    title = L('games.fav_title')
+    return f"{title}\n\n{body}", total
+
+def _fav_kb(rid: int, page: int, total: int):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    nav = []
+    rows = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text=L('games.prev'), callback_data=f'fav:{rid}:{page-1}'))
+    nav.append(InlineKeyboardButton(text=L('games.page', cur=page+1, total=total), callback_data='noop'))
+    if page + 1 < total:
+        nav.append(InlineKeyboardButton(text=L('games.next'), callback_data=f'fav:{rid}:{page+1}'))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text=L('buttons.back_to_profile'), callback_data=f'acct:{rid}')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+# ======================= /FAVORITES =======================
+# ======================= GAME STATS (history/favorites/analysis) =======================
+def _fmt_date(d: str) -> str:
+    try:
+        return (d or '')[:10]
+    except Exception:
+        return d or ''
+
+def _games_summary_text(analysis: dict) -> str:
+    try:
+        lines = []
+        lines.append(T('games.header'))
+        lines.append(T('games.totals', total=analysis.get('total_games_played', 0), unique=analysis.get('unique_games_count', 0), favs=analysis.get('favorite_games_count', 0)))
+        top = analysis.get('most_played_games') or []
+        if top:
+            lines.append('')
+            lines.append(T('games.top_title'))
+            for g in top[:5]:
+                nm = html.escape(g.get('name') or '—')
+                pc = int(g.get('play_count') or 0)
+                lines.append(f"• {nm} — {pc}×")
+        recent = analysis.get('recent_games') or []
+        if recent:
+            lines.append('')
+            lines.append(T('games.recent_title'))
+            for g in recent[:10]:
+                nm = html.escape(g.get('name') or '—')
+                dt = _fmt_date(g.get('last_played'))
+                lines.append(f"• {nm} — {dt}")
+        favs = analysis.get('favorite_games') or []
+        if favs:
+            lines.append('')
+            lines.append(T('games.favs_title'))
+            for g in favs[:10]:
+                nm = html.escape(g.get('name') or '—')
+                lines.append(f"• {nm}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"📊 Games: {e}"
+
+def _kb_games(rid: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=T('buttons.refresh'), callback_data=f'games_refresh:{rid}')],
+        [InlineKeyboardButton(text=T('buttons.back_to_profile'), callback_data=f'acct:{rid}')],
+    ])
+
+@router.callback_query(F.data.startswith('games:'))
+async def redirected_games(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
+    try: await call.answer(cache_time=1)
+    except: pass
+    try:
+        rid = int(call.data.split(':',1)[1])
+    except Exception:
+        rid = 0
+    # show favorites page 0
+    items = await _fetch_favorites(call.from_user.id, rid)
+    text, total = _fav_page_lines(items, 0)
+    kb = _fav_kb(rid, 0, total)
+    try:
+        await edit_or_send(call.message, text, reply_markup=kb, disable_web_page_preview=True)
+    except Exception:
+        await call.message.answer(text, reply_markup=kb, disable_web_page_preview=True)
+
+@router.callback_query(F.data.startswith('games_refresh:'))
+async def redirected_games_refresh(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
+    try: await call.answer(cache_time=1)
+    except: pass
+    try:
+        rid = int(call.data.split(':',1)[1])
+    except Exception:
+        rid = 0
+    # show favorites page 0
+    items = await _fetch_favorites(call.from_user.id, rid)
+    text, total = _fav_page_lines(items, 0)
+    kb = _fav_kb(rid, 0, total)
+    try:
+        await edit_or_send(call.message, text, reply_markup=kb, disable_web_page_preview=True)
+    except Exception:
+        await call.message.answer(text, reply_markup=kb, disable_web_page_preview=True)
+
+@router.callback_query(F.data.startswith('fav:'))
+async def cb_favorites(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
+    try: await call.answer(cache_time=1)
+    except: pass
+    try:
+        _, rid, page = call.data.split(':', 2)
+    except ValueError:
+        parts = call.data.split(':')
+        rid = parts[1] if len(parts) > 1 else "0"
+        page = "0"
+    rid = int(rid); page = max(0, int(page or 0))
+
+    wait = await call.message.answer(L('games.loading') if LL('games.loading','') else L('common.ellipsis'))
+    try:
+        items = await _fetch_favorites(call.from_user.id, rid)
+        text, total = _fav_page_lines(items, page)
+        kb = _fav_kb(rid, page, total)
+        try:
+            await wait.edit_text(text, reply_markup=kb, disable_web_page_preview=True)
+        except Exception:
+            await call.message.answer(text, reply_markup=kb, disable_web_page_preview=True)
+    except Exception as e:
+        err = L('errors.generic', err=str(e))
+        try: await wait.edit_text(err)
+        except: await call.message.answer(err)
+# ======================= /FAVORITES =======================

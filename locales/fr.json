@@ -224,5 +224,13 @@
   },
   "spending": {
     "header": "💸 Dépenses — total : {sum} R$"
+  },
+  "games": {
+    "fav_title": "Jeux favoris",
+    "fav_summary": "• Favoris : {count}",
+    "empty_favorites": "Aucun favori.",
+    "page": "Page {cur}/{total}",
+    "prev": "◀ Précédent",
+    "next": "Suivant ▶"
   }
 }

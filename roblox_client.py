@@ -1,4 +1,12 @@
 from __future__ import annotations
+import html
+import json
+import re
+
+# --- Games user endpoints ---
+FAVORITE_GAMES_URL = "https://games.roblox.com/v2/users/{user_id}/favorite/games"
+LEGACY_FAVORITES_JSON = "https://www.roblox.com/users/favorites/list-json"
+
 
 import logging, os, sys
 
@@ -1273,3 +1281,321 @@ def get_spending_statistics(transactions: List[Dict[str, Any]]) -> Dict[str, Any
         "total_spent_formatted": f"{int(total)} R$"
     }
     return transactions
+
+
+# Aggregates & place details
+PLACE_DETAILS_URL = "https://games.roblox.com/v1/places/multiget-place-details"
+GAMES_BY_UNIVERSE_URL = "https://games.roblox.com/v1/games"
+
+
+# ---------------- Scrape-based 'recently played' (requires cookie) ----------------
+
+async def _fetch_html_with_cookie(url: str, cookie: Optional[str]) -> Optional[str]:
+    proxy = PROXY_POOL.any()
+    client = await get_client(proxy)
+    headers = {
+        **_cookie_headers(cookie),
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity"  # force plain text to avoid br/gzip gibberish
+    }
+    try:
+        r = await client.get(url, headers=headers, timeout=httpx.Timeout(8.0, connect=2.0, read=6.0), follow_redirects=True)
+        enc = r.headers.get("content-encoding", "")
+        log.debug(f"[GAMES] scrape resp {url} -> {r.status_code}, enc={enc}, ct={r.headers.get('content-type','')}")
+        if r.status_code == 200 and r.text:
+            return r.text
+        return None
+    except Exception as e:
+        log.warning(f"[GAMES] scrape {url} exc: {type(e).__name__}: {e}")
+        return None
+
+    except Exception as e:
+        log.warning(f"[GAMES] scrape {url} exc: {type(e).__name__}: {e}")
+        return None
+
+
+
+def _parse_recent_from_html(html_text: str) -> list[dict]:
+    res: list[dict] = []
+    if not html_text:
+        return res
+    txt = html_text
+
+    # 1) Try known JSON keys
+    for key in ("recentlyVisitedPlaces","recentlyVisited","continueGames","ContinueGames","continueGamesData","PlayHistoryGames","RecentGames"):
+        m = re.search(rf'"{key}"\s*:\s*(\[.*?\])', txt, re.S)
+        if m:
+            blob = m.group(1)
+            try:
+                arr = json.loads(blob)
+                for it in arr:
+                    name = it.get("name") or it.get("placeName") or it.get("title")
+                    place_id = it.get("placeId") or it.get("id") or it.get("rootPlaceId")
+                    last = it.get("lastVisited") or it.get("lastPlayed") or it.get("lastVisitedDate")
+                    if isinstance(last, str) and 'T' in last:
+                        last = last.split('T')[0]
+                    if place_id:
+                        res.append({"placeId": int(place_id), "name": name or "", "last_played": last})
+            except Exception:
+                pass
+    if res:
+        return res
+
+    # 2) Unescape HTML entities and parse any JSON arrays from <script> tags
+    un = html.unescape(txt)
+    scripts = re.findall(r"<script[^>]*>(.*?)</script>", un, re.S|re.I)
+    for sc in scripts:
+        for m in re.finditer(r"\[(?:.|\n){2,200000}?\]", sc):
+            blob = m.group(0)
+            if "placeId" not in blob and '"id"' not in blob:
+                continue
+            try:
+                arr = json.loads(blob)
+                if isinstance(arr, list) and arr and isinstance(arr[0], dict):
+                    got = 0
+                    for it in arr:
+                        pid = it.get("placeId") or it.get("id") or it.get("rootPlaceId")
+                        if not pid:
+                            continue
+                        name = it.get("name") or it.get("placeName") or it.get("title") or ""
+                        last = it.get("lastVisited") or it.get("lastPlayed") or it.get("lastVisitedDate")
+                        if isinstance(last, str) and 'T' in last:
+                            last = last.split('T')[0]
+                        res.append({"placeId": int(pid), "name": name, "last_played": last})
+                        got += 1
+                    if got >= 3:
+                        return res
+            except Exception:
+                continue
+
+    # 3) Fallback: data-place-id scan
+    for m in re.finditer(r'data-place-id=["\'](\d+)["\']', txt):
+        pid = int(m.group(1))
+        name = None
+        frag = txt[max(0, m.start()-200): m.end()+200]
+        m2 = re.search(r'title=["\']([^"\']+)["\']', frag)
+        if m2: name = m2.group(1)
+        res.append({"placeId": pid, "name": name or "", "last_played": None})
+    return res
+# --------- Aggregates enrichment via games.roblox.com (universe-level) ---------
+async def _map_place_to_universe(place_ids: list[int], cookie: Optional[str]) -> dict[int, int]:
+    """Use multiget place details to obtain universeIds."""
+    if not place_ids:
+        return {}
+    ck = f"games:place2uni:{hash(tuple(sorted(place_ids)))}"
+    try:
+        cached = await cache.get_json(ck, 24*60*60)
+        if cached:
+            return {int(k): int(v) for k,v in cached.items()}
+    except Exception:
+        pass
+    proxy = PROXY_POOL.any()
+    client = await get_client(proxy)
+    headers = _cookie_headers(cookie)
+    # Chunk by 100
+    uni: dict[int,int] = {}
+    for i in range(0, len(place_ids), 100):
+        chunk = place_ids[i:i+100]
+        try:
+            r = await client.get(PLACE_DETAILS_URL, params={"placeIds": ",".join(map(str, chunk))}, headers=headers, timeout=httpx.Timeout(8.0, connect=2.0, read=6.0))
+            if r.status_code == 200:
+                arr = r.json() or []
+                for it in arr:
+                    pid = it.get("placeId")
+                    uid = it.get("universeId")
+                    if pid and uid:
+                        uni[int(pid)] = int(uid)
+        except Exception as e:
+            log.warning(f"[GAMES] place->uni chunk exc: {e}")
+    if uni:
+        try:
+            await cache.set_json(ck, uni, ttl=24*60*60)
+        except Exception:
+            pass
+    return uni
+
+
+async def get_game_aggregates_by_universe(universe_ids: list[int], cookie: Optional[str]) -> dict[int, dict]:
+    """Fetch aggregates for universeIds via /v1/games. Cache 2h per id set."""
+    if not universe_ids:
+        return {}
+    ck = f"games:univ_aggr:{hash(tuple(sorted(universe_ids)))}"
+    try:
+        cached = await cache.get_json(ck, 2*60*60)
+        if cached:
+            return {int(k): v for k,v in cached.items()}
+    except Exception:
+        pass
+    proxy = PROXY_POOL.any()
+    client = await get_client(proxy)
+    headers = _cookie_headers(cookie)
+    out: dict[int, dict] = {}
+    for i in range(0, len(universe_ids), 100):
+        chunk = universe_ids[i:i+100]
+        try:
+            r = await client.get(GAMES_BY_UNIVERSE_URL, params={"universeIds": ",".join(map(str, chunk))}, headers=headers, timeout=httpx.Timeout(8.0, connect=2.0, read=6.0))
+            if r.status_code == 200:
+                data = (r.json() or {}).get("data") or []
+                for it in data:
+                    uid = it.get("id")
+                    if uid:
+                        out[int(uid)] = {
+                            "visits": it.get("visits"),
+                            "playing": it.get("playing"),
+                            "favoritesCount": it.get("favoritedCount") or it.get("favoritesCount"),
+                            "name": it.get("name"),
+                        }
+        except Exception as e:
+            log.warning(f"[GAMES] games-by-univ exc: {e}")
+    if out:
+        try:
+            await cache.set_json(ck, out, ttl=2*60*60)
+        except Exception:
+            pass
+    return out
+
+
+# --- Encrypted cookie helpers (ensure present) ---
+
+
+# ---------------- Favorites / History / Analysis (Variant B) ----------------
+
+async def get_favorite_games(user_id: int, cookie: str | None = None):
+    """Return user's favorite games (cached 1h)."""
+    import logging, httpx, time, cache
+    key = f"fav_games_v1_{user_id}"
+    try:
+        cached = await cache.get_cached_data(user_id, key)
+    except Exception:
+        cached = None
+    if isinstance(cached, list) and cached:
+        logging.info(f"[FAV] cache HIT for {user_id}, {len(cached)} games")
+        return cached
+
+    logging.info(f"[FAV] cache MISS for {user_id}")
+    games = []
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        if cookie:
+            headers['Cookie'] = f'.ROBLOSECURITY={cookie}'
+        async with httpx.AsyncClient(timeout=20.0) as c:
+            url = f'https://games.roblox.com/v2/users/{user_id}/favorite/games'
+            r = await c.get(url, headers=headers)
+            if r.status_code == 200:
+                data = r.json() or {}
+                games = data.get('data') or data.get('favorites') or []
+            else:
+                logging.warning(f"[FAV] HTTP {r.status_code} for {url}")
+    except Exception as e:
+        logging.warning(f"[FAV] fetch error for {user_id}: {e}")
+
+    try:
+        await cache.set_cached_data(user_id, key, games, 60*60)
+    except Exception:
+        pass
+
+    return games
+
+async def get_game_history_by_encrypted_cookie(enc_cookie: str, user_id: int, limit: int = 100) -> List[Dict]:
+    try:
+        cookie = decrypt_text(enc_cookie)
+    except Exception:
+        cookie = None
+    return await get_game_history(user_id, cookie=cookie, limit=limit)
+
+async def get_gaming_habits_by_encrypted_cookie(enc_cookie: str, user_id: int) -> Dict:
+    try:
+        cookie = decrypt_text(enc_cookie)
+    except Exception:
+        cookie = None
+    return await analyze_gaming_habits(user_id, cookie=cookie, enable_scrape=True)
+def _log_scrape_probe(tag: str, text: str) -> None:
+    try:
+        snippet = (text or '')[:300].replace('\n',' ')
+        log.debug(f"[GAMES] scrape {tag}: {len(text or '')} bytes, head={snippet}")
+    except Exception:
+        pass
+
+
+
+async def get_universe_aggregates(universe_ids: List[int], cookie: Optional[str]) -> Dict[int, Dict[str, Any]]:
+    """Return aggregates for given universeIds using /v1/games. Cache 2h."""
+    if not universe_ids:
+        return {}
+    key = f"games:univ_aggr:{hash(tuple(sorted(universe_ids)))}"
+    try:
+        cached = await cache.get_json(key, 2*60*60)
+        if cached:
+            return {int(k): v for k, v in cached.items()}
+    except Exception:
+        pass
+
+    proxy = PROXY_POOL.any()
+    client = await get_client(proxy)
+    headers = _cookie_headers(cookie)
+    out: Dict[int, Dict[str, Any]] = {}
+    for i in range(0, len(universe_ids), 100):
+        chunk = universe_ids[i:i+100]
+        try:
+            r = await client.get(GAMES_BY_UNIVERSE_URL, params={"universeIds": ",".join(map(str, chunk))},
+                                 headers=headers, timeout=httpx.Timeout(8.0, connect=2.0, read=6.0))
+            if r.status_code == 200:
+                data = (r.json() or {}).get("data") or []
+                for it in data:
+                    uid = it.get("id")
+                    if not uid:
+                        continue
+                    out[int(uid)] = {
+                        "name": it.get("name"),
+                        "visits": it.get("visits"),
+                        "playing": it.get("playing"),
+                        "favoritesCount": it.get("favoritedCount") or it.get("favoritesCount"),
+                        "creatorType": (it.get("creator") or {}).get("type"),
+                        "creatorId": (it.get("creator") or {}).get("id"),
+                    }
+        except Exception as e:
+            log.warning(f"[GAMES] univ aggregates chunk exc: {e}")
+    try:
+        await cache.set_json(key, out, ttl=2*60*60)
+    except Exception:
+        pass
+    return out
+
+
+async def get_recent_enriched_by_encrypted_cookie(enc_cookie: str, user_id: int, limit: int = 20, *, include_aggregates: bool = True) -> List[Dict[str, Any]]:
+    try:
+        cookie = decrypt_text(enc_cookie)
+    except Exception:
+        cookie = None
+
+    recent = await get_game_history(user_id, cookie=cookie, limit=limit)
+    if not recent:
+        return []
+
+    place_ids = [int(r["game_id"]) for r in recent if r.get("game_id")]
+    p2u = await _map_place_to_universe(place_ids, cookie=cookie)
+
+    uni_aggr: Dict[int, Dict[str, Any]] = {}
+    if include_aggregates:
+        uids = sorted({uid for uid in p2u.values() if uid})
+        uni_aggr = await get_universe_aggregates(uids, cookie=cookie)
+
+    out: List[Dict[str, Any]] = []
+    for r in recent:
+        pid = r.get("game_id")
+        uid = p2u.get(int(pid)) if pid else None
+        ag = uni_aggr.get(int(uid)) if uid else {}
+        out.append({
+            "game_id": pid,
+            "name": r.get("name"),
+            "last_played": r.get("last_played"),
+            "universe_id": uid,
+            "universe_name": ag.get("name"),
+            "visits": ag.get("visits"),
+            "playing": ag.get("playing"),
+            "favoritesCount": ag.get("favoritesCount"),
+            "url": f"https://www.roblox.com/games/{pid}" if pid else None,
+        })
+    return out

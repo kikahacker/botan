@@ -224,5 +224,13 @@
   },
   "spending": {
     "header": "💸 Ausgaben — insgesamt: {sum} R$"
+  },
+  "games": {
+    "fav_title": "Lieblingsspiele",
+    "fav_summary": "• Favoriten: {count}",
+    "empty_favorites": "Keine Favoriten.",
+    "page": "Seite {cur}/{total}",
+    "prev": "◀ Zurück",
+    "next": "Weiter ▶"
   }
 }
