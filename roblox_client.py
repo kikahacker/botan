@@ -1498,19 +1498,7 @@ async def get_favorite_games(user_id: int, cookie: str | None = None):
 
     return games
 
-async def get_game_history_by_encrypted_cookie(enc_cookie: str, user_id: int, limit: int = 100) -> List[Dict]:
-    try:
-        cookie = decrypt_text(enc_cookie)
-    except Exception:
-        cookie = None
-    return await get_game_history(user_id, cookie=cookie, limit=limit)
 
-async def get_gaming_habits_by_encrypted_cookie(enc_cookie: str, user_id: int) -> Dict:
-    try:
-        cookie = decrypt_text(enc_cookie)
-    except Exception:
-        cookie = None
-    return await analyze_gaming_habits(user_id, cookie=cookie, enable_scrape=True)
 def _log_scrape_probe(tag: str, text: str) -> None:
     try:
         snippet = (text or '')[:300].replace('\n',' ')
@@ -1564,38 +1552,3 @@ async def get_universe_aggregates(universe_ids: List[int], cookie: Optional[str]
     return out
 
 
-async def get_recent_enriched_by_encrypted_cookie(enc_cookie: str, user_id: int, limit: int = 20, *, include_aggregates: bool = True) -> List[Dict[str, Any]]:
-    try:
-        cookie = decrypt_text(enc_cookie)
-    except Exception:
-        cookie = None
-
-    recent = await get_game_history(user_id, cookie=cookie, limit=limit)
-    if not recent:
-        return []
-
-    place_ids = [int(r["game_id"]) for r in recent if r.get("game_id")]
-    p2u = await _map_place_to_universe(place_ids, cookie=cookie)
-
-    uni_aggr: Dict[int, Dict[str, Any]] = {}
-    if include_aggregates:
-        uids = sorted({uid for uid in p2u.values() if uid})
-        uni_aggr = await get_universe_aggregates(uids, cookie=cookie)
-
-    out: List[Dict[str, Any]] = []
-    for r in recent:
-        pid = r.get("game_id")
-        uid = p2u.get(int(pid)) if pid else None
-        ag = uni_aggr.get(int(uid)) if uid else {}
-        out.append({
-            "game_id": pid,
-            "name": r.get("name"),
-            "last_played": r.get("last_played"),
-            "universe_id": uid,
-            "universe_name": ag.get("name"),
-            "visits": ag.get("visits"),
-            "playing": ag.get("playing"),
-            "favoritesCount": ag.get("favoritesCount"),
-            "url": f"https://www.roblox.com/games/{pid}" if pid else None,
-        })
-    return out
