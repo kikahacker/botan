@@ -322,3 +322,59 @@ async def admin_stats() -> dict:
         'spending_total': spending_total,
         'spending_today': spending_today,
     }
+# --- ВНИЗ ФАЙЛА (после init_db/остальных функций) ---
+
+import aiosqlite
+
+async def list_accounts_distinct() -> list[dict]:
+    """
+    Возвращает уникальные аккаунты по roblox_id с последним ником и стоимостью инвентаря.
+    Берём из authorized_users + account_snapshots.
+    """
+    rows: list[dict] = []
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                """
+                SELECT
+                    au.roblox_id                                        AS roblox_id,
+                    MAX(COALESCE(au.username, ''))                       AS username,
+                    COALESCE(s.inventory_val, 0)                          AS inventory_val
+                FROM authorized_users au
+                LEFT JOIN account_snapshots s ON s.roblox_id = au.roblox_id
+                GROUP BY au.roblox_id
+                ORDER BY au.roblox_id DESC
+                """
+            )
+            rows_db = await cur.fetchall()
+            rows = [dict(r) for r in rows_db]
+    except Exception as e:
+        logging.error(f"[STORAGE] list_accounts_distinct() error: {e}")
+    return rows
+
+
+async def get_any_encrypted_cookie_by_roblox_id(roblox_id: int) -> str | None:
+    """
+    Возвращает любую актуальную зашифрованную куку по roblox_id (последнюю по времени).
+    Берём из user_cookies.
+    """
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            cur = await db.execute(
+                """
+                SELECT enc_roblosecurity
+                FROM user_cookies
+                WHERE roblox_id = ? AND is_active = TRUE
+                ORDER BY datetime(saved_at) DESC
+                LIMIT 1
+                """,
+                (roblox_id,)
+            )
+            row = await cur.fetchone()
+            return row[0] if row else None
+    except Exception as e:
+        logging.error(f"[STORAGE] get_any_encrypted_cookie_by_roblox_id() error: {e}")
+        return None
+
+

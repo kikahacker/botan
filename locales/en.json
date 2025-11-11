@@ -76,7 +76,7 @@
     "inventory_value": "💰 Inventory value: {value} R$",
     "inventory_value_label": "💰 Inventory value:",
     "inventory_private": "🔒 Inventory is private",
-    "card": "📘 Account information\n👤 Name: {uname}\n🏷️ Display Name: {display_name}\n🆔 ID: {rid}\n📅 Created: {created}\n🌍 Country: {country}\n🧬 Gender: {gender}\n🎂 Date of birth: {birthday}\n📏 Age: {age}\n✉️ Email: {email} (Verified: {email_verified} · 2FA: {email_2fa})\n💰 Robux: {robux}\n🟢 Status: {status}"
+    "card": "📘 Account information\n👤 Name: {uname}\n🏷️ Display Name: {display_name}\n🆔 ID: {rid}\n📅 Created: {created}\n🌍 Country: {country}\n🧬 Gender: {gender}\n🎂 Date of birth: {birthday}\n📏 Age: {age}\n✉️ Email: {email} (Verified: {email_verified})\n💰 Robux: {robux}\n🟢 Status: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ Error while preparing the archive.",
@@ -115,7 +115,8 @@
     "profile_load_failed": "❌ Failed to load profile.",
     "loading_profile": "Loading profile…",
     "file_received": "📥 File received, checking...",
-    "cookie_validation_error": "❌ Cookie validation error."
+    "cookie_validation_error": "❌ Cookie validation error.",
+    "cookie_dead": "🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
   },
   "buttons": {
     "all_items": "📦 All items",
@@ -237,17 +238,5 @@
     "prev": "◀ Prev",
     "next": "Next ▶",
     "loading": "⏳ Loading favorites…"
-  },
-  "nav.rap": "💎 RAP",
-  "nav.usernames": "🪪 Past usernames",
-  "rap.title": "RAP",
-  "rap.items": "limited items",
-  "rap.top": "Top by RAP:",
-  "rap.none": "No limiteds found.",
-  "names.title": "Past usernames",
-  "names.empty": "No username history found.",
-  "messages.wait_calc": "⚙️ Calculating RAP…",
-  "messages.wait": "🔎 Loading…",
-  "rap.ask_userid": "Provide Roblox userId: /rap <userId>",
-  "names.ask_userid": "Provide Roblox userId: /names <userId>"
+  }
 }

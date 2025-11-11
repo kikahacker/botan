@@ -232,17 +232,5 @@
     "page": "Oldal {cur}/{total}",
     "prev": "◀ Előző",
     "next": "Következő ▶"
-  },
-  "nav.rap": "💎 RAP",
-  "nav.usernames": "🪪 Korábbi felhasználónevek",
-  "rap.title": "RAP",
-  "rap.items": "limitált tárgyak",
-  "rap.top": "Top RAP szerint:",
-  "rap.none": "Nem találhatók limitált tárgyak.",
-  "names.title": "Korábbi felhasználónevek",
-  "names.empty": "Nincs felhasználónév‑előzmény.",
-  "messages.wait_calc": "⚙️ RAP számítása…",
-  "messages.wait": "🔎 Betöltés…",
-  "rap.ask_userid": "Add meg a Roblox userId-t: /rap <userId>",
-  "names.ask_userid": "Add meg a Roblox userId-t: /names <userId>"
+  }
 }

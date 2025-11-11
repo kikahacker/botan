@@ -2,6 +2,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import inspect
 
 # --- Games user endpoints ---
 FAVORITE_GAMES_URL = "https://games.roblox.com/v2/users/{user_id}/favorite/games"

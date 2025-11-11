@@ -232,17 +232,5 @@
     "page": "Pagina {cur}/{total}",
     "prev": "◀ Precedente",
     "next": "Successivo ▶"
-  },
-  "nav.rap": "💎 RAP",
-  "nav.usernames": "🪪 Vecchi nomi utente",
-  "rap.title": "RAP",
-  "rap.items": "oggetti limitati",
-  "rap.top": "Top per RAP:",
-  "rap.none": "Nessun oggetto limitato trovato.",
-  "names.title": "Vecchi nomi utente",
-  "names.empty": "Nessuna cronologia dei nomi utente.",
-  "messages.wait_calc": "⚙️ Calcolo del RAP…",
-  "messages.wait": "🔎 Caricamento…",
-  "rap.ask_userid": "Indica lo userId di Roblox: /rap <userId>",
-  "names.ask_userid": "Indica lo userId di Roblox: /names <userId>"
+  }
 }

@@ -224,13 +224,5 @@
   },
   "spending": {
     "header": "💸 Harcamalar — toplam: {sum} R$"
-  },
-  "games": {
-    "fav_title": "Favori oyunlar",
-    "fav_summary": "• Favoriler: {count}",
-    "empty_favorites": "Favori yok.",
-    "page": "Sayfa {cur}/{total}",
-    "prev": "◀ Önceki",
-    "next": "Sonraki ▶"
   }
 }

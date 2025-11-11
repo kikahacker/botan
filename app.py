@@ -4,6 +4,7 @@ from aiogram.client.default import DefaultBotProperties
 from config import CFG
 import storage
 from handlers import router
+
 import asyncio
 
 async def main():
