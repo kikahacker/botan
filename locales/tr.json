@@ -1,11 +1,11 @@
 {
   "currency": {
-    "robux": "R$"
+    "robux": "[tr] R$"
   },
   "footer": {
     "checked_by": "Kontrol eden: {username}",
-    "domain": "raika.gg",
-    "date": "{day} {month} {year}"
+    "domain": "[tr] raika.gg",
+    "date": "[tr] {day} {month} {year}"
   },
   "inventory": {
     "title": "Envanter",
@@ -62,8 +62,8 @@
   "profile": {
     "title": "Profil",
     "user": "Kullanıcı",
-    "roblox_id": "Roblox ID: {id}",
-    "roblox_id_label": "Roblox ID:",
+    "roblox_id": "[tr] Roblox ID: {id}",
+    "roblox_id_label": "[tr] Roblox ID:",
     "username": "Kullanıcı adı: {username}",
     "username_label": "Kullanıcı adı:",
     "stats": "İstatistikler",
@@ -76,7 +76,7 @@
     "inventory_value": "💰 Envanter değeri: {value} R$",
     "inventory_value_label": "💰 Envanter değeri:",
     "inventory_private": "🔒 Envanter gizli",
-    "card": "📘 Hesap bilgileri\n👤 İsim: {uname}\n🏷️ Görünen ad: {display_name}\n🆔 ID: {rid}\n📅 Oluşturulma: {created}\n🌍 Ülke: {country}\n🧬 Cinsiyet: {gender}\n🎂 Doğum tarihi: {birthday}\n📏 Yaş: {age}\n✉️ E-posta: {email} (Doğrulandı: {email_verified})\n💰 Robux: {robux}\n🧾 Toplam harcama: {spent}\n🟢 Durum: {status}"
+    "card": "📘 Hesap bilgileri\n👤 İsim: {uname}\n🏷️ Görünen ad: {display_name}\n🆔 ID: {rid}\n📅 Oluşturulma: {created}\n🌍 Ülke: {country}\n🧬 Cinsiyet: {gender}\n🎂 Doğum tarihi: {birthday}\n📏 Yaş: {age}\n✉️ E-posta: {email} (Doğrulandı: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Toplam harcama: {spent}\n🟢 Durum: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ Arşiv hazırlanırken hata.",
@@ -115,7 +115,8 @@
     "profile_load_failed": "❌ Profil yüklenemedi.",
     "loading_profile": "Profil yükleniyor…",
     "file_received": "📥 Dosya alındı, kontrol ediliyor...",
-    "cookie_validation_error": "❌ Çerez doğrulama hatası."
+    "cookie_validation_error": "❌ Çerez doğrulama hatası.",
+    "cookie_dead": "[tr] 🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
   },
   "buttons": {
     "all_items": "📦 Tüm eşyalar",
@@ -143,11 +144,11 @@
     "unknown": "Bilinmiyor",
     "active": "Aktif",
     "banned": "Yasaklı",
-    "dash": "—",
-    "ellipsis": "…",
+    "dash": "[tr] —",
+    "ellipsis": "[tr] …",
     "na": "M/U",
     "regular": "❌ Normal",
-    "premium": "⭐ Premium",
+    "premium": "[tr] ⭐ Premium",
     "decrypt_error": "<şifre çözme hatası>",
     "pcs": "adet",
     "total": "Toplam"
@@ -172,7 +173,12 @@
     "inventory_categories": "🧩 Envanter (kategori seç)",
     "to_accounts": "📋 Hesap listesine dön",
     "to_home": "🔙 Geri",
-    "spending": "💸 Harcamalar"
+    "spending": "💸 Harcamalar",
+    "favorites": "[tr] ⭐ Favorites",
+    "rap": "[tr] 📈 RAP",
+    "offsale": "[tr] 🛑 Off-sale",
+    "revenue": "[tr] 💸 Revenue",
+    "usernames": "[tr] 📝 Past usernames"
   },
   "status": {
     "account_deleted": "🗑 Hesap silindi.",
@@ -223,6 +229,49 @@
     "page": "Sayfa {current}/{total}"
   },
   "spending": {
+    "title": "[tr] 💸 Spending history (total: {total})",
+    "loading": "[tr] ⏳ Loading spending history…",
+    "empty": "[tr] 🫙 No purchases found.",
     "header": "💸 Harcamalar — toplam: {sum} R$"
+  },
+  "games": {
+    "fav_title": "[tr] ⭐ Favorites",
+    "fav_summary": "[tr] ⭐ Favorites: {count}",
+    "empty_favorites": "[tr] No favorites.",
+    "page": "[tr] Page {cur}/{total}",
+    "prev": "[tr] ◀ Prev",
+    "next": "[tr] Next ▶",
+    "loading": "[tr] ⏳ Loading favorites…"
+  },
+  "rap": {
+    "title": "[tr] 📈 RAP",
+    "total": "[tr] Total RAP: {value} R$",
+    "item_row": "[tr] {name} — {rap} R$",
+    "lowest": "[tr] Lowest: {value} R$",
+    "no_items": "[tr] No collectibles with RAP found.",
+    "refresh": "[tr] 🔄 Refresh"
+  },
+  "offsale": {
+    "title": "[tr] 🛑 Off-sale",
+    "mode": "[tr] Mode: {mode}",
+    "mode_collectibles": "[tr] Collectibles",
+    "empty": "[tr] No off-sale collectibles found.",
+    "row_collectible": "[tr] {name} — RAP {rap} R$ (no sellers)"
+  },
+  "revenue": {
+    "title": "[tr] 💸 Revenue",
+    "auth_required": "[tr] 🔐 Revenue is available only with a cookie.",
+    "summary": "[tr] All time: {sum} R$",
+    "row": "[tr] {date} — {type} — {amount} R$ — {source}",
+    "empty": "[tr] No transactions.",
+    "prev": "[tr] ◀ Prev",
+    "next": "[tr] Next ▶",
+    "refresh": "[tr] 🔄 Refresh"
+  },
+  "usernames": {
+    "title": "[tr] 📝 Past usernames",
+    "row": "[tr] {name} — {changedAt}",
+    "empty": "[tr] No past usernames.",
+    "page": "[tr] Page {cur}/{total}"
   }
 }

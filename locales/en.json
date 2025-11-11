@@ -76,7 +76,7 @@
     "inventory_value": "💰 Inventory value: {value} R$",
     "inventory_value_label": "💰 Inventory value:",
     "inventory_private": "🔒 Inventory is private",
-    "card": "📘 Account information\n👤 Name: {uname}\n🏷️ Display Name: {display_name}\n🆔 ID: {rid}\n📅 Created: {created}\n🌍 Country: {country}\n🧬 Gender: {gender}\n🎂 Date of birth: {birthday}\n📏 Age: {age}\n✉️ Email: {email} (Verified: {email_verified})\n💰 Robux: {robux}\n🟢 Status: {status}"
+    "card": "📘 Account information\n👤 Name: {uname}\n🏷️ Display Name: {display_name}\n🆔 ID: {rid}\n📅 Created: {created}\n🌍 Country: {country}\n🧬 Gender: {gender}\n🎂 Date of birth: {birthday}\n📏 Age: {age}\n✉️ Email: {email} (Verified: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🟢 Status: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ Error while preparing the archive.",
@@ -174,7 +174,11 @@
     "to_accounts": "📋 Back to account list",
     "to_home": "🔙 Back",
     "spending": "💸 Spending",
-    "favorites": "⭐ Favorites"
+    "favorites": "⭐ Favorites",
+    "rap": "📈 RAP",
+    "offsale": "🛑 Off-sale",
+    "revenue": "💸 Revenue",
+    "usernames": "📝 Past usernames"
   },
   "status": {
     "account_deleted": "🗑 Account deleted.",
@@ -238,5 +242,36 @@
     "prev": "◀ Prev",
     "next": "Next ▶",
     "loading": "⏳ Loading favorites…"
+  },
+  "rap": {
+    "title": "📈 RAP",
+    "total": "Total RAP: {value} R$",
+    "item_row": "{name} — {rap} R$",
+    "lowest": "Lowest: {value} R$",
+    "no_items": "No collectibles with RAP found.",
+    "refresh": "🔄 Refresh"
+  },
+  "offsale": {
+    "title": "🛑 Off-sale",
+    "mode": "Mode: {mode}",
+    "mode_collectibles": "Collectibles",
+    "empty": "No off-sale collectibles found.",
+    "row_collectible": "{name} — RAP {rap} R$ (no sellers)"
+  },
+  "revenue": {
+    "title": "💸 Revenue",
+    "auth_required": "🔐 Revenue is available only with a cookie.",
+    "summary": "All time: {sum} R$",
+    "row": "{date} — {type} — {amount} R$ — {source}",
+    "empty": "No transactions.",
+    "prev": "◀ Prev",
+    "next": "Next ▶",
+    "refresh": "🔄 Refresh"
+  },
+  "usernames": {
+    "title": "📝 Past usernames",
+    "row": "{name} — {changedAt}",
+    "empty": "No past usernames.",
+    "page": "Page {cur}/{total}"
   }
 }

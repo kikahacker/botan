@@ -1,10 +1,10 @@
 {
   "currency": {
-    "robux": "R$"
+    "robux": "[hu] R$"
   },
   "footer": {
     "checked_by": "Ellenőrizte: {username}",
-    "domain": "raika.gg",
+    "domain": "[hu] raika.gg",
     "date": "{year}. {month} {day}."
   },
   "inventory": {
@@ -62,8 +62,8 @@
   "profile": {
     "title": "Profil",
     "user": "Felhasználó",
-    "roblox_id": "Roblox ID: {id}",
-    "roblox_id_label": "Roblox ID:",
+    "roblox_id": "[hu] Roblox ID: {id}",
+    "roblox_id_label": "[hu] Roblox ID:",
     "username": "Felhasználónév: {username}",
     "username_label": "Felhasználónév:",
     "stats": "Statisztikák",
@@ -76,7 +76,7 @@
     "inventory_value": "💰 Leltár értéke: {value} R$",
     "inventory_value_label": "💰 Leltár értéke:",
     "inventory_private": "🔒 A leltár privát",
-    "card": "📘 Fiók információk\n👤 Név: {uname}\n🏷️ Megjelenített név: {display_name}\n🆔 ID: {rid}\n📅 Létrehozva: {created}\n🌍 Ország: {country}\n🧬 Nem: {gender}\n🎂 Születésnap: {birthday}\n📏 Kor: {age}\n✉️ Email: {email} (Megerősítve: {email_verified})\n💰 Robux: {robux}\n🧾 Összesen elköltve: {spent}\n🟢 Állapot: {status}"
+    "card": "📘 Fiók információk\n👤 Név: {uname}\n🏷️ Megjelenített név: {display_name}\n🆔 ID: {rid}\n📅 Létrehozva: {created}\n🌍 Ország: {country}\n🧬 Nem: {gender}\n🎂 Születésnap: {birthday}\n📏 Kor: {age}\n✉️ Email: {email} (Megerősítve: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Összesen elköltve: {spent}\n🟢 Állapot: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ Hiba az archivum előkészítésekor.",
@@ -115,7 +115,8 @@
     "profile_load_failed": "❌ Nem sikerült betölteni a profilt.",
     "loading_profile": "Profil betöltése…",
     "file_received": "📥 Fájl megérkezett, ellenőrzés...",
-    "cookie_validation_error": "❌ Cookie érvényesítési hiba."
+    "cookie_validation_error": "❌ Cookie érvényesítési hiba.",
+    "cookie_dead": "[hu] 🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
   },
   "buttons": {
     "all_items": "📦 Összes tárgy",
@@ -143,9 +144,9 @@
     "unknown": "Ismeretlen",
     "active": "Aktív",
     "banned": "Kitiltva",
-    "dash": "—",
-    "ellipsis": "…",
-    "na": "N/A",
+    "dash": "[hu] —",
+    "ellipsis": "[hu] …",
+    "na": "[hu] N/A",
     "regular": "❌ Normál",
     "premium": "⭐ Prémium",
     "decrypt_error": "<visszafejtési hiba>",
@@ -172,7 +173,12 @@
     "inventory_categories": "🧩 Leltár (kategóriák kiválasztása)",
     "to_accounts": "📋 Vissza a fióklistához",
     "to_home": "🔙 Vissza",
-    "spending": "💸 Kiadások"
+    "spending": "💸 Kiadások",
+    "favorites": "[hu] ⭐ Favorites",
+    "rap": "[hu] 📈 RAP",
+    "offsale": "[hu] 🛑 Off-sale",
+    "revenue": "[hu] 💸 Revenue",
+    "usernames": "[hu] 📝 Past usernames"
   },
   "status": {
     "account_deleted": "🗑 Fiók törölve.",
@@ -223,6 +229,9 @@
     "page": "Oldal {current}/{total}"
   },
   "spending": {
+    "title": "[hu] 💸 Spending history (total: {total})",
+    "loading": "[hu] ⏳ Loading spending history…",
+    "empty": "[hu] 🫙 No purchases found.",
     "header": "💸 Kiadások — összesen: {sum} R$"
   },
   "games": {
@@ -231,6 +240,38 @@
     "empty_favorites": "Nincsenek kedvencek.",
     "page": "Oldal {cur}/{total}",
     "prev": "◀ Előző",
-    "next": "Következő ▶"
+    "next": "Következő ▶",
+    "loading": "[hu] ⏳ Loading favorites…"
+  },
+  "rap": {
+    "title": "[hu] 📈 RAP",
+    "total": "[hu] Total RAP: {value} R$",
+    "item_row": "[hu] {name} — {rap} R$",
+    "lowest": "[hu] Lowest: {value} R$",
+    "no_items": "[hu] No collectibles with RAP found.",
+    "refresh": "[hu] 🔄 Refresh"
+  },
+  "offsale": {
+    "title": "[hu] 🛑 Off-sale",
+    "mode": "[hu] Mode: {mode}",
+    "mode_collectibles": "[hu] Collectibles",
+    "empty": "[hu] No off-sale collectibles found.",
+    "row_collectible": "[hu] {name} — RAP {rap} R$ (no sellers)"
+  },
+  "revenue": {
+    "title": "[hu] 💸 Revenue",
+    "auth_required": "[hu] 🔐 Revenue is available only with a cookie.",
+    "summary": "[hu] All time: {sum} R$",
+    "row": "[hu] {date} — {type} — {amount} R$ — {source}",
+    "empty": "[hu] No transactions.",
+    "prev": "[hu] ◀ Prev",
+    "next": "[hu] Next ▶",
+    "refresh": "[hu] 🔄 Refresh"
+  },
+  "usernames": {
+    "title": "[hu] 📝 Past usernames",
+    "row": "[hu] {name} — {changedAt}",
+    "empty": "[hu] No past usernames.",
+    "page": "[hu] Page {cur}/{total}"
   }
 }

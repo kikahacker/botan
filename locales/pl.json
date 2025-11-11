@@ -1,11 +1,11 @@
 {
   "currency": {
-    "robux": "R$"
+    "robux": "[pl] R$"
   },
   "footer": {
     "checked_by": "Sprawdzone przez: {username}",
-    "domain": "raika.gg",
-    "date": "{day} {month} {year}"
+    "domain": "[pl] raika.gg",
+    "date": "[pl] {day} {month} {year}"
   },
   "inventory": {
     "title": "Inwentarz",
@@ -76,7 +76,7 @@
     "inventory_value": "💰 Wartość inwentarza: {value} R$",
     "inventory_value_label": "💰 Wartość inwentarza:",
     "inventory_private": "🔒 Inwentarz jest prywatny",
-    "card": "📘 Informacje o koncie\n👤 Nazwa: {uname}\n🏷️ Nazwa wyświetlana: {display_name}\n🆔 ID: {rid}\n📅 Utworzono: {created}\n🌍 Kraj: {country}\n🧬 Płeć: {gender}\n🎂 Data urodzenia: {birthday}\n📏 Wiek: {age}\n✉️ Email: {email} (Zweryfikowany: {email_verified})\n💰 Robux: {robux}\n🧾 Łącznie wydano: {spent}\n🟢 Status: {status}"
+    "card": "📘 Informacje o koncie\n👤 Nazwa: {uname}\n🏷️ Nazwa wyświetlana: {display_name}\n🆔 ID: {rid}\n📅 Utworzono: {created}\n🌍 Kraj: {country}\n🧬 Płeć: {gender}\n🎂 Data urodzenia: {birthday}\n📏 Wiek: {age}\n✉️ Email: {email} (Zweryfikowany: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Łącznie wydano: {spent}\n🟢 Status: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ Błąd podczas przygotowywania archiwum.",
@@ -115,7 +115,8 @@
     "profile_load_failed": "❌ Nie udało się załadować profilu.",
     "loading_profile": "Ładowanie profilu…",
     "file_received": "📥 Otrzymano plik, sprawdzanie...",
-    "cookie_validation_error": "❌ Błąd walidacji ciasteczka."
+    "cookie_validation_error": "❌ Błąd walidacji ciasteczka.",
+    "cookie_dead": "[pl] 🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
   },
   "buttons": {
     "all_items": "📦 Wszystkie przedmioty",
@@ -143,11 +144,11 @@
     "unknown": "Nieznany",
     "active": "Aktywny",
     "banned": "Zbanowany",
-    "dash": "—",
-    "ellipsis": "…",
+    "dash": "[pl] —",
+    "ellipsis": "[pl] …",
     "na": "B/D",
     "regular": "❌ Zwykły",
-    "premium": "⭐ Premium",
+    "premium": "[pl] ⭐ Premium",
     "decrypt_error": "<błąd odszyfrowania>",
     "pcs": "szt.",
     "total": "Razem"
@@ -172,7 +173,12 @@
     "inventory_categories": "🧩 Inwentarz (wybór kategorii)",
     "to_accounts": "📋 Powrót do listy kont",
     "to_home": "🔙 Wstecz",
-    "spending": "💸 Wydatki"
+    "spending": "💸 Wydatki",
+    "favorites": "[pl] ⭐ Favorites",
+    "rap": "[pl] 📈 RAP",
+    "offsale": "[pl] 🛑 Off-sale",
+    "revenue": "[pl] 💸 Revenue",
+    "usernames": "[pl] 📝 Past usernames"
   },
   "status": {
     "account_deleted": "🗑 Konto usunięte.",
@@ -189,7 +195,7 @@
   "cat": {
     "accessories": "Akcesoria",
     "animations/emotes": "Animacje / Emotki",
-    "audio": "Audio",
+    "audio": "[pl] Audio",
     "bundles/packages": "Paczki / Zestawy",
     "classic_clothes": "Klasyczne ubrania",
     "emotes": "Emotki",
@@ -223,6 +229,9 @@
     "page": "Strona {current}/{total}"
   },
   "spending": {
+    "title": "[pl] 💸 Spending history (total: {total})",
+    "loading": "[pl] ⏳ Loading spending history…",
+    "empty": "[pl] 🫙 No purchases found.",
     "header": "💸 Wydatki — łącznie: {sum} R$"
   },
   "games": {
@@ -231,6 +240,38 @@
     "empty_favorites": "Brak ulubionych gier.",
     "page": "Strona {cur}/{total}",
     "prev": "◀ Poprzednia",
-    "next": "Następna ▶"
+    "next": "Następna ▶",
+    "loading": "[pl] ⏳ Loading favorites…"
+  },
+  "rap": {
+    "title": "[pl] 📈 RAP",
+    "total": "[pl] Total RAP: {value} R$",
+    "item_row": "[pl] {name} — {rap} R$",
+    "lowest": "[pl] Lowest: {value} R$",
+    "no_items": "[pl] No collectibles with RAP found.",
+    "refresh": "[pl] 🔄 Refresh"
+  },
+  "offsale": {
+    "title": "[pl] 🛑 Off-sale",
+    "mode": "[pl] Mode: {mode}",
+    "mode_collectibles": "[pl] Collectibles",
+    "empty": "[pl] No off-sale collectibles found.",
+    "row_collectible": "[pl] {name} — RAP {rap} R$ (no sellers)"
+  },
+  "revenue": {
+    "title": "[pl] 💸 Revenue",
+    "auth_required": "[pl] 🔐 Revenue is available only with a cookie.",
+    "summary": "[pl] All time: {sum} R$",
+    "row": "[pl] {date} — {type} — {amount} R$ — {source}",
+    "empty": "[pl] No transactions.",
+    "prev": "[pl] ◀ Prev",
+    "next": "[pl] Next ▶",
+    "refresh": "[pl] 🔄 Refresh"
+  },
+  "usernames": {
+    "title": "[pl] 📝 Past usernames",
+    "row": "[pl] {name} — {changedAt}",
+    "empty": "[pl] No past usernames.",
+    "page": "[pl] Page {cur}/{total}"
   }
 }

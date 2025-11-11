@@ -1,11 +1,11 @@
 {
   "currency": {
-    "robux": "R$"
+    "robux": "[ar] R$"
   },
   "footer": {
     "checked_by": "تم الفحص بواسطة: {username}",
-    "domain": "raika.gg",
-    "date": "{day} {month} {year}"
+    "domain": "[ar] raika.gg",
+    "date": "[ar] {day} {month} {year}"
   },
   "inventory": {
     "title": "المخزون",
@@ -76,7 +76,7 @@
     "inventory_value": "💰 قيمة المخزون: {value} R$",
     "inventory_value_label": "💰 قيمة المخزون:",
     "inventory_private": "🔒 المخزون خاص",
-    "card": "📘 معلومات الحساب\n👤 الاسم: {uname}\n🏷️ اسم العرض: {display_name}\n🆔 المعرف: {rid}\n📅 تاريخ الإنشاء: {created}\n🌍 الدولة: {country}\n🧬 الجنس: {gender}\n🎂 تاريخ الميلاد: {birthday}\n📏 العمر: {age}\n✉️ البريد الإلكتروني: {email} (تم التحقق: {email_verified})\n💰 Robux: {robux}\n🧾 إجمالي الإنفاق: {spent}\n🟢 الحالة: {status}"
+    "card": "📘 معلومات الحساب\n👤 الاسم: {uname}\n🏷️ اسم العرض: {display_name}\n🆔 المعرف: {rid}\n📅 تاريخ الإنشاء: {created}\n🌍 الدولة: {country}\n🧬 الجنس: {gender}\n🎂 تاريخ الميلاد: {birthday}\n📏 العمر: {age}\n✉️ البريد الإلكتروني: {email} (تم التحقق: {email_verified}، المصادقة الثنائية: {email_2fa})\n💰 Robux: {robux}\n🧾 إجمالي الإنفاق: {spent}\n🟢 الحالة: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ خطأ في تحضير الأرشيف.",
@@ -115,7 +115,8 @@
     "profile_load_failed": "❌ فشل في تحميل الملف الشخصي.",
     "loading_profile": "جارٍ تحميل الملف الشخصي...",
     "file_received": "📥 تم استلام الملف، جارٍ التحقق...",
-    "cookie_validation_error": "❌ خطأ في التحقق من صحة الكوكيز."
+    "cookie_validation_error": "❌ خطأ في التحقق من صحة الكوكيز.",
+    "cookie_dead": "[ar] 🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
   },
   "buttons": {
     "all_items": "📦 جميع العناصر",
@@ -143,8 +144,8 @@
     "unknown": "غير معروف",
     "active": "نشط",
     "banned": "محظور",
-    "dash": "—",
-    "ellipsis": "…",
+    "dash": "[ar] —",
+    "ellipsis": "[ar] …",
     "na": "غير متاح",
     "regular": "❌ عادي",
     "premium": "⭐ بريميوم",
@@ -172,7 +173,12 @@
     "inventory_categories": "🧩 المخزون (اختر الفئات)",
     "to_accounts": "📋 العودة إلى قائمة الحسابات",
     "to_home": "🔙 رجوع",
-    "spending": "💸 الإنفاق"
+    "spending": "💸 الإنفاق",
+    "favorites": "[ar] ⭐ Favorites",
+    "rap": "[ar] 📈 RAP",
+    "offsale": "[ar] 🛑 Off-sale",
+    "revenue": "[ar] 💸 Revenue",
+    "usernames": "[ar] 📝 Past usernames"
   },
   "status": {
     "account_deleted": "🗑 تم حذف الحساب.",
@@ -223,6 +229,9 @@
     "page": "الصفحة {current}/{total}"
   },
   "spending": {
+    "title": "[ar] 💸 Spending history (total: {total})",
+    "loading": "[ar] ⏳ Loading spending history…",
+    "empty": "[ar] 🫙 No purchases found.",
     "header": "💸 الإنفاق — الإجمالي: {sum} R$"
   },
   "games": {
@@ -231,6 +240,38 @@
     "empty_favorites": "لا توجد ألعاب مفضلة.",
     "page": "الصفحة {cur}/{total}",
     "prev": "◀ السابق",
-    "next": "التالي ▶"
+    "next": "التالي ▶",
+    "loading": "[ar] ⏳ Loading favorites…"
+  },
+  "rap": {
+    "title": "[ar] 📈 RAP",
+    "total": "[ar] Total RAP: {value} R$",
+    "item_row": "[ar] {name} — {rap} R$",
+    "lowest": "[ar] Lowest: {value} R$",
+    "no_items": "[ar] No collectibles with RAP found.",
+    "refresh": "[ar] 🔄 Refresh"
+  },
+  "offsale": {
+    "title": "[ar] 🛑 Off-sale",
+    "mode": "[ar] Mode: {mode}",
+    "mode_collectibles": "[ar] Collectibles",
+    "empty": "[ar] No off-sale collectibles found.",
+    "row_collectible": "[ar] {name} — RAP {rap} R$ (no sellers)"
+  },
+  "revenue": {
+    "title": "[ar] 💸 Revenue",
+    "auth_required": "[ar] 🔐 Revenue is available only with a cookie.",
+    "summary": "[ar] All time: {sum} R$",
+    "row": "[ar] {date} — {type} — {amount} R$ — {source}",
+    "empty": "[ar] No transactions.",
+    "prev": "[ar] ◀ Prev",
+    "next": "[ar] Next ▶",
+    "refresh": "[ar] 🔄 Refresh"
+  },
+  "usernames": {
+    "title": "[ar] 📝 Past usernames",
+    "row": "[ar] {name} — {changedAt}",
+    "empty": "[ar] No past usernames.",
+    "page": "[ar] Page {cur}/{total}"
   }
 }

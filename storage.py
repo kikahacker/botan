@@ -1,3 +1,4 @@
+
 import aiosqlite
 import json
 import logging
@@ -163,6 +164,27 @@ async def get_user(telegram_id: int, roblox_id: int) -> Optional[Dict]:
         return {'username': row[0], 'created_at': row[1], 'linked_at': row[2]}
 
 
+async def get_user_by_roblox_id(roblox_id: int) -> Optional[Dict[str, Any]]:
+    """Возвращает последнюю запись пользователя по roblox_id из authorized_users."""
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute('''
+            SELECT telegram_id, username, created_at, linked_at
+            FROM authorized_users
+            WHERE roblox_id = ?
+            ORDER BY datetime(linked_at) DESC
+            LIMIT 1
+        ''', (roblox_id,))
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return {
+            'telegram_id': row[0],
+            'username': row[1],
+            'created_at': row[2],
+            'linked_at': row[3],
+        }
+
+
 async def list_users(telegram_id: int) -> List[Tuple[int, str]]:
     """Вернёт список (roblox_id, username) для клавиатуры."""
     try:
@@ -177,6 +199,21 @@ async def list_users(telegram_id: int) -> List[Tuple[int, str]]:
     except Exception as e:
         logging.error(f'❌ Ошибка в list_users: {e}')
         return []
+
+
+async def list_all_owners() -> List[int]:
+    """Список всех tg id, у кого есть привязанные аккаунты."""
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute('SELECT DISTINCT telegram_id FROM authorized_users')
+        rows = await cur.fetchall()
+        return [int(r[0]) for r in rows]
+
+
+async def get_all_users() -> List[Tuple[int]]:
+    """Бэкапный метод для рассылки — просто возвращает все tg id из bot_users."""
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute('SELECT telegram_id FROM bot_users')
+        return await cur.fetchall()
 
 
 async def save_encrypted_cookie(telegram_id: int, roblox_id: int, enc_cookie: str) -> None:
@@ -262,6 +299,72 @@ async def log_event(event: str, telegram_id: int | None, roblox_id: int | None) 
         await db.commit()
 
 
+# ====== SNAPSHOTS API ======
+async def upsert_account_snapshot(roblox_id: int, inventory_val: int = 0, total_spent: int = 0) -> None:
+    """Создаёт/обновляет снапшот по roblox_id."""
+    async with aiosqlite.connect(DB_STR) as db:
+        await db.execute('''
+            INSERT INTO account_snapshots (roblox_id, inventory_val, total_spent, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(roblox_id) DO UPDATE SET
+                inventory_val = excluded.inventory_val,
+                total_spent   = excluded.total_spent,
+                updated_at    = CURRENT_TIMESTAMP
+        ''', (roblox_id, int(inventory_val or 0), int(total_spent or 0)))
+        await db.commit()
+
+
+async def get_account_snapshot(roblox_id: int) -> Optional[Dict[str, Any]]:
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute('''
+            SELECT roblox_id, inventory_val, total_spent, updated_at
+            FROM account_snapshots WHERE roblox_id = ?
+        ''', (roblox_id,))
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return {
+            'roblox_id': int(row[0]),
+            'inventory_val': int(row[1] or 0),
+            'total_spent': int(row[2] or 0),
+            'updated_at': row[3],
+        }
+
+
+async def snapshot_all_for_user(telegram_id: int, reason: str = 'manual') -> int:
+    """Создаёт снапшоты для всех аккаунтов пользователя."""
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            cur = await db.execute('SELECT roblox_id FROM authorized_users WHERE telegram_id=?', (telegram_id,))
+            rows = await cur.fetchall()
+            rids = [int(r[0]) for r in rows]
+    except Exception as e:
+        logging.error(f"[snapshot_all_for_user] cannot fetch accounts: {e}")
+        return 0
+
+    count = 0
+    for rid in rids:
+        inv_key = f'inv_sum_v1_{telegram_id}_{rid}'
+        inv = await get_cached_data(rid, inv_key)
+        if not isinstance(inv, int):
+            old = await get_account_snapshot(rid)
+            inv = old.get('inventory_val') if old else 0
+
+        spent = await get_cached_data(rid, 'acc_spent_robux_v1')
+        try:
+            spent = int(spent) if spent is not None else None
+        except Exception:
+            spent = None
+        if spent is None:
+            old = await get_account_snapshot(rid)
+            spent = old.get('total_spent') if old else 0
+
+        await upsert_account_snapshot(rid, int(inv or 0), int(spent or 0))
+        count += 1
+
+    logging.info(f"[snapshot_all_for_user] user={telegram_id} reason={reason} saved={count}")
+    return count
+
 
 async def admin_stats() -> dict:
     async with aiosqlite.connect(DB_STR) as db:
@@ -322,15 +425,12 @@ async def admin_stats() -> dict:
         'spending_total': spending_total,
         'spending_today': spending_today,
     }
+
 # --- ВНИЗ ФАЙЛА (после init_db/остальных функций) ---
 
-import aiosqlite
-
 async def list_accounts_distinct() -> list[dict]:
-    """
-    Возвращает уникальные аккаунты по roblox_id с последним ником и стоимостью инвентаря.
-    Берём из authorized_users + account_snapshots.
-    """
+    """Возвращает уникальные аккаунты по roblox_id с последним ником и стоимостью инвентаря.
+    Берём из authorized_users + account_snapshots."""
     rows: list[dict] = []
     try:
         async with aiosqlite.connect(DB_STR) as db:
@@ -355,10 +455,8 @@ async def list_accounts_distinct() -> list[dict]:
 
 
 async def get_any_encrypted_cookie_by_roblox_id(roblox_id: int) -> str | None:
-    """
-    Возвращает любую актуальную зашифрованную куку по roblox_id (последнюю по времени).
-    Берём из user_cookies.
-    """
+    """Возвращает любую актуальную зашифрованную куку по roblox_id (последнюю по времени).
+    Берём из user_cookies."""
     try:
         async with aiosqlite.connect(DB_STR) as db:
             cur = await db.execute(
@@ -376,5 +474,3 @@ async def get_any_encrypted_cookie_by_roblox_id(roblox_id: int) -> str | None:
     except Exception as e:
         logging.error(f"[STORAGE] get_any_encrypted_cookie_by_roblox_id() error: {e}")
         return None
-
-

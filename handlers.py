@@ -725,26 +725,56 @@ def _lbl(key: str, fallback: str) -> str:
 
 def kb_navigation(roblox_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=_lbl('nav.spending', '💸 Spending history'),
-            callback_data=f'spend:{roblox_id}'
-        )],
-        [InlineKeyboardButton(
-            text=_lbl('nav.favorites', '⭐ Favorites'),
-            callback_data=f'fav:{roblox_id}:0'
-        )],
-        [InlineKeyboardButton(
-            text=_lbl('nav.inventory_categories', '🧩 Inventory (choose categories)'),
-            callback_data=f'inv_cfg_open:{roblox_id}'
-        )],
-        [InlineKeyboardButton(
-            text=_lbl('nav.to_accounts', '📋 Back to account list'),
-            callback_data='menu:accounts'
-        )],
-        [InlineKeyboardButton(
-            text=_lbl('nav.to_home', '🏠 Back'),
-            callback_data='menu:home'
-        )],
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.rap', '📈 RAP'),
+                callback_data=f'rap:{roblox_id}'
+            ),
+            InlineKeyboardButton(
+                text=_lbl('nav.offsale', '🛑 Off-sale'),
+                callback_data=f'offsale:{roblox_id}:col'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.revenue', '💸 Revenue'),
+                callback_data=f'revenue:{roblox_id}:0'
+            ),
+            InlineKeyboardButton(
+                text=_lbl('nav.usernames', '📝 Past usernames'),
+                callback_data=f'usernames:{roblox_id}:0'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.spending', '💸 Spending history'),
+                callback_data=f'spend:{roblox_id}'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.favorites', '⭐ Favorites'),
+                callback_data=f'fav:{roblox_id}:0'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.inventory_categories', '🧩 Inventory (choose categories)'),
+                callback_data=f'inv_cfg_open:{roblox_id}'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.to_accounts', '📋 Back to account list'),
+                callback_data='menu:accounts'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.to_home', '🏠 Back'),
+                callback_data='menu:home'
+            )
+        ],
     ])
 
 
@@ -3927,3 +3957,169 @@ async def cmd_export_accounts_csv(msg: types.Message):
     doc = BufferedInputFile(payload, filename="accounts_export.csv")
 
     await msg.answer_document(document=doc, caption="✅ Экспорт аккаунтов (CSV)")
+
+
+# ======================= RAP / OFFSALE / REVENUE / USERNAMES =======================
+from roblox_client import calc_user_rap, get_offsale_collectibles, get_username_history, get_revenue
+from util.crypto import decrypt_text
+
+def _L(key: str, **kw):
+    try:
+        return tr(_CURRENT_LANG.get() or 'en', key, **kw)
+    except Exception:
+        try:
+            return tr('en', key, **kw)
+        except Exception:
+            return key
+
+@router.callback_query(F.data.startswith('rap:'))
+async def cb_rap(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
+    try:
+        await call.answer(cache_time=1)
+    except Exception:
+        pass
+    rid = int(call.data.split(':', 1)[1])
+    wait = await call.message.answer(_L('common.loading') if _L('common.loading') != 'common.loading' else '⏳ Loading…')
+    try:
+        data = await calc_user_rap(rid)
+        total = int(data.get('total') or 0)
+        lines = [_L('rap.total', value=total)]
+        items = sorted(data.get('items', []), key=lambda x: (x.get('rap') or 0), reverse=True)[:15]
+        for it in items:
+            line = _L('rap.item_row', name=it.get('name','Unknown'), rap=it.get('rap',0))
+            if it.get('lowest') is not None:
+                line += " · " + _L('rap.lowest', value=it.get('lowest'))
+            lines.append(line)
+        if not items:
+            lines.append(_L('rap.no_items'))
+        text = _L('rap.title') + "\\n\\n" + "\\n".join(lines)
+        await wait.edit_text(text, disable_web_page_preview=True, reply_markup=kb_navigation(rid))
+    except Exception as e:
+        try:
+            await wait.edit_text(_L('errors.generic', err=str(e)))
+        except Exception:
+            pass
+
+@router.callback_query(F.data.startswith('offsale:'))
+async def cb_offsale(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
+    try:
+        await call.answer(cache_time=1)
+    except Exception:
+        pass
+    parts = call.data.split(':')
+    rid = int(parts[1]) if len(parts)>1 else 0
+    wait = await call.message.answer('⏳')
+    try:
+        items = await get_offsale_collectibles(rid)
+        if not items:
+            text = _L('offsale.title') + "\\n\\n" + _L('offsale.empty')
+        else:
+            rows = [_L('offsale.row_collectible', name=it.get('name','Unknown'), rap=it.get('rap',0)) for it in items[:30]]
+            text = _L('offsale.title') + "\\n\\n" + "\\n".join(rows)
+        await wait.edit_text(text, disable_web_page_preview=True, reply_markup=kb_navigation(rid))
+    except Exception as e:
+        try:
+            await wait.edit_text(_L('errors.generic', err=str(e)))
+        except Exception:
+            pass
+
+@router.callback_query(F.data.startswith('usernames:'))
+async def cb_usernames(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
+    try:
+        await call.answer(cache_time=1)
+    except Exception:
+        pass
+    parts = call.data.split(':')
+    rid = int(parts[1]) if len(parts)>1 else 0
+    page = int(parts[2]) if len(parts)>2 else 0
+    PAGE = 25
+    wait = await call.message.answer('⏳')
+    try:
+        items = await get_username_history(rid)
+        total_pages = max(1, (len(items)+PAGE-1)//PAGE)
+        page = max(0, min(page, total_pages-1))
+        slice_ = items[page*PAGE:(page+1)*PAGE]
+        if not slice_:
+            body = _L('usernames.empty')
+        else:
+            body = "\\n".join([_L('usernames.row', name=(it.get('name') or it.get('username') or '?'), changedAt=(it.get('created') or it.get('changedAt') or '')) for it in slice_])
+        header = _L('usernames.title') + f"\\n{_L('usernames.page', cur=page+1, total=total_pages)}\\n\\n"
+        text = header + body
+        if total_pages <= 1:
+            await wait.edit_text(text, reply_markup=kb_navigation(rid), disable_web_page_preview=True)
+        else:
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text=_L('revenue.prev'), callback_data=f'usernames:{rid}:{page-1}') if page>0 else InlineKeyboardButton(text='·', callback_data='noop'),
+                InlineKeyboardButton(text=_L('revenue.next'), callback_data=f'usernames:{rid}:{page+1}') if page<total_pages-1 else InlineKeyboardButton(text='·', callback_data='noop'),
+            ]])
+            await wait.edit_text(text, reply_markup=kb, disable_web_page_preview=True)
+    except Exception as e:
+        try:
+            await wait.edit_text(_L('errors.generic', err=str(e)))
+        except Exception:
+            pass
+
+@router.callback_query(F.data.startswith('revenue:'))
+async def cb_revenue(call: types.CallbackQuery) -> None:
+    await protect_language(call.from_user.id)
+    try:
+        await call.answer(cache_time=1)
+    except Exception:
+        pass
+    parts = call.data.split(':')
+    rid = int(parts[1]) if len(parts)>1 else 0
+    page = int(parts[2]) if len(parts)>2 else 0
+    PAGE = 25
+    wait = await call.message.answer('⏳')
+    try:
+        # cookie: encrypted -> plain
+        enc = await storage.get_encrypted_cookie(call.from_user.id, rid)
+        cookie = decrypt_text(enc) if enc else None
+        if not cookie:
+            await wait.edit_text(_L('revenue.title') + "\\n\\n" + _L('revenue.auth_required'), disable_web_page_preview=True, reply_markup=kb_navigation(rid))
+            return
+        data = await get_revenue(rid, cookie, limit=500)
+        items = data.get('items', [])
+        total_pages = max(1, (len(items)+PAGE-1)//PAGE)
+        page = max(0, min(page, total_pages-1))
+        slice_ = items[page*PAGE:(page+1)*PAGE]
+        lines = []
+        for it in slice_:
+            dt = it.get('created') or it.get('date') or ''
+            typ = it.get('type') or (it.get('details') or {}).get('type') or 'Sale'
+            amt = (it.get('currency') or {}).get('amount') or 0
+            src = (it.get('details') or {}).get('product') or (it.get('details') or {}).get('placeName') or ''
+            lines.append(_L('revenue.row', date=dt, type=typ, amount=amt, source=src))
+        body = "\\n".join(lines) if lines else _L('revenue.empty')
+        header = _L('revenue.title') + f"\\n{_L('revenue.summary', sum=data.get('total',0))}\\n"
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=_L('revenue.prev'), callback_data=f'revenue:{rid}:{page-1}') if page>0 else InlineKeyboardButton(text='·', callback_data='noop'),
+            InlineKeyboardButton(text=_L('revenue.next'), callback_data=f'revenue:{rid}:{page+1}') if page<total_pages-1 else InlineKeyboardButton(text='·', callback_data='noop'),
+        ]]) if total_pages>1 else kb_navigation(rid)
+        await wait.edit_text(header+body, reply_markup=kb, disable_web_page_preview=True)
+    except Exception as e:
+        try:
+            await wait.edit_text(_L('errors.generic', err=str(e)))
+        except Exception:
+            pass
+# ======================= /RAP OFFSALE REVENUE USERNAMES =======================
+
+# === SNAPSHOT COMMAND ===
+
+from aiogram.filters import Command
+from aiogram import types
+import storage
+@router.message(Command('snapshot_all'))
+async def cmd_snapshot_all(message: types.Message):
+    tg = message.from_user.id
+    try:
+        n = await storage.snapshot_all_for_user(tg, reason='manual_all')
+        if n > 0:
+            await message.answer(f'✅ Snapshots saved: {n}')
+        else:
+            await message.answer('⚠️ Nothing to snapshot.')
+    except Exception as e:
+        await message.answer(f'❌ Snapshot failed: {e}')

@@ -1,11 +1,11 @@
 {
   "currency": {
-    "robux": "R$"
+    "robux": "[ru] R$"
   },
   "footer": {
     "checked_by": "Проверено: {username}",
-    "domain": "raika.gg",
-    "date": "{day} {month} {year}"
+    "domain": "[ru] raika.gg",
+    "date": "[ru] {day} {month} {year}"
   },
   "inventory": {
     "title": "Инвентарь",
@@ -62,8 +62,8 @@
   "profile": {
     "title": "Профиль",
     "user": "Пользователь",
-    "roblox_id": "Roblox ID: {id}",
-    "roblox_id_label": "Roblox ID:",
+    "roblox_id": "[ru] Roblox ID: {id}",
+    "roblox_id_label": "[ru] Roblox ID:",
     "username": "Имя пользователя: {username}",
     "username_label": "Имя пользователя:",
     "stats": "Статистика",
@@ -76,7 +76,7 @@
     "inventory_value": "💰 Стоимость инвентаря: {value} R$",
     "inventory_value_label": "💰 Стоимость инвентаря:",
     "inventory_private": "🔒 Инвентарь закрыт",
-    "card": "📘 Информация об аккаунте\n👤 Имя: {uname}\n🏷️ Отображаемое имя: {display_name}\n🆔 ID: {rid}\n📅 Создан: {created}\n🌍 Страна: {country}\n🧬 Пол: {gender}\n🎂 Дата рождения: {birthday}\n📏 Возраст: {age}\n✉️ Email: {email} (Подтвержден: {email_verified})\n💰 Robux: {robux}\n🧾 Всего потрачено: {spent}\n🟢 Статус: {status}"
+    "card": "📘 Информация об аккаунте\n👤 Имя: {uname}\n🏷️ Отображаемое имя: {display_name}\n🆔 ID: {rid}\n📅 Создан: {created}\n🌍 Страна: {country}\n🧬 Пол: {gender}\n🎂 Дата рождения: {birthday}\n📏 Возраст: {age}\n✉️ Email: {email} (Подтвержден: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Всего потрачено: {spent}\n🟢 Статус: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ Ошибка при подготовке архива.",
@@ -115,7 +115,8 @@
     "profile_load_failed": "❌ Не удалось загрузить профиль.",
     "loading_profile": "Загрузка профиля…",
     "file_received": "📥 Файл получен, проверка...",
-    "cookie_validation_error": "❌ Ошибка проверки cookie."
+    "cookie_validation_error": "❌ Ошибка проверки cookie.",
+    "cookie_dead": "[ru] 🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
   },
   "buttons": {
     "all_items": "📦 Все предметы",
@@ -143,11 +144,11 @@
     "unknown": "Неизвестно",
     "active": "Активен",
     "banned": "Заблокирован",
-    "dash": "—",
-    "ellipsis": "…",
+    "dash": "[ru] —",
+    "ellipsis": "[ru] …",
     "na": "Н/Д",
     "regular": "❌ Обычный",
-    "premium": "⭐ Premium",
+    "premium": "[ru] ⭐ Premium",
     "decrypt_error": "<ошибка расшифровки>",
     "pcs": "шт",
     "total": "Всего"
@@ -172,7 +173,12 @@
     "inventory_categories": "🧩 Инвентарь (выбор категорий)",
     "to_accounts": "📋 Назад к списку аккаунтов",
     "to_home": "🔙 Назад",
-    "spending": "💸 Траты"
+    "spending": "💸 Траты",
+    "favorites": "[ru] ⭐ Favorites",
+    "rap": "[ru] 📈 RAP",
+    "offsale": "[ru] 🛑 Off-sale",
+    "revenue": "[ru] 💸 Revenue",
+    "usernames": "[ru] 📝 Past usernames"
   },
   "status": {
     "account_deleted": "🗑 Аккаунт удален.",
@@ -223,6 +229,9 @@
     "page": "Страница {current}/{total}"
   },
   "spending": {
+    "title": "[ru] 💸 Spending history (total: {total})",
+    "loading": "[ru] ⏳ Loading spending history…",
+    "empty": "[ru] 🫙 No purchases found.",
     "header": "💸 Траты — всего: {sum} R$"
   },
   "games": {
@@ -231,6 +240,38 @@
     "empty_favorites": "Нет избранных игр.",
     "page": "Страница {cur}/{total}",
     "prev": "◀ Назад",
-    "next": "Вперёд ▶"
+    "next": "Вперёд ▶",
+    "loading": "[ru] ⏳ Loading favorites…"
+  },
+  "rap": {
+    "title": "[ru] 📈 RAP",
+    "total": "[ru] Total RAP: {value} R$",
+    "item_row": "[ru] {name} — {rap} R$",
+    "lowest": "[ru] Lowest: {value} R$",
+    "no_items": "[ru] No collectibles with RAP found.",
+    "refresh": "[ru] 🔄 Refresh"
+  },
+  "offsale": {
+    "title": "[ru] 🛑 Off-sale",
+    "mode": "[ru] Mode: {mode}",
+    "mode_collectibles": "[ru] Collectibles",
+    "empty": "[ru] No off-sale collectibles found.",
+    "row_collectible": "[ru] {name} — RAP {rap} R$ (no sellers)"
+  },
+  "revenue": {
+    "title": "[ru] 💸 Revenue",
+    "auth_required": "[ru] 🔐 Revenue is available only with a cookie.",
+    "summary": "[ru] All time: {sum} R$",
+    "row": "[ru] {date} — {type} — {amount} R$ — {source}",
+    "empty": "[ru] No transactions.",
+    "prev": "[ru] ◀ Prev",
+    "next": "[ru] Next ▶",
+    "refresh": "[ru] 🔄 Refresh"
+  },
+  "usernames": {
+    "title": "[ru] 📝 Past usernames",
+    "row": "[ru] {name} — {changedAt}",
+    "empty": "[ru] No past usernames.",
+    "page": "[ru] Page {cur}/{total}"
   }
 }

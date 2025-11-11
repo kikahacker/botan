@@ -4,6 +4,8 @@ import json
 import re
 import inspect
 
+
+
 # --- Games user endpoints ---
 FAVORITE_GAMES_URL = "https://games.roblox.com/v2/users/{user_id}/favorite/games"
 LEGACY_FAVORITES_JSON = "https://www.roblox.com/users/favorites/list-json"
@@ -1736,3 +1738,173 @@ async def get_recent_enriched_by_encrypted_cookie(enc_cookie: str, user_id: int,
             "url": f"https://www.roblox.com/games/{pid}" if pid else None,
         })
     return out
+
+# === RAP / OFFSALE / REVENUE / USERNAMES ADDITIONS ===
+
+import httpx
+from typing import Optional, List, Dict, Any, Tuple
+
+COLLECTIBLES_URL = "https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles"
+RESALE_URL = "https://economy.roblox.com/v1/assets/{asset_id}/resale-data"
+USERNAME_HISTORY_URL = "https://users.roblox.com/v1/users/{user_id}/username-history"
+USER_TX_URL = "https://economy.roblox.com/v2/users/{user_id}/transactions"
+
+async def _http_get_json(url: str, params: dict | None = None, headers: dict | None = None, timeout: float = 10.0):
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=2.0, read=timeout-2.0)) as client:
+            r = await client.get(url, params=params, headers=headers or {})
+            if r.status_code == 200:
+                try:
+                    return r.json()
+                except Exception:
+                    return None
+            return None
+    except Exception:
+        return None
+
+async def get_collectibles(user_id: int, *, limit_per_page: int = 100) -> List[Dict[str, Any]]:
+    """Public. Returns all collectibles for a user with RAP fields if present."""
+    out, cursor = [], None
+    for _ in range(20):  # hard stop
+        params = {"limit": limit_per_page}
+        if cursor:
+            params["cursor"] = cursor
+        data = await _http_get_json(COLLECTIBLES_URL.format(user_id=user_id), params=params, timeout=8.0)
+        if not data or "data" not in data:
+            break
+        out.extend(data.get("data", []))
+        cursor = data.get("nextPageCursor")
+        if not cursor:
+            break
+    return out
+
+async def get_asset_resale(asset_id: int) -> Optional[Dict[str, Any]]:
+    key = f"resale:{asset_id}"
+    try:
+        cached = await cache.get_json(key, 300)
+        if cached:
+            return cached
+    except Exception:
+        pass
+    data = await _http_get_json(RESALE_URL.format(asset_id=asset_id), timeout=6.0)
+    try:
+        if data:
+            await cache.set_json(key, data, ttl=300)
+    except Exception:
+        pass
+    return data
+
+async def calc_user_rap(user_id: int) -> Dict[str, Any]:
+    """Returns dict: {'total': int, 'items': List[{assetId,name,rap,lowest}]}"""
+    key = f"rap:{user_id}"
+    try:
+        cached = await cache.get_json(key, 180)
+        if cached:
+            return cached
+    except Exception:
+        pass
+    items = await get_collectibles(user_id)
+    rows, total = [], 0
+    for it in items:
+        name = it.get("name") or it.get("assetName") or "Unknown"
+        rap = it.get("recentAveragePrice") or 0
+        lowest = it.get("lowestResalePrice")  # not always in this payload
+        if lowest is None:
+            try:
+                rd = await get_asset_resale(it.get("assetId"))
+                lowest = rd.get("lowestResalePrice") if rd else None
+            except Exception:
+                pass
+        if isinstance(rap, (int, float)) and rap > 0:
+            total += int(rap)
+        rows.append({"assetId": it.get("assetId"), "name": name, "rap": rap or 0, "lowest": lowest})
+    out = {"total": int(total), "items": rows}
+    try:
+        await cache.set_json(key, out, ttl=180)
+    except Exception:
+        pass
+    return out
+
+async def get_offsale_collectibles(user_id: int) -> List[Dict[str, Any]]:
+    """Collectibles with no active sellers (no lowestResalePrice)."""
+    key = f"offsale_col:{user_id}"
+    try:
+        cached = await cache.get_json(key, 300)
+        if cached:
+            return cached
+    except Exception:
+        pass
+    items = await get_collectibles(user_id)
+    out = []
+    for it in items:
+        lowest = it.get("lowestResalePrice")
+        if lowest is None:
+            rd = await get_asset_resale(it.get("assetId"))
+            lowest = rd.get("lowestResalePrice") if rd else None
+        if lowest is None:
+            out.append({"assetId": it.get("assetId"), "name": it.get("name") or it.get("assetName") or "Unknown", "rap": it.get("recentAveragePrice") or 0})
+    try:
+        await cache.set_json(key, out, ttl=300)
+    except Exception:
+        pass
+    return out
+
+async def get_username_history(user_id: int, *, limit: int = 100) -> List[Dict[str, Any]]:
+    key = f"usernames:{user_id}"
+    try:
+        cached = await cache.get_json(key, 24*60*60)
+        if cached:
+            return cached
+    except Exception:
+        pass
+    out, cursor = [], None
+    for _ in range(20):
+        params = {"limit": min(100, limit), "sortOrder": "Asc"}
+        if cursor:
+            params["cursor"] = cursor
+        data = await _http_get_json(USERNAME_HISTORY_URL.format(user_id=user_id), params=params, timeout=8.0)
+        if not data or "data" not in data:
+            break
+        out.extend(data.get("data", []))
+        cursor = data.get("nextPageCursor")
+        if not cursor:
+            break
+    try:
+        await cache.set_json(key, out, ttl=24*60*60)
+    except Exception:
+        pass
+    return out
+
+def _cookie_headers(cookie: Optional[str]) -> dict:
+    if not cookie:
+        return {}
+    return {"Cookie": f".ROBLOSECURITY={cookie}"}
+
+async def get_revenue(user_id: int, cookie: Optional[str], *, limit: int = 1000, types: List[str] | None = None) -> Dict[str, Any]:
+    """Requires cookie. Returns summary and items."""
+    if not types:
+        types = ["Sale", "PremiumPayout"]
+    headers = _cookie_headers(cookie)
+    out, cursor = [], None
+    got = 0
+    for _ in range(50):
+        params = {"transactionType": ",".join(types), "limit": min(100, limit-got)}
+        if cursor:
+            params["cursor"] = cursor
+        data = await _http_get_json(USER_TX_URL.format(user_id=user_id), params=params, headers=headers, timeout=8.0)
+        if not data or "data" not in data:
+            break
+        batch = data.get("data", [])
+        out.extend(batch)
+        got += len(batch)
+        cursor = data.get("nextPageCursor")
+        if not cursor or got >= limit:
+            break
+    total = 0
+    for it in out:
+        amt = (it.get("currency") or {}).get("amount") or 0
+        if isinstance(amt, (int, float)):
+            total += int(amt)
+    return {"total": int(total), "items": out}
+
+

@@ -1,11 +1,11 @@
 {
   "currency": {
-    "robux": "R$"
+    "robux": "[fr] R$"
   },
   "footer": {
     "checked_by": "Verificado por: {username}",
-    "domain": "raika.gg",
-    "date": "{day} {month} {year}"
+    "domain": "[fr] raika.gg",
+    "date": "[fr] {day} {month} {year}"
   },
   "inventory": {
     "title": "Inventario",
@@ -51,7 +51,7 @@
   },
   "errors": {
     "bad_callback": "❌ Formato de callback inválido.",
-    "generic": "❌ Error: {err}",
+    "generic": "[fr] ❌ Error: {err}",
     "archive_prep": "❌ Error al preparar el archivo."
   },
   "kb": {
@@ -76,7 +76,7 @@
     "inventory_value": "💰 Valor del inventario: {value} R$",
     "inventory_value_label": "💰 Valor del inventario:",
     "inventory_private": "🔒 El inventario es privado",
-    "card": "📘 Información de la cuenta\n👤 Nombre: {uname}\n🏷️ Nombre para mostrar: {display_name}\n🆔 ID: {rid}\n📅 Creado: {created}\n🌍 País: {country}\n🧬 Género: {gender}\n🎂 Fecha de nacimiento: {birthday}\n📏 Edad: {age}\n✉️ Email: {email} (Verificado: {email_verified})\n💰 Robux: {robux}\n🧾 Total gastado: {spent}\n🟢 Estado: {status}"
+    "card": "📘 Información de la cuenta\n👤 Nombre: {uname}\n🏷️ Nombre para mostrar: {display_name}\n🆔 ID: {rid}\n📅 Creado: {created}\n🌍 País: {country}\n🧬 Género: {gender}\n🎂 Fecha de nacimiento: {birthday}\n📏 Edad: {age}\n✉️ Email: {email} (Verificado: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Total gastado: {spent}\n🟢 Estado: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ Error al preparar el archivo.",
@@ -115,7 +115,8 @@
     "profile_load_failed": "❌ Error al cargar el perfil.",
     "loading_profile": "Cargando perfil…",
     "file_received": "📥 Archivo recibido, verificando...",
-    "cookie_validation_error": "❌ Error de validación de cookie."
+    "cookie_validation_error": "❌ Error de validación de cookie.",
+    "cookie_dead": "[fr] 🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
   },
   "buttons": {
     "all_items": "📦 Todos los artículos",
@@ -136,21 +137,21 @@
     "accounts_list": "📋 Cuentas"
   },
   "common": {
-    "no": "No",
+    "no": "[fr] No",
     "yes": "Sí",
     "male": "Masculino",
     "female": "Femenino",
     "unknown": "Desconocido",
     "active": "Activo",
     "banned": "Baneado",
-    "dash": "—",
-    "ellipsis": "…",
+    "dash": "[fr] —",
+    "ellipsis": "[fr] …",
     "na": "N/D",
-    "regular": "❌ Regular",
-    "premium": "⭐ Premium",
+    "regular": "[fr] ❌ Regular",
+    "premium": "[fr] ⭐ Premium",
     "decrypt_error": "<error de descifrado>",
     "pcs": "unid.",
-    "total": "Total"
+    "total": "[fr] Total"
   },
   "cookie": {
     "instructions": "Usa el kit para extraer tu cookie .ROBLOSECURITY en Chromium y súbela aquí como .txt.",
@@ -172,7 +173,12 @@
     "inventory_categories": "🧩 Inventario (elegir categorías)",
     "to_accounts": "📋 Volver a la lista de cuentas",
     "to_home": "🔙 Atrás",
-    "spending": "💸 Dépenses"
+    "spending": "💸 Dépenses",
+    "favorites": "[fr] ⭐ Favorites",
+    "rap": "[fr] 📈 RAP",
+    "offsale": "[fr] 🛑 Off-sale",
+    "revenue": "[fr] 💸 Revenue",
+    "usernames": "[fr] 📝 Past usernames"
   },
   "status": {
     "account_deleted": "🗑 Cuenta eliminada.",
@@ -189,10 +195,10 @@
   "cat": {
     "accessories": "Accesorios",
     "animations/emotes": "Animaciones / Emotes",
-    "audio": "Audio",
+    "audio": "[fr] Audio",
     "bundles/packages": "Paquetes / Lotes",
     "classic_clothes": "Ropa clásica",
-    "emotes": "Emotes",
+    "emotes": "[fr] Emotes",
     "faces": "Caras",
     "gear": "Equipamiento",
     "hair": "Cabello",
@@ -223,14 +229,49 @@
     "page": "Página {current}/{total}"
   },
   "spending": {
+    "title": "[fr] 💸 Spending history (total: {total})",
+    "loading": "[fr] ⏳ Loading spending history…",
+    "empty": "[fr] 🫙 No purchases found.",
     "header": "💸 Dépenses — total : {sum} R$"
   },
   "games": {
     "fav_title": "Jeux favoris",
     "fav_summary": "• Favoris : {count}",
     "empty_favorites": "Aucun favori.",
-    "page": "Page {cur}/{total}",
+    "page": "[fr] Page {cur}/{total}",
     "prev": "◀ Précédent",
-    "next": "Suivant ▶"
+    "next": "Suivant ▶",
+    "loading": "[fr] ⏳ Loading favorites…"
+  },
+  "rap": {
+    "title": "[fr] 📈 RAP",
+    "total": "[fr] Total RAP: {value} R$",
+    "item_row": "[fr] {name} — {rap} R$",
+    "lowest": "[fr] Lowest: {value} R$",
+    "no_items": "[fr] No collectibles with RAP found.",
+    "refresh": "[fr] 🔄 Refresh"
+  },
+  "offsale": {
+    "title": "[fr] 🛑 Off-sale",
+    "mode": "[fr] Mode: {mode}",
+    "mode_collectibles": "[fr] Collectibles",
+    "empty": "[fr] No off-sale collectibles found.",
+    "row_collectible": "[fr] {name} — RAP {rap} R$ (no sellers)"
+  },
+  "revenue": {
+    "title": "[fr] 💸 Revenue",
+    "auth_required": "[fr] 🔐 Revenue is available only with a cookie.",
+    "summary": "[fr] All time: {sum} R$",
+    "row": "[fr] {date} — {type} — {amount} R$ — {source}",
+    "empty": "[fr] No transactions.",
+    "prev": "[fr] ◀ Prev",
+    "next": "[fr] Next ▶",
+    "refresh": "[fr] 🔄 Refresh"
+  },
+  "usernames": {
+    "title": "[fr] 📝 Past usernames",
+    "row": "[fr] {name} — {changedAt}",
+    "empty": "[fr] No past usernames.",
+    "page": "[fr] Page {cur}/{total}"
   }
 }
