@@ -232,5 +232,17 @@
     "page": "Страница {cur}/{total}",
     "prev": "◀ Назад",
     "next": "Вперёд ▶"
-  }
+  },
+  "nav.rap": "💎 RAP",
+  "nav.usernames": "🪪 История никнеймов",
+  "rap.title": "RAP",
+  "rap.items": "лимиток",
+  "rap.top": "Топ по RAP:",
+  "rap.none": "Лимиток не найдено.",
+  "names.title": "История никнеймов",
+  "names.empty": "История никнеймов пуста.",
+  "messages.wait_calc": "⚙️ Считаю RAP…",
+  "messages.wait": "🔎 Загружаю…",
+  "rap.ask_userid": "Укажи Roblox userId: /rap <userId>",
+  "names.ask_userid": "Укажи Roblox userId: /names <userId>"
 }
