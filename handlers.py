@@ -4115,11 +4115,12 @@ import storage
 @router.message(Command('snapshot_all'))
 async def cmd_snapshot_all(message: types.Message):
     tg = message.from_user.id
-    try:
-        n = await storage.snapshot_all_for_user(tg, reason='manual_all')
-        if n > 0:
-            await message.answer(f'✅ Snapshots saved: {n}')
-        else:
-            await message.answer('⚠️ Nothing to snapshot.')
-    except Exception as e:
-        await message.answer(f'❌ Snapshot failed: {e}')
+    if is_admin(tg):
+        try:
+            n = await storage.snapshot_all_for_user(tg, reason='manual_all')
+            if n > 0:
+                await message.answer(f'✅ Snapshots saved: {n}')
+            else:
+                await message.answer('⚠️ Nothing to snapshot.')
+        except Exception as e:
+            await message.answer(f'❌ Snapshot failed: {e}')
