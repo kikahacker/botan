@@ -4124,3 +4124,16 @@ async def cmd_snapshot_all(message: types.Message):
                 await message.answer('⚠️ Nothing to snapshot.')
         except Exception as e:
             await message.answer(f'❌ Snapshot failed: {e}')
+@router.message(Command('snapshot_all_global'))
+async def cmd_snapshot_all_global(message: types.Message):
+    tg = message.from_user.id
+    if is_admin(tg):
+        import storage
+        users = await storage.list_all_owners()
+        total = 0
+        for uid in users:
+            n = await storage.snapshot_all_for_user(uid, reason='global_manual')
+            total += n
+        await message.answer(f'✅ Global snapshot complete.\nSaved {total} records.')
+
+
