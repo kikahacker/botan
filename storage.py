@@ -7,6 +7,8 @@ from typing import Optional, Dict, List, Tuple, Any
 from datetime import datetime, timedelta
 import os
 
+from util.crypto import decrypt_text
+
 DB_PATH = Path(os.getenv('AUTH_DB', 'data/authorized.db'))
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DB_STR = str(DB_PATH)
@@ -528,3 +530,26 @@ async def get_user_cookie_plain(telegram_id: int, roblox_id: int) -> str | None:
         except Exception as e:
             logging.error(f"[storage] decrypt cookie fail tg={telegram_id} rid={roblox_id}: {e}")
             return None
+
+async def get_multiple_cookies_quick(limit: int = 5) -> list[str]:
+    """
+    Возвращает массив последних активных enc_roblosecurity из user_cookies.
+    Используется в паблик-режиме, где важна скорость и не важна привязка к tg_id.
+    """
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            cur = await db.execute(
+                """
+                SELECT enc_roblosecurity
+                FROM user_cookies
+                WHERE is_active = TRUE
+                ORDER BY datetime(saved_at) DESC
+                LIMIT ?
+                """,
+                (limit,)
+            )
+            rows = await cur.fetchall()
+            return [r[0] for r in rows if r and r[0]]
+    except Exception as e:
+        logging.error(f"[STORAGE] get_multiple_cookies_quick() error: {e}")
+        return []

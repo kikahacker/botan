@@ -95,7 +95,7 @@ INV_BACKOFF_CAP_MS = int(os.getenv("INV_BACKOFF_CAP_MS", "1000"))  # умень�
 INV_PARALLEL_TYPES = int(os.getenv("INV_PARALLEL_TYPES", "16"))  # параллелизм типов
 INV_BATCH_SIZE = int(os.getenv("INV_BATCH_SIZE", "200"))  # размер батча
 INV_TIMEOUT_PER_PAGE = float(os.getenv("INV_TIMEOUT_PER_PAGE", "4.0"))  # таймаут страницы
-PUBLIC_MODE_MAX_COOKIES = int(os.getenv("PUBLIC_MODE_MAX_COOKIES", "2"))  # максимум куки
+PUBLIC_MODE_MAX_COOKIES = int(os.getenv("PUBLIC_MODE_MAX_COOKIES", "5"))  # максимум куки
 PUBLIC_MODE_TIMEOUT = float(os.getenv("PUBLIC_MODE_TIMEOUT", "8.0"))  # общий таймаут
 
 log = logging.getLogger("roblox_client")

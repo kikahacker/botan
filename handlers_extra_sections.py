@@ -62,6 +62,9 @@ _REVENUE_CACHE: dict[tuple[int, int], dict[str, Any]] = {}
 _REVENUE_CACHE_TTL = 300  # seconds
 REVENUE_ROWS_PER_PAGE = 15  # UI page size
 
+# ========== PUBLIC INVENTORY CACHE ==========
+_PUBLIC_INV_CACHE: dict[int, dict] = {}  # key = rid
+_PUBLIC_INV_CACHE_TTL = 180  # 3 минуты, как у приватного
 
 async def _get_full_revenue(tg_id: int, rid: int, enc_cookie: str) -> Dict[str, Any]:
     """
@@ -863,3 +866,45 @@ async def cb_pub_revenue(call: types.CallbackQuery):
     )
 
     await edit_or_send(call.message, txt)
+
+@router.callback_query(F.data.startswith("pub_usernames:"))
+async def cb_pub_usernames(call: types.CallbackQuery):
+    """
+    Публичный просмотр прошлых никнеймов (кука не нужна, логика та же, что и в приватном cb_usernames).
+    """
+    await call.answer(cache_time=1)
+    rid = _rid(call.data)
+    t0 = time.time()
+    log.debug(f"[PUB_USERNAMES] start rid={rid}")
+    msg = await edit_or_send(call.message, f"{L('usernames.title')}\n{L('usernames.loading')}")
+    try:
+        if rid is None:
+            await edit_or_send(msg, L('errors.bad_callback'))
+            log.debug(f"[PUB_USERNAMES] no rid dt={time.time()-t0:.3f}s")
+            return
+
+        data = await get_past_usernames(rid, page=1, per_page=25)
+        rows = (data or {}).get("rows") or []
+
+        if rows:
+            lines = ["📜 Past usernames:"]
+            for it in rows[:25]:
+                name = it.get("name") or it.get("username") or "-"
+                dt = (it.get("created") or it.get("createdAt") or "")[:10]
+                if dt:
+                    lines.append(L('usernames.row', name=name, changedAt=dt))
+                else:
+                    lines.append(L('usernames.row', name=name, changedAt=L('common.na')))
+            txt = "\n".join(lines)
+            await edit_or_send(msg, txt)
+            log.debug(f"[PUB_USERNAMES] ok rid={rid} count={len(rows)} dt={time.time()-t0:.3f}s")
+        else:
+            await edit_or_send(
+                msg,
+                f"{L('usernames.title')}\n" + LL('usernames.empty_generic', 'usernames.empty'),
+            )
+            log.debug(f"[PUB_USERNAMES] empty rid={rid} dt={time.time()-t0:.3f}s")
+    except Exception as e:
+        log.exception(f"[PUB_USERNAMES] error rid={rid}: {e}")
+        await edit_or_send(msg, f"{L('usernames.title')}\n" + L('errors.generic', err=e))
+    log.debug(f"[PUB_USERNAMES] end rid={rid}")

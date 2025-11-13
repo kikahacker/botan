@@ -16,7 +16,7 @@
     "by_cat": "📂 {cat}\nGesamt: {count} Stk. · {sum} R$",
     "full_title": "Vollständiges Inventar",
     "selected": {
-      "summary": "💰 Ausgewählter Gesamtbetrag: {total} R$\n📦 Artikel: {count}"
+      "summary": "💰 Ausgewählt gesamt: {total} R$\n📦 Artikel: {count}"
     }
   },
   "app": {
@@ -52,7 +52,7 @@
   "errors": {
     "bad_callback": "❌ Ungültiges Callback-Format.",
     "generic": "❌ Fehler: {err}",
-    "archive_prep": "❌ Archiv konnte nicht vorbereitet werden."
+    "archive_prep": "❌ Fehler beim Vorbereiten des Archivs."
   },
   "kb": {
     "inventory": "📦 Inventar",
@@ -85,12 +85,12 @@
     "auto_2ea715f34f": "🔐 Cookie für Benutzer {rid}:\n<code>{cookie}</code>",
     "auto_349c12ce4e": "📝 Verwendung: /get_cookie &lt;roblox_id&gt;",
     "auto_5b9ec32c3a": "⏳ Lade Inventar…",
-    "auto_742e941465": "❌ Ungültiges Roblox ID-Format.",
+    "auto_742e941465": "❌ Ungültiges Roblox-ID-Format.",
     "auto_7581c6cb74": "⏳ Lade Kategorie…",
     "auto_7d8934a45d": "⏳ Lade Inventar…",
     "auto_92248ed4b0": "❌ Kein Snapshot für dieses Konto gefunden.",
     "auto_9b3b905f3b": "📝 Verwendung: /user_snapshot &lt;roblox_id&gt;",
-    "auto_b95899d0eb": "⚠️ Cookie-Kit ist derzeit nicht verfügbar.",
+    "auto_b95899d0eb": "⚠️ Cookie-Kit ist momentan nicht verfügbar.",
     "auto_bfed05f982": "⏳ Erstelle vollständiges Inventar…",
     "auto_c61051830f": "🫙 Keine preisgekennzeichneten Artikel in dieser Kategorie.",
     "auto_d43fb921bf": "🫙 Keine preisgekennzeichneten Artikel im Inventar.",
@@ -98,26 +98,26 @@
     "auto_e030221412": "⏳ Baue Inventar auf…",
     "auto_e4d1ae989d": "❌ Kein Cookie für dieses Konto gefunden.",
     "auto_ec50e4a25a": "⏳ Aktualisiere Kategorie…",
-    "auto_f3d5341cc3": "❌ Inventar konnte nicht erstellt werden. Versuche es später erneut.",
+    "auto_f3d5341cc3": "❌ Fehler beim Aufbau des Inventars. Versuche es später erneut.",
     "auto_f707b4e058": "🫙 Keine Artikel in ausgewählten Kategorien.",
-    "delete_pick_account": "Wähle ein Konto zum Löschen:",
+    "delete_pick_account": "Wähle ein Konto zum Löschen aus:",
     "settings": "⚙️ Einstellungen",
-    "welcome": "👋 Willkommen beim Raika Bot!\n\n📰 Unser Nachrichtenkanal - t.me/RaikaChecker\n\nDurch die Nutzung des Bots stimmst du automatisch den <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Nutzungsbedingungen</a> zu",
+    "welcome": "👋 Willkommen beim Raika Bot!\n\n📰 Unser News-Kanal - t.me/RaikaChecker\n\nDurch die Nutzung des Bots stimmst du automatisch den <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Nutzungsbedingungen</a> zu",
     "no_valid_cookies": "❌ Alle Cookies sind ungültig.",
     "file_not_txt": "⚠️ Dies ist keine .txt-Datei. Sende eine Cookie-Datei im .txt-Format",
     "account_deleted_error": "❌ Fehler beim Löschen des Kontos.",
-    "profile_load_error": "❌ Profil konnte nicht geladen werden.",
+    "profile_load_error": "❌ Fehler beim Laden des Profils.",
     "accounts_load_error": "❌ Fehler beim Laden der Konten.",
     "delete_accounts_error": "❌ Fehler beim Laden der Konten zum Löschen.",
-    "cookie_script_error": "❌ Cookie-Skript Zip-Fehler.",
+    "cookie_script_error": "❌ Cookie-Skript-Zip-Fehler.",
     "menu_accounts_error": "❌ Fehler beim Laden der Konten.",
     "no_cookie_for_account": "⚠️ Cookie für dieses Konto nicht gefunden.",
-    "profile_load_failed": "❌ Profil konnte nicht geladen werden.",
+    "profile_load_failed": "❌ Fehler beim Laden des Profils.",
     "loading_profile": "Lade Profil…",
     "file_received": "📥 Datei erhalten, überprüfe...",
     "cookie_validation_error": "❌ Cookie-Validierungsfehler.",
-    "cookie_dead": "🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue.",
-    "cookie_dead_actions": "Das Cookie ist ungültig oder abgelaufen.\nDu kannst ein neues Cookie verknüpfen oder dieses Konto aus deiner Liste entfernen.\nSnapshots (Verlauf) bleiben erhalten."
+    "cookie_dead": "🔐 Cookie für dieses Konto ist ungültig oder abgelaufen. Bitte lade einen frischen Cookie (.ROBLOSECURITY) hoch, um fortzufahren.",
+    "cookie_dead_actions": "Cookie ist ungültig oder abgelaufen.\nDu kannst einen neuen Cookie neu verknüpfen oder dieses Konto aus deiner Liste entfernen.\nSnapshots (Verlauf) werden beibehalten."
   },
   "buttons": {
     "all_items": "📦 Alle Artikel",
@@ -130,7 +130,7 @@
     "refresh": "🔄 Aktualisieren",
     "refresh_category": "🔄 Kategorie aktualisieren",
     "relink_cookie": "🔄 Cookie neu verknüpfen",
-    "delete_keep": "🗑️ Konto entfernen (Historie behalten)"
+    "delete_keep": "🗑️ Konto entfernen (Verlauf behalten)"
   },
   "caption": {
     "auto_76b7d0778c": "Vollständiges Inventar",
@@ -157,19 +157,19 @@
     "total": "Gesamt"
   },
   "cookie": {
-    "instructions": "Verwende das folgende Kit, um dein .ROBLOSECURITY-Cookie in Chromium zu extrahieren und lade es hier als .txt-Datei hoch.",
+    "instructions": "Verwende das folgende Kit, um deinen .ROBLOSECURITY-Cookie in Chromium zu extrahieren und lade ihn hier als .txt hoch.",
     "kit_caption": "Kit zum Extrahieren des Cookies (.ROBLOSECURITY). Führe batnik.bat aus, melde dich an, drücke Enter, dann sende cookies.txt hierher.",
-    "instructions_short": "1) Entpacken\n2) Batnik.bat ausführen\n3) Bei Roblox in Chromium anmelden\n4) Enter drücken\n5) Cookies.txt nehmen"
+    "instructions_short": "1) Entpacken\n2) Führe batnik.bat aus\n3) Melde dich bei Roblox in Chromium an\n4) Drücke Enter\n5) Nimm cookies.txt"
   },
   "err": {
-    "download_file": "❌ Datei konnte nicht heruntergeladen werden: {error}",
-    "read_file": "❌ Datei konnte nicht gelesen werden: {error}",
-    "profile_load": "❌ Profil konnte nicht geladen werden."
+    "download_file": "❌ Fehler beim Herunterladen der Datei: {error}",
+    "read_file": "❌ Fehler beim Lesen der Datei: {error}",
+    "profile_load": "❌ Fehler beim Laden des Profils."
   },
   "messages": {
     "choose_categories": "Wähle Kategorien (ein/ausschalten):",
     "choose_language": "Wähle deine Sprache:",
-    "welcome": "👋 Willkommen beim Raika Bot!\n\n📰 Unser Nachrichtenkanal - t.me/RaikaChecker\n\nDurch die Nutzung des Bots stimmst du automatisch den <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Nutzungsbedingungen</a> zu"
+    "welcome": "👋 Willkommen beim Raika Bot!\n\n📰 Unser News-Kanal - t.me/RaikaChecker\n\nDurch die Nutzung des Bots stimmst du automatisch den <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Nutzungsbedingungen</a> zu"
   },
   "nav": {
     "categories": "📂 Kategorien",
@@ -179,14 +179,14 @@
     "spending": "💸 Ausgaben",
     "favorites": "⭐ Favoriten",
     "rap": "📈 RAP",
-    "offsale": "🛑 Aus dem Verkauf",
+    "offsale": "🛑 Nicht im Verkauf",
     "revenue": "💸 Einnahmen",
     "usernames": "📝 Frühere Benutzernamen"
   },
   "status": {
     "account_deleted": "🗑 Konto gelöscht.",
-    "added_result": "✅ Hinzugefügt: {ok}\n❌ Ungültig: {bad}",
-    "done_back_home": "✅ Fertig. Zurück zur Startseite?",
+    "added_result": "✅ Hinzugefügt: {ok}\n❌ Fehlerhaft: {bad}",
+    "done_back_home": "✅ Erledigt. Zurück zur Startseite?",
     "file_empty": "⚠️ Datei ist leer.",
     "loading_profile": "Lade Profil…",
     "no_accounts": "⚠️ Noch keine verknüpften Konten.",
@@ -194,7 +194,7 @@
     "file_received": "📥 Datei erhalten, überprüfe...",
     "no_accounts_to_delete": "⚠️ Keine Konten zum Löschen."
   },
-  "welcome": "👋 Willkommen beim Raika Bot!\n\n📰 Unser Nachrichtenkanal - t.me/RaikaChecker\n\nDurch die Nutzung des Bots stimmst du automatisch den <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Nutzungsbedingungen</a> zu",
+  "welcome": "👋 Willkommen beim Raika Bot!\n\n📰 Unser News-Kanal - t.me/RaikaChecker\n\nDurch die Nutzung des Bots stimmst du automatisch den <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Nutzungsbedingungen</a> zu",
   "cat": {
     "accessories": "Accessoires",
     "animations/emotes": "Animationen / Emotes",
@@ -209,19 +209,19 @@
     "heads": "Köpfe"
   },
   "public": {
-    "ask_id": "🆔 Sende eine Roblox ID, um öffentliche Informationen anzuzeigen.",
+    "ask_id": "🆔 Sende eine Roblox-ID, um öffentliche Informationen anzuzeigen.",
     "note_limited": "ℹ️ Öffentlicher Modus: Einige Daten sind ohne Cookie nicht verfügbar.",
-    "bad_id": "⚠️ Ungültige ID. Sende eine Nummer (z.B. 123456789).",
+    "bad_id": "⚠️ Ungültige ID. Sende eine Zahl (z.B. 123456789).",
     "not_found": "❌ Benutzer nicht gefunden oder nicht verfügbar.",
     "inventory_private": "⚠️ Das Inventar dieses Benutzers ist bei Roblox privat.",
-    "spending_login_required": "🔐 Ausgaben sind nur verfügbar, wenn für dieses Konto ein Cookie gespeichert ist."
+    "spending_login_required": "🔐 Ausgaben sind nur verfügbar, wenn ein Cookie für dieses Konto gespeichert ist."
   },
   "settings": {
     "title": "⚙️ Einstellungen"
   },
   "admin": {
     "stats": "📊 <b>Bot-Statistiken</b>\n👥 Benutzer gesamt: {total_users}\n🆕 Neu heute: {new_today}\n📈 Aktiv heute: {active_today}\n🔗 Mit verknüpften Konten: {users_with_accounts}\n🔎 Prüfungen gesamt: {checks_total}\n📅 Prüfungen heute: {checks_today}",
-    "user_snapshot": "🧾 <b>Konto-Snapshot</b>\n🆔 Roblox ID: {rid}\n💰 Inventar: {inventory_val} R$\n💸 Gesamt ausgegeben: {total_spent} R$\n🕒 Aktualisiert: {updated_at}"
+    "user_snapshot": "🧾 <b>Konto-Snapshot</b>\n🆔 Roblox-ID: {rid}\n💰 Inventar: {inventory_val} R$\n💸 Gesamt ausgegeben: {total_spent} R$\n🕒 Aktualisiert: {updated_at}"
   },
   "inventory_view": {
     "public_title": "📦 Öffentliches Inventar\nGesamt: {total} Stk. · {total_sum} R$",
@@ -232,49 +232,68 @@
     "page": "Seite {current}/{total}"
   },
   "spending": {
-    "title": "💸 Kaufverlauf (gesamt: {total})",
-    "loading": "⏳ Kaufverlauf wird geladen…",
+    "title": "💸 Ausgabenverlauf (gesamt: {total})",
+    "loading": "⏳ Lade Ausgabenverlauf…",
     "empty": "🫙 Keine Käufe gefunden.",
-    "header": "💸 Ausgaben — insgesamt: {sum} R$"
+    "header": "💸 Ausgaben — gesamt: {sum} R$"
   },
   "games": {
-    "fav_title": "Lieblingsspiele",
-    "fav_summary": "• Favoriten: {count}",
+    "fav_title": "⭐ Favoriten",
+    "fav_summary": "⭐ Favoriten: {count}",
     "empty_favorites": "Keine Favoriten.",
     "page": "Seite {cur}/{total}",
     "prev": "◀ Zurück",
     "next": "Weiter ▶",
-    "loading": "⏳ Favoriten werden geladen…"
+    "loading": "⏳ Lade Favoriten…"
   },
   "rap": {
-    "title": "📈 RAP",
-    "total": "Gesamt-RAP: {value} R$",
+    "title": "RAP",
+    "total": "RAP gesamt: {value} R$",
     "item_row": "{name} — {rap} R$",
-    "lowest": "Niedrigster Preis: {value} R$",
+    "lowest": "Niedrigster: {value} R$",
     "no_items": "Keine Sammlerstücke mit RAP gefunden.",
-    "refresh": "🔄 Aktualisieren"
+    "refresh": "🔄 Aktualisieren",
+    "loading": "⏳ Lade…",
+    "empty_private": "Keine Sammlerstücke gefunden. Wenn das Inventar privat ist, öffne es oder verwende einen gültigen Cookie für dieses Konto.",
+    "empty_generic": "Es scheint, dass keine Sammlerstücke gefunden wurden. Versuche es später erneut.",
+    "details": "📄 Details",
+    "back_to_summary": "⬅ Zurück zur Übersicht",
+    "item_row_with_id": "{name} (ID {id}) — {rap} R$"
   },
   "offsale": {
-    "title": "🛑 Aus dem Verkauf",
+    "title": "Nicht im Verkauf",
     "mode": "Modus: {mode}",
     "mode_collectibles": "Sammlerstücke",
-    "empty": "Keine aus dem Verkauf genommenen Sammlerstücke.",
-    "row_collectible": "{name} — RAP {rap} R$ (keine Verkäufer)"
+    "empty": "Keine nicht verkauften Sammlerstücke gefunden.",
+    "row_collectible": "{name} — RAP {rap} R$ (keine Verkäufer)",
+    "loading": "⏳ Lade…",
+    "empty_private": "Keine nicht verkauften Sammlerstücke. Wenn das Inventar privat ist, öffne es oder verwende einen gültigen Cookie für dieses Konto.",
+    "empty_generic": "Es wurden keine nicht verkauften Sammlerstücke gefunden. Versuche es später erneut."
   },
   "revenue": {
     "title": "💸 Einnahmen",
-    "auth_required": "🔐 Einnahmen nur mit Cookie verfügbar.",
-    "summary": "Gesamt: {sum} R$",
+    "auth_required": "🔐 Einnahmen sind nur mit einem Cookie verfügbar.",
+    "summary": "Gesamter Zeitraum: {sum} R$",
     "row": "{date} — {type} — {amount} R$ — {source}",
     "empty": "Keine Transaktionen.",
     "prev": "◀ Zurück",
     "next": "Weiter ▶",
-    "refresh": "🔄 Aktualisieren"
+    "refresh": "🔄 Aktualisieren",
+    "loading": "⏳ Lade Einnahmen…",
+    "summary_page": "Auf dieser Seite: {sum} R$",
+    "page_summary": "Transaktionen auf dieser Seite: {count}",
+    "details": "📄 Details",
+    "back_to_summary": "⬅️ Zurück zur Übersicht",
+    "total_count": "Transaktionen gesamt: {count}",
+    "total_sum": "Gesamt: {sum} R$"
   },
   "usernames": {
     "title": "📝 Frühere Benutzernamen",
     "row": "{name} — {changedAt}",
     "empty": "Keine früheren Benutzernamen.",
-    "page": "Seite {cur}/{total}"
+    "page": "Seite {cur}/{total}",
+    "loading": "⏳ Lade…",
+    "empty_private": "Keine früheren Benutzernamen. Wenn der Zugriff eingeschränkt ist, ist ein gültiger Cookie erforderlich.",
+    "empty_generic": "Keine früheren Benutzernamen gefunden."
   }
 }
