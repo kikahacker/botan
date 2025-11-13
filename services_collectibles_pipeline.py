@@ -1,3 +1,4 @@
+
 # services_collectibles_pipeline.py
 # Inventory -> filter collectibles -> RAP + Off-sale + images (uses your roblox_client & roblox_imagegen)
 from __future__ import annotations
@@ -37,7 +38,6 @@ HTTP_T = httpx.Timeout(8.0, connect=2.0, read=6.0)
 _INV_CACHE: Dict[tuple[int, int], Dict[str, Any]] = {}
 _INV_CACHE_TTL = int(os.environ.get("COLLECTIBLES_INV_TTL", "300"))
 
-
 def _coerce_int(v) -> int:
     try:
         return int(v)
@@ -46,7 +46,6 @@ def _coerce_int(v) -> int:
             return int(float(v))
         except Exception:
             return 0
-
 
 def _is_collectible(detail: dict) -> bool:
     """
@@ -64,7 +63,6 @@ def _is_collectible(detail: dict) -> bool:
     except Exception:
         return False
 
-
 async def _catalog_details(asset_ids: List[int], cookie: Optional[str]) -> List[dict]:
     # Prefer your client's batch details when available
     t0 = time.time()
@@ -73,11 +71,11 @@ async def _catalog_details(asset_ids: List[int], cookie: Optional[str]) -> List[
         items = [{"itemType": "Asset", "id": int(a)} for a in asset_ids]
         out: List[dict] = []
         for i in range(0, len(items), 100):
-            chunk = items[i:i + 100]
+            chunk = items[i:i+100]
             rows = await details_batch(chunk, cookie, retries=2)
             if rows:
                 out.extend(rows)
-        log.debug(f"[details] ok items={len(asset_ids)} rows={len(out)} dt={time.time() - t0:.3f}s")
+        log.debug(f"[details] ok items={len(asset_ids)} rows={len(out)} dt={time.time()-t0:.3f}s")
         return out
     except Exception as e:
         log.warning(f"[details] client-batch failed: {e}")
@@ -86,13 +84,12 @@ async def _catalog_details(asset_ids: List[int], cookie: Optional[str]) -> List[
     try:
         if imggen and hasattr(imggen, "fetch_catalog_details"):
             out = await imggen.fetch_catalog_details(asset_ids, cookie=cookie)
-            log.debug(f"[details] imagegen rows={len(out)} dt={time.time() - t0:.3f}s")
+            log.debug(f"[details] imagegen rows={len(out)} dt={time.time()-t0:.3f}s")
             return out
     except Exception as e:
         log.warning(f"[details] imagegen failed: {e}")
-    log.debug(f"[details] empty dt={time.time() - t0:.3f}s")
+    log.debug(f"[details] empty dt={time.time()-t0:.3f}s")
     return []
-
 
 async def _resale_data(asset_id: int, cookie: Optional[str]) -> dict:
     url = f"https://economy.roblox.com/v1/assets/{int(asset_id)}/resale-data"
@@ -107,13 +104,11 @@ async def _resale_data(asset_id: int, cookie: Optional[str]) -> dict:
         log.debug(f"[resale] {asset_id} fail: {e}")
         return {}
 
-
 def _price_from_detail_or_img(detail: dict) -> int:
     pi = detail.get("priceInfo")
     if isinstance(pi, dict):
         return _coerce_int(pi.get("value"))
     return max(_coerce_int(detail.get("lowestPrice")), _coerce_int(detail.get("price")))
-
 
 # ============= Public API =============
 
@@ -190,7 +185,6 @@ async def inventory_collectibles(uid: int, cookie: Optional[str]) -> Dict[str, A
     _INV_CACHE[key] = {**res, "ts": time.time()}
     return res
 
-
 async def collectibles_with_rap(uid: int, cookie: Optional[str]) -> Dict[str, Any]:
     """
     Returns {"items":[{assetId,name,rap,thumbnailUrl}], "total":int, "image_path":str|None}
@@ -202,7 +196,6 @@ async def collectibles_with_rap(uid: int, cookie: Optional[str]) -> Dict[str, An
 
     # tune concurrency
     sem = asyncio.Semaphore(12)
-
     async def _one(it):
         aid = it["assetId"]
         async with sem:
@@ -218,7 +211,7 @@ async def collectibles_with_rap(uid: int, cookie: Optional[str]) -> Dict[str, An
     out = await asyncio.gather(*[_one(x) for x in items])
     for x in out:
         total += _coerce_int(x["rap"])
-    log.debug(f"[rap] items={len(out)} total={total} dt={time.time() - t0:.3f}s")
+    log.debug(f"[rap] items={len(out)} total={total} dt={time.time()-t0:.3f}s")
 
     image_path = None
     if imggen and hasattr(imggen, "generate_category_sheets") and out:
@@ -235,7 +228,6 @@ async def collectibles_with_rap(uid: int, cookie: Optional[str]) -> Dict[str, An
             image_path = None
 
     return {"items": out, "total": total, "image_path": image_path}
-
 
 async def offsale_collectibles(uid: int, cookie: Optional[str]) -> Dict[str, Any]:
     """
@@ -259,7 +251,7 @@ async def offsale_collectibles(uid: int, cookie: Optional[str]) -> Dict[str, Any
         })
 
     rows.sort(key=lambda x: _coerce_int(x["rap"]), reverse=True)
-    log.debug(f"[offsale] items={len(rows)} dt={time.time() - t0:.3f}s")
+    log.debug(f"[offsale] items={len(rows)} dt={time.time()-t0:.3f}s")
 
     image_path = None
     if imggen and hasattr(imggen, "generate_category_sheets") and rows:

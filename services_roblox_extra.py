@@ -265,17 +265,15 @@ RESALE_URL = "https://economy.roblox.com/v1/assets/{aid}/resale-data"
 _DEFAULT_TYPES = [2,3,8,11,12,17,18,19,24,27,41,42,43,44,45,46,47,48,49,50,51,61]
 
 def _is_collectible_detail(d: Dict[str, Any]) -> bool:
-    """Treat as collectible ONLY when itemRestrictions explicitly contain 'Collectible'."""
     if not isinstance(d, dict):
         return False
+    # New-style Collectible has "collectibleItemId"
+    if d.get("collectibleItemId"):
+        return True
+    # Old-style limiteds have itemRestrictions array
     ir = d.get("itemRestrictions") or []
-    if not isinstance(ir, list):
-        return False
-    try:
-        irs = [str(x).strip().lower() for x in ir]
-    except Exception:
-        return False
-    return any(x == "collectible" for x in irs)
+    irs = [str(x).lower() for x in ir] if isinstance(ir, list) else []
+    return ("limited" in irs) or ("limitedunique" in irs) or ("collectible" in irs)
 
 async def _http_get_json(url: str, *, params: Dict[str, Any] | None = None, headers: Dict[str,str] | None = None, timeout: float = 8.0):
     proxy = PROXY_POOL.any() if PROXY_POOL else None

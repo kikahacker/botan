@@ -778,19 +778,15 @@ def kb_navigation(roblox_id: int) -> InlineKeyboardMarkup:
     ])
 
 def kb_public_navigation(roblox_id: int) -> InlineKeyboardMarkup:
-    """
-    Навигация в ПАБЛИК-чеке (без привязанной куки к этому Telegram-юзеру).
-    Колбэки идут с префиксом pub_*, чтобы не конфликтовать с приватными.
-    """
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
                 text=_lbl('nav.rap', '📈 RAP'),
-                callback_data=f'pub_rap:{roblox_id}:0'
+                callback_data=f'pub_rap:{roblox_id}:'
             ),
             InlineKeyboardButton(
                 text=_lbl('nav.offsale', '🛑 Off-sale'),
-                callback_data=f'pub_offsale:{roblox_id}:0'
+                callback_data=f'pub_offsale:{roblox_id}:cal'
             )
         ],
         [

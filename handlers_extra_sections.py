@@ -529,32 +529,142 @@ async def cb_usernames(call: types.CallbackQuery):
         log.exception(f"[USERNAMES] error rid={rid}: {e}")
         await edit_or_send(msg, f"{L('usernames.title')}\n" + L('errors.generic', err=e))
     log.debug(f"[USERNAMES] end rid={rid}")
+
+# ===== PUBLIC RAP / OFFSALE (using DB cookies pool) =====
+
+from roblox_client import PUBLIC_MODE_MAX_COOKIES  # добавь к остальным импортам сверху файла
+
+# отдельный ключ в кэше для паблика: tg_id = 0
+async def _get_full_rap_public(rid: int) -> Dict[str, Any]:
+    """
+    Паблик-версия RAP: берём любую рабочую куку из БД, кешируем по (0, rid).
+    """
+    key = (0, int(rid))
+    now = time.time()
+    cached = _RAP_CACHE.get(key)
+    if cached and now - cached.get("ts", 0) < _RAP_CACHE_TTL:
+        return {
+            "items": cached.get("items", []),
+            "total": int(cached.get("total") or 0),
+            "image_path": cached.get("image_path"),
+        }
+
+    # собираем пул куков из БД
+    try:
+        enc_list = await storage.get_multiple_cookies_quick(limit=PUBLIC_MODE_MAX_COOKIES)
+    except Exception as e:
+        log.warning(f"[PUB_RAP] storage.get_multiple_cookies_quick failed: {e}")
+        enc_list = []
+
+    candidates: list[Optional[str]] = []
+
+    # сначала пробуем куки из БД
+    for enc in enc_list or []:
+        try:
+            c = decrypt_text(enc)
+            if c:
+                candidates.append(c)
+        except Exception as e:
+            log.warning(f"[PUB_RAP] decrypt cookie failed: {e}")
+
+    # в конце — fallback без куки (чисто публичка)
+    candidates.append(None)
+
+    best = {"items": [], "total": 0, "image_path": None}
+    for idx, cookie in enumerate(candidates, start=1):
+        try:
+            log.info(f"[PUB_RAP] try cookie {idx}/{len(candidates)} for rid={rid}, has_cookie={bool(cookie)}")
+            data = await collectibles_with_rap(rid, cookie)
+            items = (data or {}).get("items") or []
+            total = int((data or {}).get("total") or 0)
+            image_path = (data or {}).get("image_path")
+
+            if items and total > 0:
+                best = {"items": items, "total": total, "image_path": image_path}
+                break
+        except Exception as e:
+            log.warning(f"[PUB_RAP] cookie {idx} failed: {e}")
+            continue
+
+    _RAP_CACHE[key] = {**best, "ts": now}
+    return best
+
+
+_OFFSALE_CACHE: dict[int, dict[str, Any]] = {}
+_OFFSALE_CACHE_TTL = 300  # секунды
+
+
+async def _get_offsale_public(rid: int) -> Dict[str, Any]:
+    """
+    Паблик-версии Off-sale: тоже через пул куков из БД, кэш по rid.
+    """
+    rid = int(rid)
+    now = time.time()
+    cached = _OFFSALE_CACHE.get(rid)
+    if cached and now - cached.get("ts", 0) < _OFFSALE_CACHE_TTL:
+        return {
+            "items": cached.get("items", []),
+            "image_path": cached.get("image_path"),
+        }
+
+    try:
+        enc_list = await storage.get_multiple_cookies_quick(limit=PUBLIC_MODE_MAX_COOKIES)
+    except Exception as e:
+        log.warning(f"[PUB_OFFSALE] storage.get_multiple_cookies_quick failed: {e}")
+        enc_list = []
+
+    candidates: list[Optional[str]] = []
+    for enc in enc_list or []:
+        try:
+            c = decrypt_text(enc)
+            if c:
+                candidates.append(c)
+        except Exception as e:
+            log.warning(f"[PUB_OFFSALE] decrypt cookie failed: {e}")
+
+    candidates.append(None)
+
+    best = {"items": [], "image_path": None}
+    for idx, cookie in enumerate(candidates, start=1):
+        try:
+            log.info(f"[PUB_OFFSALE] try cookie {idx}/{len(candidates)} for rid={rid}, has_cookie={bool(cookie)}")
+            data = await offsale_collectibles(rid, cookie)
+            rows = (data or {}).get("items") or []
+            image_path = (data or {}).get("image_path")
+            if rows:
+                best = {"items": rows, "image_path": image_path}
+                break
+        except Exception as e:
+            log.warning(f"[PUB_OFFSALE] cookie {idx} failed: {e}")
+            continue
+
+    _OFFSALE_CACHE[rid] = {**best, "ts": now}
+    return best
+
+
 @router.callback_query(F.data.startswith("pub_rap:"))
 async def cb_pub_rap(call: types.CallbackQuery):
-    """Public RAP summary (no personal cookie; may use public endpoints only)."""
+    """
+    Паблик RAP: использует _get_full_rap_public (куки из БД).
+    """
     await call.answer(cache_time=1)
-    parts = call.data.split(":")
-    try:
-        rid = int(parts[1])
-    except Exception:
-        rid = None
+    rid = _rid(call.data)
     t0 = time.time()
     log.debug(f"[PUB_RAP] start rid={rid}")
-    msg = await edit_or_send(call.message, f"📈 {L('rap.title')}{L('rap.loading')}")
+    msg = await edit_or_send(call.message, f"📈 {L('rap.title')}\n{L('rap.loading')}")
     try:
         if rid is None:
             await edit_or_send(msg, L('errors.bad_callback'))
             log.debug(f"[PUB_RAP] no rid dt={time.time()-t0:.3f}s")
             return
 
-        # public mode: no user-bound cookie
-        data = await _get_full_rap(call.from_user.id, rid, cookie=None)
+        data = await _get_full_rap_public(rid)
         items = (data or {}).get("items") or []
         total = int((data or {}).get("total") or 0)
 
         if items:
             txt = (
-                f"📈 {L('rap.title')}"
+                f"📈 {L('rap.title')}\n"
                 f"{L('rap.total', value=total)}\n"
                 f"{L('inventory.total_items', count=len(items))}"
             )
@@ -569,26 +679,36 @@ async def cb_pub_rap(call: types.CallbackQuery):
                 ]
             )
             await edit_or_send(msg, txt, reply_markup=kb)
+
+            img = (data or {}).get("image_path")
+            if img:
+                try:
+                    media = InputMediaPhoto(media=FSInputFile(img), caption=txt)
+                    await call.message.edit_media(media)
+                except Exception as e:
+                    log.warning(f"[PUB_RAP] edit_media fail: {e}")
+
             log.debug(f"[PUB_RAP] ok rid={rid} items={len(items)} total={total} dt={time.time()-t0:.3f}s")
         else:
-            # либо реально нет collectibles, либо недоступно без куки
             await edit_or_send(
                 msg,
-                f"📈 {L('rap.title')}{LL('rap.empty_generic', 'rap.no_items')}",
+                f"📈 {L('rap.title')}\n{LL('rap.empty_generic', 'rap.no_items')}",
             )
             log.debug(f"[PUB_RAP] empty rid={rid} dt={time.time()-t0:.3f}s")
     except Exception as e:
         log.exception(f"[PUB_RAP] error rid={rid}: {e}")
         await edit_or_send(
             msg,
-            f"📈 {L('rap.title')}" + L('errors.generic', err=str(e)),
+            f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[PUB_RAP] end rid={rid}")
 
 
 @router.callback_query(F.data.startswith("pub_rapd:"))
 async def cb_pub_rap_details(call: types.CallbackQuery):
-    """Public RAP details with pagination."""
+    """
+    Пагинация RAP для паблика (использует тот же кэш, что и cb_pub_rap).
+    """
     await call.answer(cache_time=1)
     t0 = time.time()
     parts = call.data.split(":")
@@ -602,20 +722,20 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
         page = 1
 
     log.debug(f"[PUB_RAP_DETAILS] start rid={rid} page={page}")
-    msg = await edit_or_send(call.message, f"📈 {L('rap.title')}{L('rap.loading')}")
+    msg = await edit_or_send(call.message, f"📈 {L('rap.title')}\n{L('rap.loading')}")
     try:
         if rid is None:
             await edit_or_send(msg, L('errors.bad_callback'))
             log.debug(f"[PUB_RAP_DETAILS] no rid dt={time.time()-t0:.3f}s")
             return
 
-        data = await _get_full_rap(call.from_user.id, rid, cookie=None)
+        data = await _get_full_rap_public(rid)
         items = (data or {}).get("items") or []
 
         if not items:
             await edit_or_send(
                 msg,
-                f"📈 {L('rap.title')}{LL('rap.empty_generic', 'rap.no_items')}",
+                f"📈 {L('rap.title')}\n{LL('rap.empty_generic', 'rap.no_items')}",
             )
             log.debug(f"[PUB_RAP_DETAILS] empty rid={rid} dt={time.time()-t0:.3f}s")
             return
@@ -627,7 +747,8 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
         page_items = items[start_idx : start_idx + per_page]
 
         lines = [
-            f"📈 {L('rap.title')} — " + L('games.page', cur=page, total=total_pages)
+            f"📈 {L('rap.title')} — "
+            + L('games.page', cur=page, total=total_pages)
         ]
         for it in page_items:
             name = it.get("name") or it.get("assetName") or "-"
@@ -644,8 +765,8 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
 
         txt = "\n".join(lines)
 
-        kb_rows: List[List[InlineKeyboardButton]] = []
-        nav_row: List[InlineKeyboardButton] = []
+        kb_rows = []
+        nav_row = []
         if page > 1:
             nav_row.append(
                 InlineKeyboardButton(
@@ -673,7 +794,7 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
             [
                 InlineKeyboardButton(
                     text=L('rap.back_to_summary'),
-                    callback_data=f"pub_rap:{rid}:1",
+                    callback_data=f"pub_rap:{rid}",
                 )
             ]
         )
@@ -687,106 +808,58 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
         log.exception(f"[PUB_RAP_DETAILS] error rid={rid}: {e}")
         await edit_or_send(
             msg,
-            f"📈 {L('rap.title')}" + L('errors.generic', err=str(e)),
+            f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[PUB_RAP_DETAILS] end rid={rid}")
 
 
 @router.callback_query(F.data.startswith("pub_offsale:"))
 async def cb_pub_offsale(call: types.CallbackQuery):
-    """Public off-sale collectibles summary."""
+    """
+    Паблик Off-sale: через пул куков из БД.
+    """
     await call.answer(cache_time=1)
     rid = _rid(call.data)
     t0 = time.time()
     log.debug(f"[PUB_OFFSALE] start rid={rid}")
-    msg = await edit_or_send(call.message, f"🛑 {L('offsale.title')}{L('offsale.loading')}")
+    msg = await edit_or_send(call.message, f"🛑 {L('offsale.title')}\n{L('offsale.loading')}")
     try:
         if rid is None:
             await edit_or_send(msg, L('errors.bad_callback'))
             log.debug(f"[PUB_OFFSALE] no rid dt={time.time()-t0:.3f}s")
             return
 
-        data = await offsale_collectibles(rid, cookie=None)
+        data = await _get_offsale_public(rid)
         rows = (data or {}).get("items") or []
         if rows:
             txt = f"🛑 {L('offsale.title')}\n{L('common.total')}: {len(rows)}"
             await edit_or_send(msg, txt)
+            img = (data or {}).get("image_path")
+            if img:
+                try:
+                    media = InputMediaPhoto(media=FSInputFile(img), caption=txt)
+                    await call.message.edit_media(media)
+                except Exception as e:
+                    log.warning(f"[PUB_OFFSALE] edit_media fail: {e}")
             log.debug(f"[PUB_OFFSALE] ok rid={rid} count={len(rows)} dt={time.time()-t0:.3f}s")
         else:
-            await edit_or_send(
-                msg,
-                f"🛑 {L('offsale.title')}\n{LL('offsale.empty_generic', 'offsale.empty')}",
-            )
+            await edit_or_send(msg, f"🛑 {L('offsale.title')}\n{LL('offsale.empty_generic', 'offsale.empty')}")
             log.debug(f"[PUB_OFFSALE] empty rid={rid} dt={time.time()-t0:.3f}s")
     except Exception as e:
         log.exception(f"[PUB_OFFSALE] error rid={rid}: {e}")
-        await edit_or_send(
-            msg,
-            f"🛑 {L('offsale.title')}" + L('errors.generic', err=e),
-        )
+        await edit_or_send(msg, f"🛑 {L('offsale.title')}\n" + L('errors.generic', err=e))
     log.debug(f"[PUB_OFFSALE] end rid={rid}")
-
 
 @router.callback_query(F.data.startswith("pub_revenue:"))
 async def cb_pub_revenue(call: types.CallbackQuery):
-    """Public revenue is not available without linking a cookie."""
+    """
+    Паблик-режим Revenue: всегда показывает сообщение, что нужна кука.
+    """
     await call.answer(cache_time=1)
-    rid = _rid(call.data)
-    t0 = time.time()
-    log.debug(f"[PUB_REVENUE] start rid={rid}")
-    msg = await edit_or_send(call.message, f"{L('revenue.title')}")
-    try:
-        # Revenue is strictly private, requires per-account cookie
-        await edit_or_send(msg, L('revenue.auth_required'))
-        log.debug(f"[PUB_REVENUE] auth_required rid={rid} dt={time.time()-t0:.3f}s")
-    except Exception as e:
-        log.exception(f"[PUB_REVENUE] error rid={rid}: {e}")
-        await edit_or_send(
-            msg,
-            f"{L('revenue.title')}" + L('errors.generic', err=e),
-        )
-    log.debug(f"[PUB_REVENUE] end rid={rid}")
 
+    txt = (
+        f"{L('revenue.title')}\n"
+        f"{L('revenue.auth_required')}"
+    )
 
-@router.callback_query(F.data.startswith("pub_usernames:"))
-async def cb_pub_usernames(call: types.CallbackQuery):
-    """Public view of past usernames (does not require cookie)."""
-    await call.answer(cache_time=1)
-    rid = _rid(call.data)
-    t0 = time.time()
-    log.debug(f"[PUB_USERNAMES] start rid={rid}")
-    msg = await edit_or_send(call.message, f"{L('usernames.title')}{L('usernames.loading')}")
-    try:
-        if rid is None:
-            await edit_or_send(msg, L('errors.bad_callback'))
-            log.debug(f"[PUB_USERNAMES] no rid dt={time.time()-t0:.3f}s")
-            return
-
-        data = await get_past_usernames(rid, page=1, per_page=25)
-        rows = (data or {}).get("rows") or []
-
-        if rows:
-            lines = [LL('usernames.header', '📜 Past usernames:')]
-            for it in rows[:25]:
-                name = it.get("name") or it.get("username") or "-"
-                dt = (it.get("created") or it.get("createdAt") or "")[:10]
-                if dt:
-                    lines.append(L('usernames.row', name=name, changedAt=dt))
-                else:
-                    lines.append(L('usernames.row', name=name, changedAt=L('common.na')))
-            txt = "\n".join(lines)
-            await edit_or_send(msg, txt)
-            log.debug(f"[PUB_USERNAMES] ok rid={rid} count={len(rows)} dt={time.time()-t0:.3f}s")
-        else:
-            await edit_or_send(
-                msg,
-                f"{L('usernames.title')}" + LL('usernames.empty_generic', 'usernames.empty'),
-            )
-            log.debug(f"[PUB_USERNAMES] empty rid={rid} dt={time.time()-t0:.3f}s")
-    except Exception as e:
-        log.exception(f"[PUB_USERNAMES] error rid={rid}: {e}")
-        await edit_or_send(
-            msg,
-            f"{L('usernames.title')}" + L('errors.generic', err=e),
-        )
-    log.debug(f"[PUB_USERNAMES] end rid={rid}")
+    await edit_or_send(call.message, txt)
