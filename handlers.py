@@ -4120,7 +4120,7 @@ async def cmd_cookie_txt(message: types.Message):
 _user_msg_times = {}
 
 
-def _check_antiflood(user_id: int, limit: int = 5, per_seconds: int = 10) -> bool:
+def _check_antiflood(user_id: int, limit: int = 3, per_seconds: int = 10) -> bool:
     """Вернёт True, если пользователь шлёт слишком много сообщений за per_seconds секунд.
 
     limit=5, per_seconds=10 означает: больше 5 сообщений за 10 секунд — считаем спамом.
