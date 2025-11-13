@@ -16,14 +16,14 @@
     "by_cat": "📂 {cat}\nÖsszesen: {count} db · {sum} R$",
     "full_title": "Teljes leltár",
     "selected": {
-      "summary": "💰 Kiválasztott összesen: {total} R$\n📦 Tárgyak: {count}"
+      "summary": "💰 Kiválasztva összesen: {total} R$\n📦 Tárgyak: {count}"
     }
   },
   "app": {
     "name": "A Botod"
   },
   "lang": {
-    "choose": "Válassz nyelvet:",
+    "choose": "Válaszd ki a nyelved:",
     "saved": "✅ Nyelv beállítva: {lang_name}"
   },
   "btn": {
@@ -56,8 +56,8 @@
   },
   "kb": {
     "inventory": "📦 Leltár",
-    "inventory_select": "🧩 Leltár (kategóriák kiválasztása)",
-    "accounts": "📋 Fióklista"
+    "inventory_select": "🧩 Leltár (válassz kategóriákat)",
+    "accounts": "📋 Fiók lista"
   },
   "profile": {
     "title": "Profil",
@@ -71,24 +71,24 @@
     "favorites_label": "Kedvencek:",
     "visits": "Látogatások: {n}",
     "visits_label": "Látogatások:",
-    "spent_total": "💸 Összesen elköltve: {value} R$",
-    "spent_total_label": "💸 Összesen elköltve:",
+    "spent_total": "💸 Összesen elkölötte: {value} R$",
+    "spent_total_label": "💸 Összesen elkölötte:",
     "inventory_value": "💰 Leltár értéke: {value} R$",
     "inventory_value_label": "💰 Leltár értéke:",
     "inventory_private": "🔒 A leltár privát",
-    "card": "📘 Fiók információk\n👤 Név: {uname}\n🏷️ Megjelenített név: {display_name}\n🆔 ID: {rid}\n📅 Létrehozva: {created}\n🌍 Ország: {country}\n🧬 Nem: {gender}\n🎂 Születésnap: {birthday}\n📏 Kor: {age}\n✉️ Email: {email} (Megerősítve: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Összesen elköltve: {spent}\n🟢 Állapot: {status}"
+    "card": "📘 Fiók információ\n👤 Név: {uname}\n🏷️ Megjelenített név: {display_name}\n🆔 ID: {rid}\n📅 Létrehozva: {created}\n🌍 Ország: {country}\n🧬 Nem: {gender}\n🎂 Születésnap: {birthday}\n📏 Kor: {age}\n✉️ Email: {email} (Megerősítve: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Összesen elkölötte: {spent}\n🟢 Állapot: {status}"
   },
   "msg": {
-    "auto_a6dc67d175": "❌ Hiba az archivum előkészítésekor.",
+    "auto_a6dc67d175": "❌ Hiba az archivum előkészítése közben.",
     "auto_068e8874d3": "❌ A nyelv nem elérhető.",
     "auto_1dd76facf4": "⏳ Leltár frissítése…",
-    "auto_2ea715f34f": "🔐 Cookie a {rid} felhasználó számára:\n<code>{cookie}</code>",
+    "auto_2ea715f34f": "🔐 Cookie a {rid} felhasználóhoz:\n<code>{cookie}</code>",
     "auto_349c12ce4e": "📝 Használat: /get_cookie &lt;roblox_id&gt;",
     "auto_5b9ec32c3a": "⏳ Leltár betöltése…",
     "auto_742e941465": "❌ Érvénytelen Roblox ID formátum.",
     "auto_7581c6cb74": "⏳ Kategória betöltése…",
     "auto_7d8934a45d": "⏳ Leltár betöltése…",
-    "auto_92248ed4b0": "❌ Nincs pillanatkép ehhez a fiókhoz.",
+    "auto_92248ed4b0": "❌ Nem található pillanatkép ehhez a fiókhoz.",
     "auto_9b3b905f3b": "📝 Használat: /user_snapshot &lt;roblox_id&gt;",
     "auto_b95899d0eb": "⚠️ A cookie készlet jelenleg nem elérhető.",
     "auto_bfed05f982": "⏳ Teljes leltár generálása…",
@@ -96,9 +96,9 @@
     "auto_d43fb921bf": "🫙 Nincsenek árazott tárgyak a leltárban.",
     "auto_d84b7d087c": "🫙 A leltár üres.",
     "auto_e030221412": "⏳ Leltár összeállítása…",
-    "auto_e4d1ae989d": "❌ Nincs cookie ehhez a fiókhoz.",
+    "auto_e4d1ae989d": "❌ Nem található cookie ehhez a fiókhoz.",
     "auto_ec50e4a25a": "⏳ Kategória frissítése…",
-    "auto_f3d5341cc3": "❌ Nem sikerült összeállítani a leltárt. Próbáld később.",
+    "auto_f3d5341cc3": "❌ Sikertelen leltár összeállítás. Próbáld később.",
     "auto_f707b4e058": "🫙 Nincsenek tárgyak a kiválasztott kategóriákban.",
     "delete_pick_account": "Válassz egy fiókot a törléshez:",
     "settings": "⚙️ Beállítások",
@@ -106,18 +106,18 @@
     "no_valid_cookies": "❌ Minden cookie érvénytelen.",
     "file_not_txt": "⚠️ Ez nem .txt fájl. Küldj egy cookie fájlt .txt formátumban",
     "account_deleted_error": "❌ Hiba a fiók törlésekor.",
-    "profile_load_error": "❌ Nem sikerült betölteni a profilt.",
+    "profile_load_error": "❌ Sikertelen profil betöltés.",
     "accounts_load_error": "❌ Hiba a fiókok betöltésekor.",
     "delete_accounts_error": "❌ Hiba a törlendő fiókok betöltésekor.",
     "cookie_script_error": "❌ Cookie szkript zip hiba.",
     "menu_accounts_error": "❌ Hiba a fiókok betöltésekor.",
-    "no_cookie_for_account": "⚠️ Ehhez a fiókhoz nincs cookie.",
-    "profile_load_failed": "❌ Nem sikerült betölteni a profilt.",
+    "no_cookie_for_account": "⚠️ Ehhez a fiókhoz nem található cookie.",
+    "profile_load_failed": "❌ Sikertelen profil betöltés.",
     "loading_profile": "Profil betöltése…",
     "file_received": "📥 Fájl megérkezett, ellenőrzés...",
     "cookie_validation_error": "❌ Cookie érvényesítési hiba.",
-    "cookie_dead": "🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue.",
-    "cookie_dead_actions": "A cookie érvénytelen vagy lejárt.\nÚj cookie-t kapcsolhatsz, vagy eltávolíthatod ezt a fiókot a listádról.\nA pillanatképek (előzmények) megmaradnak."
+    "cookie_dead": "🔐 A fiók cookie-ja érvénytelen vagy lejárt. Kérjük, tölts fel egy friss cookie-t (.ROBLOSECURITY) a folytatáshoz.",
+    "cookie_dead_actions": "A cookie érvénytelen vagy lejárt.\nÚj cookie-t adhatsz hozzá vagy eltávolíthatod ezt a fiókot a listádról.\nA pillanatképek (előzmények) megmaradnak."
   },
   "buttons": {
     "all_items": "📦 Összes tárgy",
@@ -129,8 +129,8 @@
     "next": "✅ Tovább",
     "refresh": "🔄 Frissítés",
     "refresh_category": "🔄 Kategória frissítése",
-    "relink_cookie": "🔄 Cookie újralinkelése",
-    "delete_keep": "🗑️ Fiók eltávolítása (előzmények maradnak)"
+    "relink_cookie": "🔄 Cookie újracsatolása",
+    "delete_keep": "🗑️ Fiók eltávolítása (történet megtartása)"
   },
   "caption": {
     "auto_76b7d0778c": "Teljes leltár",
@@ -158,29 +158,29 @@
   },
   "cookie": {
     "instructions": "Használd az alábbi készletet a .ROBLOSECURITY cookie kinyeréséhez Chromium-ban és töltsd fel ide .txt-ként.",
-    "kit_caption": "Készlet cookie kinyeréséhez (.ROBLOSECURITY). Futtasd a batnik.bat-ot, lépj be, nyomj Entert, majd küldd el a cookies.txt-t ide.",
-    "instructions_short": "1) Kicsomagolás\n2) Batnik.bat futtatása\n3) Bejelentkezés a Roblox-ba Chromium-ban\n4) Enter megnyomása\n5) Cookies.txt elküldése"
+    "kit_caption": "Készlet cookie kinyeréséhez (.ROBLOSECURITY). Futtasd a batnik.bat-ot, jelentkezz be, nyomj Enter-t, majd küldd a cookies.txt-t ide.",
+    "instructions_short": "1) Kicsomagolás\n2) batnik.bat futtatása\n3) Bejelentkezés a Roblox-ba Chromium-ban\n4) Enter megnyomása\n5) cookies.txt elküldése"
   },
   "err": {
-    "download_file": "❌ Nem sikerült letölteni a fájlt: {error}",
-    "read_file": "❌ Nem sikerült olvasni a fájlt: {error}",
-    "profile_load": "❌ Nem sikerült betölteni a profilt."
+    "download_file": "❌ Sikertelen fájl letöltés: {error}",
+    "read_file": "❌ Sikertelen fájl olvasás: {error}",
+    "profile_load": "❌ Sikertelen profil betöltés."
   },
   "messages": {
     "choose_categories": "Válassz kategóriákat (bekapcsolás/kikapcsolás):",
-    "choose_language": "Válassz nyelvet:",
+    "choose_language": "Válaszd ki a nyelved:",
     "welcome": "👋 Üdvözöl a Raika bot!\n\n📰 Hírcsatornánk - t.me/RaikaChecker\n\nA bot használatával automatikusan elfogadod a <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Szolgáltatási Feltételeket</a>"
   },
   "nav": {
     "categories": "📂 Kategóriák",
-    "inventory_categories": "🧩 Leltár (kategóriák kiválasztása)",
+    "inventory_categories": "🧩 Leltár (válassz kategóriákat)",
     "to_accounts": "📋 Vissza a fióklistához",
     "to_home": "🔙 Vissza",
     "spending": "💸 Kiadások",
     "favorites": "⭐ Kedvencek",
     "rap": "📈 RAP",
-    "offsale": "🛑 Nincs forgalomban",
-    "revenue": "💸 Bevételek",
+    "offsale": "🛑 Nem eladó",
+    "revenue": "💸 Bevétel",
     "usernames": "📝 Korábbi felhasználónevek"
   },
   "status": {
@@ -199,13 +199,13 @@
     "accessories": "Kiegészítők",
     "animations/emotes": "Animációk / Emotikonok",
     "audio": "Hang",
-    "bundles/packages": "Csomagok / Csomagolások",
-    "classic_clothes": "Klasszikus ruházat",
+    "bundles/packages": "Csomagok",
+    "classic_clothes": "Klasszikus ruhák",
     "emotes": "Emotikonok",
     "faces": "Arcok",
     "gear": "Felszerelés",
     "hair": "Haj",
-    "hats": "Sapkák",
+    "hats": "Kalapok",
     "heads": "Fejek"
   },
   "public": {
@@ -214,32 +214,32 @@
     "bad_id": "⚠️ Érvénytelen ID. Küldj egy számot (pl. 123456789).",
     "not_found": "❌ Felhasználó nem található vagy nem elérhető.",
     "inventory_private": "⚠️ Ennek a felhasználónak a leltára privát a Roblox-on.",
-    "spending_login_required": "🔐 A kiadások csak akkor érhetők el, ha ehhez a fiókhoz el van mentve a cookie."
+    "spending_login_required": "🔐 A kiadások csak akkor elérhetőek, ha cookie van mentve ehhez a fiókhoz."
   },
   "settings": {
     "title": "⚙️ Beállítások"
   },
   "admin": {
     "stats": "📊 <b>Bot Statisztikák</b>\n👥 Összes felhasználó: {total_users}\n🆕 Újak ma: {new_today}\n📈 Aktívak ma: {active_today}\n🔗 Kapcsolt fiókkal: {users_with_accounts}\n🔎 Összes ellenőrzés: {checks_total}\n📅 Ellenőrzések ma: {checks_today}",
-    "user_snapshot": "🧾 <b>Fiók Pillanatkép</b>\n🆔 Roblox ID: {rid}\n💰 Leltár: {inventory_val} R$\n💸 Összesen elköltve: {total_spent} R$\n🕒 Frissítve: {updated_at}"
+    "user_snapshot": "🧾 <b>Fiók Pillanatkép</b>\n🆔 Roblox ID: {rid}\n💰 Leltár: {inventory_val} R$\n💸 Összesen elkölötte: {total_spent} R$\n🕒 Frissítve: {updated_at}"
   },
   "inventory_view": {
     "public_title": "📦 Nyilvános leltár\nÖsszesen: {total} db · {total_sum} R$",
     "category_title": "📂 {category}\nÖsszesen: {count} db · {total_sum} R$",
     "all_categories": "📦 Minden kategória együtt\nÖsszesen: {total} db · {total_sum} R$",
     "grand_total": "💰 Leltár összértéke: {total_sum} R$\n📦 Összes árazott tárgy: {total_count}",
-    "render_too_large": "📦 Összes tárgy: a megjelenítés túl nagy. Csökkentsd a méretet vagy szűkítsd a kiválasztást.",
+    "render_too_large": "📦 Összes tárgy: render túl nagy. Csökkentsd a méretet vagy szűkítsd a kiválasztást.",
     "page": "Oldal {current}/{total}"
   },
   "spending": {
-    "title": "💸 Vásárlási előzmények (összesen: {total})",
-    "loading": "⏳ Vásárlási előzmények betöltése…",
+    "title": "💸 Költekezési előzmények (összesen: {total})",
+    "loading": "⏳ Költekezési előzmények betöltése…",
     "empty": "🫙 Nem találhatók vásárlások.",
-    "header": "💸 Kiadások — összesen: {sum} R$"
+    "header": "💸 Költekezés — összesen: {sum} R$"
   },
   "games": {
-    "fav_title": "Kedvenc játékok",
-    "fav_summary": "• Kedvencek: {count}",
+    "fav_title": "⭐ Kedvencek",
+    "fav_summary": "⭐ Kedvencek: {count}",
     "empty_favorites": "Nincsenek kedvencek.",
     "page": "Oldal {cur}/{total}",
     "prev": "◀ Előző",
@@ -247,34 +247,53 @@
     "loading": "⏳ Kedvencek betöltése…"
   },
   "rap": {
-    "title": "📈 RAP",
+    "title": "RAP",
     "total": "Összes RAP: {value} R$",
     "item_row": "{name} — {rap} R$",
-    "lowest": "Legalacsonyabb: {value} R$",
-    "no_items": "Nem találhatók RAP‑pal rendelkező gyűjthető tárgyak.",
-    "refresh": "🔄 Frissítés"
+    "lowest": "Legkisebb: {value} R$",
+    "no_items": "Nem találhatók gyűjthető tárgyak RAP-pal.",
+    "refresh": "🔄 Frissítés",
+    "loading": "⏳ Betöltés…",
+    "empty_private": "Nem találhatók gyűjthető tárgyak. Ha a leltár privát, nyisd meg vagy használj érvényes cookie-t ehhez a fiókhoz.",
+    "empty_generic": "Úgy tűnik, nem találhatók gyűjthető tárgyak. Próbáld később.",
+    "details": "📄 Részletek",
+    "back_to_summary": "⬅ Vissza az összefoglalóhoz",
+    "item_row_with_id": "{name} (ID {id}) — {rap} R$"
   },
   "offsale": {
-    "title": "🛑 Nincs forgalomban",
+    "title": "Nem eladó",
     "mode": "Mód: {mode}",
     "mode_collectibles": "Gyűjthető tárgyak",
-    "empty": "Nincs forgalomban lévő gyűjthető tárgy.",
-    "row_collectible": "{name} — RAP {rap} R$ (nincs eladó)"
+    "empty": "Nem találhatók nem eladó gyűjthető tárgyak.",
+    "row_collectible": "{name} — RAP {rap} R$ (nincsenek eladók)",
+    "loading": "⏳ Betöltés…",
+    "empty_private": "Nincsenek nem eladó gyűjthető tárgyak. Ha a leltár privát, nyisd meg vagy használj érvényes cookie-t.",
+    "empty_generic": "Nem találhatók nem eladó gyűjthető tárgyak. Próbáld később."
   },
   "revenue": {
-    "title": "💸 Bevételek",
-    "auth_required": "🔐 Bevételek csak cookie-val érhetők el.",
+    "title": "💸 Bevétel",
+    "auth_required": "🔐 A bevétel csak cookie-val érhető el.",
     "summary": "Összesen: {sum} R$",
     "row": "{date} — {type} — {amount} R$ — {source}",
-    "empty": "Nincs tranzakció.",
+    "empty": "Nincsenek tranzakciók.",
     "prev": "◀ Előző",
     "next": "Következő ▶",
-    "refresh": "🔄 Frissítés"
+    "refresh": "🔄 Frissítés",
+    "loading": "⏳ Bevétel betöltése…",
+    "summary_page": "Ezen az oldalon: {sum} R$",
+    "page_summary": "Tranzakciók ezen az oldalon: {count}",
+    "details": "📄 Részletek",
+    "back_to_summary": "⬅️ Vissza az összefoglalóhoz",
+    "total_count": "Összes tranzakció: {count}",
+    "total_sum": "Összesen: {sum} R$"
   },
   "usernames": {
     "title": "📝 Korábbi felhasználónevek",
     "row": "{name} — {changedAt}",
     "empty": "Nincsenek korábbi felhasználónevek.",
-    "page": "Oldal {cur}/{total}"
+    "page": "Oldal {cur}/{total}",
+    "loading": "⏳ Betöltés…",
+    "empty_private": "Nincsenek korábbi felhasználónevek. Ha a hozzáférés korlátozott, érvényes cookie szükséges.",
+    "empty_generic": "Nem találhatók korábbi felhasználónevek."
   }
 }

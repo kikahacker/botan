@@ -95,6 +95,23 @@ async def migrate_add_is_active_column():
     except Exception as e:
         logging.error(f"Migration failed: {e}")
 
+async def migrate_add_updated_at_to_snapshots():
+    """Добавляет колонку updated_at в account_snapshots, если её нет"""
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            cur = await db.execute("PRAGMA table_info(account_snapshots)")
+            columns = await cur.fetchall()
+            column_names = [col[1] for col in columns]
+
+            if 'updated_at' not in column_names:
+                await db.execute(
+                    "ALTER TABLE account_snapshots "
+                    "ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+                )
+                await db.commit()
+                logging.info("Added updated_at column to account_snapshots")
+    except Exception as e:
+        logging.error(f"Migration updated_at failed: {e}")
 
 async def init_db():
     async with aiosqlite.connect(DB_STR) as db:
@@ -108,7 +125,7 @@ async def init_db():
 
     # Запускаем миграцию
     await migrate_add_is_active_column()
-
+    await migrate_add_updated_at_to_snapshots()
 
 async def track_bot_user(telegram_id: int, username: str = None, first_name: str = None, last_name: str = None,
                          language_code: str = 'en'):
