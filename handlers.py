@@ -4116,7 +4116,7 @@ async def cmd_cookie_txt(message: types.Message):
 _user_msg_times = {}
 
 
-def _check_antiflood(user_id: int, limit: int = 3, per_seconds: int = 10) -> bool:
+def _check_antiflood(user_id: int, limit: int = 7, per_seconds: int = 10) -> bool:
     """Вернёт True, если пользователь шлёт слишком много сообщений за per_seconds секунд.
 
     limit=5, per_seconds=10 означает: больше 5 сообщений за 10 секунд — считаем спамом.
@@ -4129,7 +4129,7 @@ def _check_antiflood(user_id: int, limit: int = 3, per_seconds: int = 10) -> boo
     _user_msg_times[user_id] = ts_list
     return len(ts_list) > limit
 
-
+LAST_MENU_MESSAGES: dict[int, int] = {}
 @router.message()
 async def any_message_show_menu(message: types.Message) -> None:
     """Ловим ЛЮБОЕ сообщение от обычного пользователя и показываем главное меню как при /start.
@@ -4137,7 +4137,6 @@ async def any_message_show_menu(message: types.Message) -> None:
     Админам не мешаем — они могут пользоваться другими командами и хендлерами.
     """
     user_id = message.from_user.id
-
 
     # /start уже обрабатывается отдельным хендлером cmd_start
     if message.text and message.text.startswith("/start"):
@@ -4147,19 +4146,45 @@ async def any_message_show_menu(message: types.Message) -> None:
 
     # антифлуд для обычных пользователей
     if _check_antiflood(user_id):
-        # если спамит — просто игнорируем сообщение
         return
 
     await protect_language(user_id)
     await use_lang_from_message(message)
+
+    # 1️⃣ Пытаемся удалить старое меню, если оно было
+    last_menu_message_id = LAST_MENU_MESSAGES.get(user_id)
+    if last_menu_message_id:
+        try:
+            await message.bot.delete_message(
+                chat_id=message.chat.id,
+                message_id=last_menu_message_id,
+            )
+        except Exception:
+            # если не получилось (старое сообщение удалено / слишком старое / нет прав) — просто забиваем
+            pass
+
+    # 2️⃣ Формируем новое меню
     photo = _asset_or_none('main')
     text = LL("messages.welcome", "welcome")
     tg = user_id
-    await edit_or_send(
-        message,
-        text,
-        reply_markup=await kb_main_i18n(tg),
-        photo=photo,
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
+    kb = await kb_main_i18n(tg)
+
+    # 3️⃣ Отправляем НОВОЕ меню (тут можно уже не использовать edit_or_send)
+    if photo:
+        sent = await message.answer_photo(
+            photo=photo,
+            caption=text,
+            reply_markup=kb,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+    else:
+        sent = await message.answer(
+            text,
+            reply_markup=kb,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+
+    # 4️⃣ Сохраняем id нового меню
+    LAST_MENU_MESSAGES[user_id] = sent.message_id
