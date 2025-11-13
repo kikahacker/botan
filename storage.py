@@ -474,3 +474,57 @@ async def get_any_encrypted_cookie_by_roblox_id(roblox_id: int) -> str | None:
     except Exception as e:
         logging.error(f"[STORAGE] get_any_encrypted_cookie_by_roblox_id() error: {e}")
         return None
+async def export_snapshot_rows_for_user(telegram_id: int) -> list[tuple[str,int,int,int]]:
+    """
+    Возвращает строки для CSV:
+    (username, roblox_id, inventory_val, total_spent)
+    Только те RID пользователя, по которым есть запись в account_snapshots.
+    """
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute(
+            """
+            SELECT COALESCE(au.username, ''), au.roblox_id, 
+                   COALESCE(s.inventory_val,0), COALESCE(s.total_spent,0)
+            FROM authorized_users au
+            JOIN account_snapshots s ON s.roblox_id = au.roblox_id
+            WHERE au.telegram_id = ?
+            ORDER BY au.linked_at DESC
+            """, (telegram_id,)
+        )
+        return [(r[0], int(r[1]), int(r[2] or 0), int(r[3] or 0)) for r in await cur.fetchall()]
+
+async def get_user_cookie_enc(telegram_id: int, roblox_id: int) -> str | None:
+    """Возвращает enc_roblosecurity по RID для конкретного telegram_id (если активная есть)."""
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute(
+            """SELECT enc_roblosecurity
+               FROM user_cookies
+               WHERE telegram_id=? AND roblox_id=? AND is_active=TRUE
+               ORDER BY datetime(saved_at) DESC LIMIT 1""",
+            (telegram_id, roblox_id),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+async def get_user_cookie_plain(telegram_id: int, roblox_id: int) -> str | None:
+    """
+    Возвращает РАСШИФРОВАННУЮ roblosecurity для указанного юзера и RID.
+    Берём последнюю активную запись. Если не нашли/не расшифровали — None.
+    """
+    async with aiosqlite.connect(DB_STR) as db:
+        cur = await db.execute(
+            """SELECT enc_roblosecurity
+               FROM user_cookies
+               WHERE telegram_id=? AND roblox_id=? AND is_active=TRUE
+               ORDER BY datetime(saved_at) DESC LIMIT 1""",
+            (telegram_id, roblox_id)
+        )
+        row = await cur.fetchone()
+        if not row or not row[0]:
+            return None
+        enc = row[0]
+        try:
+            return decrypt_text(enc)
+        except Exception as e:
+            logging.error(f"[storage] decrypt cookie fail tg={telegram_id} rid={roblox_id}: {e}")
+            return None

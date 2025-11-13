@@ -1,11 +1,11 @@
 {
   "currency": {
-    "robux": "[pt] R$"
+    "robux": "R$"
   },
   "footer": {
     "checked_by": "Verificado por: {username}",
-    "domain": "[pt] raika.gg",
-    "date": "[pt] {day} {month} {year}"
+    "domain": "raika.gg",
+    "date": "{day} {month} {year}"
   },
   "inventory": {
     "title": "Inventário",
@@ -116,7 +116,8 @@
     "loading_profile": "Carregando perfil…",
     "file_received": "📥 Arquivo recebido, verificando...",
     "cookie_validation_error": "❌ Erro de validação de cookie.",
-    "cookie_dead": "[pt] 🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
+    "cookie_dead": "🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue.",
+    "cookie_dead_actions": "O cookie é inválido ou expirou.\nVocê pode vincular um novo cookie ou remover esta conta da sua lista.\nOs snapshots (histórico) serão mantidos."
   },
   "buttons": {
     "all_items": "📦 Todos os itens",
@@ -127,7 +128,9 @@
     "home": "🔙 Voltar",
     "next": "✅ Próximo",
     "refresh": "🔄 Atualizar",
-    "refresh_category": "🔄 Atualizar categoria"
+    "refresh_category": "🔄 Atualizar categoria",
+    "relink_cookie": "🔄 Vincular cookie novamente",
+    "delete_keep": "🗑️ Remover conta (manter histórico)"
   },
   "caption": {
     "auto_76b7d0778c": "Inventário Completo",
@@ -144,14 +147,14 @@
     "unknown": "Desconhecido",
     "active": "Ativo",
     "banned": "Banido",
-    "dash": "[pt] —",
-    "ellipsis": "[pt] …",
+    "dash": "—",
+    "ellipsis": "…",
     "na": "N/D",
-    "regular": "[pt] ❌ Regular",
-    "premium": "[pt] ⭐ Premium",
+    "regular": "❌ Regular",
+    "premium": "⭐ Premium",
     "decrypt_error": "<erro de descriptografia>",
     "pcs": "unid.",
-    "total": "[pt] Total"
+    "total": "Total"
   },
   "cookie": {
     "instructions": "Use o kit abaixo para extrair seu cookie .ROBLOSECURITY no Chromium e envie aqui como .txt.",
@@ -174,11 +177,11 @@
     "to_accounts": "📋 Voltar para lista de contas",
     "to_home": "🔙 Voltar",
     "spending": "💸 Gastos",
-    "favorites": "[pt] ⭐ Favorites",
-    "rap": "[pt] 📈 RAP",
-    "offsale": "[pt] 🛑 Off-sale",
-    "revenue": "[pt] 💸 Revenue",
-    "usernames": "[pt] 📝 Past usernames"
+    "favorites": "⭐ Favoritos",
+    "rap": "📈 RAP",
+    "offsale": "🛑 Fora de venda",
+    "revenue": "💸 Receita",
+    "usernames": "📝 Nomes anteriores"
   },
   "status": {
     "account_deleted": "🗑 Conta excluída.",
@@ -198,8 +201,8 @@
     "audio": "Áudio",
     "bundles/packages": "Pacotes / Bundles",
     "classic_clothes": "Roupas clássicas",
-    "emotes": "[pt] Emotes",
-    "faces": "[pt] Faces",
+    "emotes": "Emotes",
+    "faces": "Faces",
     "gear": "Equipamento",
     "hair": "Cabelo",
     "hats": "Chapéus",
@@ -229,9 +232,9 @@
     "page": "Página {current}/{total}"
   },
   "spending": {
-    "title": "[pt] 💸 Spending history (total: {total})",
-    "loading": "[pt] ⏳ Loading spending history…",
-    "empty": "[pt] 🫙 No purchases found.",
+    "title": "💸 Histórico de compras (total: {total})",
+    "loading": "⏳ Carregando histórico de compras…",
+    "empty": "🫙 Nenhuma compra encontrada.",
     "header": "💸 Gastos — total: {sum} R$"
   },
   "games": {
@@ -241,37 +244,37 @@
     "page": "Página {cur}/{total}",
     "prev": "◀ Anterior",
     "next": "Próximo ▶",
-    "loading": "[pt] ⏳ Loading favorites…"
+    "loading": "⏳ Carregando favoritos…"
   },
   "rap": {
-    "title": "[pt] 📈 RAP",
-    "total": "[pt] Total RAP: {value} R$",
-    "item_row": "[pt] {name} — {rap} R$",
-    "lowest": "[pt] Lowest: {value} R$",
-    "no_items": "[pt] No collectibles with RAP found.",
-    "refresh": "[pt] 🔄 Refresh"
+    "title": "📈 RAP",
+    "total": "RAP total: {value} R$",
+    "item_row": "{name} — {rap} R$",
+    "lowest": "Mínimo: {value} R$",
+    "no_items": "Nenhum colecionável com RAP encontrado.",
+    "refresh": "🔄 Atualizar"
   },
   "offsale": {
-    "title": "[pt] 🛑 Off-sale",
-    "mode": "[pt] Mode: {mode}",
-    "mode_collectibles": "[pt] Collectibles",
-    "empty": "[pt] No off-sale collectibles found.",
-    "row_collectible": "[pt] {name} — RAP {rap} R$ (no sellers)"
+    "title": "🛑 Fora de venda",
+    "mode": "Modo: {mode}",
+    "mode_collectibles": "Colecionáveis",
+    "empty": "Nenhum colecionável fora de venda.",
+    "row_collectible": "{name} — RAP {rap} R$ (sem vendedores)"
   },
   "revenue": {
-    "title": "[pt] 💸 Revenue",
-    "auth_required": "[pt] 🔐 Revenue is available only with a cookie.",
-    "summary": "[pt] All time: {sum} R$",
-    "row": "[pt] {date} — {type} — {amount} R$ — {source}",
-    "empty": "[pt] No transactions.",
-    "prev": "[pt] ◀ Prev",
-    "next": "[pt] Next ▶",
-    "refresh": "[pt] 🔄 Refresh"
+    "title": "💸 Receita",
+    "auth_required": "🔐 Receita disponível apenas com cookie.",
+    "summary": "Todo o período: {sum} R$",
+    "row": "{date} — {type} — {amount} R$ — {source}",
+    "empty": "Sem transações.",
+    "prev": "◀ Anterior",
+    "next": "Próximo ▶",
+    "refresh": "🔄 Atualizar"
   },
   "usernames": {
-    "title": "[pt] 📝 Past usernames",
-    "row": "[pt] {name} — {changedAt}",
-    "empty": "[pt] No past usernames.",
-    "page": "[pt] Page {cur}/{total}"
+    "title": "📝 Nomes anteriores",
+    "row": "{name} — {changedAt}",
+    "empty": "Sem nomes anteriores.",
+    "page": "Página {cur}/{total}"
   }
 }

@@ -777,6 +777,51 @@ def kb_navigation(roblox_id: int) -> InlineKeyboardMarkup:
         ],
     ])
 
+def kb_public_navigation(roblox_id: int) -> InlineKeyboardMarkup:
+    """
+    Навигация в ПАБЛИК-чеке (без привязанной куки к этому Telegram-юзеру).
+    Колбэки идут с префиксом pub_*, чтобы не конфликтовать с приватными.
+    """
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.rap', '📈 RAP'),
+                callback_data=f'pub_rap:{roblox_id}:0'
+            ),
+            InlineKeyboardButton(
+                text=_lbl('nav.offsale', '🛑 Off-sale'),
+                callback_data=f'pub_offsale:{roblox_id}:0'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.revenue', '💸 Revenue'),
+                callback_data=f'pub_revenue:{roblox_id}:0'
+            ),
+            InlineKeyboardButton(
+                text=_lbl('nav.usernames', '📝 Past usernames'),
+                callback_data=f'pub_usernames:{roblox_id}:0'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.spending', '💸 Spending history'),
+                callback_data=f'pub_spend:{roblox_id}'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.inventory_categories', '🧩 Inventory (choose categories)'),
+                callback_data=f'inv_pub_cfg_open:{roblox_id}'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_lbl('nav.to_home', '🏠 Back'),
+                callback_data='menu:home'
+            )
+        ],
+    ])
 
 def _kb_category_footer(roblox_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -890,7 +935,11 @@ def _asset_or_none(name: str) -> Optional[FSInputFile]:
 
 @router.message(CommandStart())
 async def cmd_start(message: types.Message) -> None:
-    await protect_language(message.from_user.id)
+    user_id = message.from_user.id
+    # простая антиспам-защита для обычных пользователей
+    if not is_admin(user_id) and _check_antiflood(user_id):
+        return
+    await protect_language(user_id)
     await storage.track_bot_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username,
@@ -1048,6 +1097,10 @@ async def handle_txt_upload(message: types.Message) -> None:
         await storage.save_encrypted_cookie(tg, rid, enc)
         await storage.upsert_user(tg, rid, uname, user_data.get('created'))
         await storage.log_event('user_linked', telegram_id=tg, roblox_id=rid)
+        try:
+            await storage.upsert_account_snapshot(rid, username=uname)
+        except Exception:
+            pass
         ok += 1
         added.append((rid, uname))
     if ok == 0:
@@ -1126,10 +1179,29 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
 
         # preflight: кука живая?
         if not await _cookie_alive(cookie):
+            # показываем аккуратный выбор действий
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text=_lbl('buttons.relink_cookie', '🔄 Re-link cookie'),
+                    callback_data='menu:add'  # откроет инструкцию по получению cookie
+                )],
+                [InlineKeyboardButton(
+                    text=_lbl('buttons.delete_keep', '🗑️ Remove account'),
+                    callback_data=f'delacct:{roblox_id}'  # используем уже существующий обработчик удаления
+                )],
+                [InlineKeyboardButton(
+                    text=_lbl('nav.to_accounts', '📋 Back to account list'),
+                    callback_data='menu:accounts'
+                )],
+            ])
+            msg = _lbl(
+                'msg.cookie_dead_actions',
+                'Cookie is invalid or expired.\nYou can re-link a new cookie or remove this account from your list.\nSnapshots (history) will be kept.'
+            )
             try:
-                await loader.edit_text(L('msg.cookie_dead'), reply_markup=await kb_main_i18n(tg))
+                await loader.edit_text(msg, reply_markup=kb, disable_web_page_preview=True)
             except Exception:
-                await call.message.answer(L('msg.cookie_dead'), reply_markup=await kb_main_i18n(tg))
+                await call.message.answer(msg, reply_markup=kb, disable_web_page_preview=True)
             return
 
         headers = {
@@ -2403,13 +2475,6 @@ async def on_lang_set(call: types.CallbackQuery):
     await call.message.edit_text(LL('messages.welcome', 'welcome') or 'Welcome!',
                                  reply_markup=await kb_main_i18n(call.from_user.id))
 
-
-def kb_public_navigation(roblox_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=L('nav.inventory_categories'), callback_data=f'inv_pub_cfg_open:{roblox_id}')],
-        [InlineKeyboardButton(text=L('nav.spending'), callback_data=f'pub_spend:{roblox_id}')],
-        [InlineKeyboardButton(text=LL('buttons.back', 'btn.back') or '⬅️ Back', callback_data='menu:home')]
-    ])
 
 
 async def debug_lang(context: str, user_id: int):
@@ -3972,141 +4037,6 @@ def _L(key: str, **kw):
         except Exception:
             return key
 
-@router.callback_query(F.data.startswith('rap:'))
-async def cb_rap(call: types.CallbackQuery) -> None:
-    await protect_language(call.from_user.id)
-    try:
-        await call.answer(cache_time=1)
-    except Exception:
-        pass
-    rid = int(call.data.split(':', 1)[1])
-    wait = await call.message.answer(_L('common.loading') if _L('common.loading') != 'common.loading' else '⏳ Loading…')
-    try:
-        data = await calc_user_rap(rid)
-        total = int(data.get('total') or 0)
-        lines = [_L('rap.total', value=total)]
-        items = sorted(data.get('items', []), key=lambda x: (x.get('rap') or 0), reverse=True)[:15]
-        for it in items:
-            line = _L('rap.item_row', name=it.get('name','Unknown'), rap=it.get('rap',0))
-            if it.get('lowest') is not None:
-                line += " · " + _L('rap.lowest', value=it.get('lowest'))
-            lines.append(line)
-        if not items:
-            lines.append(_L('rap.no_items'))
-        text = _L('rap.title') + "\\n\\n" + "\\n".join(lines)
-        await wait.edit_text(text, disable_web_page_preview=True, reply_markup=kb_navigation(rid))
-    except Exception as e:
-        try:
-            await wait.edit_text(_L('errors.generic', err=str(e)))
-        except Exception:
-            pass
-
-@router.callback_query(F.data.startswith('offsale:'))
-async def cb_offsale(call: types.CallbackQuery) -> None:
-    await protect_language(call.from_user.id)
-    try:
-        await call.answer(cache_time=1)
-    except Exception:
-        pass
-    parts = call.data.split(':')
-    rid = int(parts[1]) if len(parts)>1 else 0
-    wait = await call.message.answer('⏳')
-    try:
-        items = await get_offsale_collectibles(rid)
-        if not items:
-            text = _L('offsale.title') + "\\n\\n" + _L('offsale.empty')
-        else:
-            rows = [_L('offsale.row_collectible', name=it.get('name','Unknown'), rap=it.get('rap',0)) for it in items[:30]]
-            text = _L('offsale.title') + "\\n\\n" + "\\n".join(rows)
-        await wait.edit_text(text, disable_web_page_preview=True, reply_markup=kb_navigation(rid))
-    except Exception as e:
-        try:
-            await wait.edit_text(_L('errors.generic', err=str(e)))
-        except Exception:
-            pass
-
-@router.callback_query(F.data.startswith('usernames:'))
-async def cb_usernames(call: types.CallbackQuery) -> None:
-    await protect_language(call.from_user.id)
-    try:
-        await call.answer(cache_time=1)
-    except Exception:
-        pass
-    parts = call.data.split(':')
-    rid = int(parts[1]) if len(parts)>1 else 0
-    page = int(parts[2]) if len(parts)>2 else 0
-    PAGE = 25
-    wait = await call.message.answer('⏳')
-    try:
-        items = await get_username_history(rid)
-        total_pages = max(1, (len(items)+PAGE-1)//PAGE)
-        page = max(0, min(page, total_pages-1))
-        slice_ = items[page*PAGE:(page+1)*PAGE]
-        if not slice_:
-            body = _L('usernames.empty')
-        else:
-            body = "\\n".join([_L('usernames.row', name=(it.get('name') or it.get('username') or '?'), changedAt=(it.get('created') or it.get('changedAt') or '')) for it in slice_])
-        header = _L('usernames.title') + f"\\n{_L('usernames.page', cur=page+1, total=total_pages)}\\n\\n"
-        text = header + body
-        if total_pages <= 1:
-            await wait.edit_text(text, reply_markup=kb_navigation(rid), disable_web_page_preview=True)
-        else:
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text=_L('revenue.prev'), callback_data=f'usernames:{rid}:{page-1}') if page>0 else InlineKeyboardButton(text='·', callback_data='noop'),
-                InlineKeyboardButton(text=_L('revenue.next'), callback_data=f'usernames:{rid}:{page+1}') if page<total_pages-1 else InlineKeyboardButton(text='·', callback_data='noop'),
-            ]])
-            await wait.edit_text(text, reply_markup=kb, disable_web_page_preview=True)
-    except Exception as e:
-        try:
-            await wait.edit_text(_L('errors.generic', err=str(e)))
-        except Exception:
-            pass
-
-@router.callback_query(F.data.startswith('revenue:'))
-async def cb_revenue(call: types.CallbackQuery) -> None:
-    await protect_language(call.from_user.id)
-    try:
-        await call.answer(cache_time=1)
-    except Exception:
-        pass
-    parts = call.data.split(':')
-    rid = int(parts[1]) if len(parts)>1 else 0
-    page = int(parts[2]) if len(parts)>2 else 0
-    PAGE = 25
-    wait = await call.message.answer('⏳')
-    try:
-        # cookie: encrypted -> plain
-        enc = await storage.get_encrypted_cookie(call.from_user.id, rid)
-        cookie = decrypt_text(enc) if enc else None
-        if not cookie:
-            await wait.edit_text(_L('revenue.title') + "\\n\\n" + _L('revenue.auth_required'), disable_web_page_preview=True, reply_markup=kb_navigation(rid))
-            return
-        data = await get_revenue(rid, cookie, limit=500)
-        items = data.get('items', [])
-        total_pages = max(1, (len(items)+PAGE-1)//PAGE)
-        page = max(0, min(page, total_pages-1))
-        slice_ = items[page*PAGE:(page+1)*PAGE]
-        lines = []
-        for it in slice_:
-            dt = it.get('created') or it.get('date') or ''
-            typ = it.get('type') or (it.get('details') or {}).get('type') or 'Sale'
-            amt = (it.get('currency') or {}).get('amount') or 0
-            src = (it.get('details') or {}).get('product') or (it.get('details') or {}).get('placeName') or ''
-            lines.append(_L('revenue.row', date=dt, type=typ, amount=amt, source=src))
-        body = "\\n".join(lines) if lines else _L('revenue.empty')
-        header = _L('revenue.title') + f"\\n{_L('revenue.summary', sum=data.get('total',0))}\\n"
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=_L('revenue.prev'), callback_data=f'revenue:{rid}:{page-1}') if page>0 else InlineKeyboardButton(text='·', callback_data='noop'),
-            InlineKeyboardButton(text=_L('revenue.next'), callback_data=f'revenue:{rid}:{page+1}') if page<total_pages-1 else InlineKeyboardButton(text='·', callback_data='noop'),
-        ]]) if total_pages>1 else kb_navigation(rid)
-        await wait.edit_text(header+body, reply_markup=kb, disable_web_page_preview=True)
-    except Exception as e:
-        try:
-            await wait.edit_text(_L('errors.generic', err=str(e)))
-        except Exception:
-            pass
-# ======================= /RAP OFFSALE REVENUE USERNAMES =======================
-
 # === SNAPSHOT COMMAND ===
 
 from aiogram.filters import Command
@@ -4136,4 +4066,104 @@ async def cmd_snapshot_all_global(message: types.Message):
             total += n
         await message.answer(f'✅ Global snapshot complete.\nSaved {total} records.')
 
+from io import StringIO, BytesIO
+from aiogram.types import BufferedInputFile
+from aiogram.filters import Command
 
+@router.message(Command('export_csv'))
+async def cmd_export_csv(message: types.Message):
+    rows = await storage.export_snapshot_rows_for_user(message.from_user.id)
+    # header + rows
+    buf = StringIO()
+    buf.write("nick,rid,inventory,spending\n")
+    for nick, rid, inv, spent in rows:
+        # безопасный CSV (без кавычек, если ник с запятыми — минимально экраним)
+        nick_safe = '"' + nick.replace('"', '""') + '"' if ("," in nick or '"' in nick) else nick
+        buf.write(f"{nick_safe},{rid},{inv},{spent}\n")
+    data = buf.getvalue().encode("utf-8-sig")
+    await message.answer_document(
+        BufferedInputFile(data, filename="snapshots.csv"),
+        caption="CSV экспорт из account_snapshots"
+    )
+
+from io import BytesIO
+from aiogram.types import BufferedInputFile
+from aiogram.filters import Command
+
+@router.message(Command('cookie_txt'))
+async def cmd_cookie_txt(message: types.Message):
+    parts = message.text.split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.answer("Укажи RID: /cookie_txt 123456")
+        return
+    rid = int(parts[1])
+
+    plain = await storage.get_user_cookie_plain(message.from_user.id, rid)
+    if not plain:
+        await message.answer("Кука не найдена или не получилось расшифровать.")
+        return
+
+    data = plain.encode("utf-8")
+    await message.answer_document(
+        BufferedInputFile(data, filename=f"cookie_{rid}.txt"),
+        caption=f"roblosecurity (decrypted) для RID {rid}"
+    )
+
+
+
+
+
+
+# --- Простая защита от спама и показ меню для обычных пользователей на любое сообщение ---
+
+# user_id -> список таймстампов последних сообщений
+_user_msg_times = {}
+
+
+def _check_antiflood(user_id: int, limit: int = 5, per_seconds: int = 10) -> bool:
+    """Вернёт True, если пользователь шлёт слишком много сообщений за per_seconds секунд.
+
+    limit=5, per_seconds=10 означает: больше 5 сообщений за 10 секунд — считаем спамом.
+    """
+    now = time.time()
+    ts_list = _user_msg_times.get(user_id, [])
+    # оставляем только свежие отметки
+    ts_list = [ts for ts in ts_list if now - ts < per_seconds]
+    ts_list.append(now)
+    _user_msg_times[user_id] = ts_list
+    return len(ts_list) > limit
+
+
+@router.message()
+async def any_message_show_menu(message: types.Message) -> None:
+    """Ловим ЛЮБОЕ сообщение от обычного пользователя и показываем главное меню как при /start.
+
+    Админам не мешаем — они могут пользоваться другими командами и хендлерами.
+    """
+    user_id = message.from_user.id
+
+
+    # /start уже обрабатывается отдельным хендлером cmd_start
+    if message.text and message.text.startswith("/start"):
+        return
+    if message.text and message.text.startswith("/") and is_admin(user_id):
+        return
+
+    # антифлуд для обычных пользователей
+    if _check_antiflood(user_id):
+        # если спамит — просто игнорируем сообщение
+        return
+
+    await protect_language(user_id)
+    await use_lang_from_message(message)
+    photo = _asset_or_none('main')
+    text = LL("messages.welcome", "welcome")
+    tg = user_id
+    await edit_or_send(
+        message,
+        text,
+        reply_markup=await kb_main_i18n(tg),
+        photo=photo,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )

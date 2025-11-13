@@ -1072,3 +1072,30 @@ async def generate_category_sheets(
     loc = tr(lang, f'cat.{slug}')
     title = loc if loc and loc != f'cat.{slug}' else category
     return await _render_grid(items, tile=tile, title=title, username=username, user_id=tg_id)
+
+
+# --- PATCH: public helpers to render RAP & off-sale using the existing grid renderer ---
+from typing import Any, Dict, List, Optional
+from i18n import tr, get_current_lang
+
+async def generate_rap_sheet(tg_id: int, roblox_id: int, *, cookie: Optional[str] = None, tile: int = 150, title: Optional[str] = None) -> bytes:
+    from roblox_client import calc_user_rap
+    data = await calc_user_rap(roblox_id, cookie=cookie)
+    items = data.get("items") or []
+    price_map = load_prices_csv_cached()
+    items = [_enrich_with_csv({"assetId": it.get("assetId"), "name": it.get("name"), "priceInfo": {"value": it.get("rap", 0)}}, price_map) for it in items]
+    lang = get_current_lang()
+    ttl = title or tr(lang, "rap.title")
+    return await _render_grid(items, tile=tile, title=ttl, username=None, user_id=tg_id)
+
+async def generate_offsale_sheet(tg_id: int, roblox_id: int, *, cookie: Optional[str] = None, tile: int = 150, title: Optional[str] = None) -> bytes:
+    from roblox_client import get_offsale_collectibles
+    data = await get_offsale_collectibles(roblox_id, cookie=cookie)
+    items = data or []
+    price_map = load_prices_csv_cached()
+    # Use RAP as price value for rendering
+    norm = [{"assetId": it.get("assetId"), "name": it.get("name"), "priceInfo": {"value": it.get("rap", 0)}} for it in items]
+    items = [_enrich_with_csv(x, price_map) for x in norm]
+    lang = get_current_lang()
+    ttl = title or tr(lang, "offsale.title")
+    return await _render_grid(items, tile=tile, title=ttl, username=None, user_id=tg_id)

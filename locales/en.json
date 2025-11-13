@@ -76,7 +76,7 @@
     "inventory_value": "💰 Inventory value: {value} R$",
     "inventory_value_label": "💰 Inventory value:",
     "inventory_private": "🔒 Inventory is private",
-    "card": "📘 Account information\n👤 Name: {uname}\n🏷️ Display Name: {display_name}\n🆔 ID: {rid}\n📅 Created: {created}\n🌍 Country: {country}\n🧬 Gender: {gender}\n🎂 Date of birth: {birthday}\n📏 Age: {age}\n✉️ Email: {email} (Verified: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🟢 Status: {status}"
+    "card": "📘 Account information\n👤 Name: {uname}\n🏷️ Display Name: {display_name}\n🆔 ID: {rid}\n📅 Created: {created}\n🌍 Country: {country}\n🧬 Gender: {gender}\n🎂 Date of birth: {birthday}\n📏 Age: {age}\n✉️ Email: {email} (Verified: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Total spent: {spent}\n🟢 Status: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ Error while preparing the archive.",
@@ -116,7 +116,8 @@
     "loading_profile": "Loading profile…",
     "file_received": "📥 File received, checking...",
     "cookie_validation_error": "❌ Cookie validation error.",
-    "cookie_dead": "🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
+    "cookie_dead": "🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue.",
+    "cookie_dead_actions": "Cookie is invalid or expired.\nYou can re-link a new cookie or remove this account from your list.\nSnapshots (history) will be kept."
   },
   "buttons": {
     "all_items": "📦 All items",
@@ -127,7 +128,9 @@
     "home": "🔙 Back",
     "next": "✅ Next",
     "refresh": "🔄 Refresh",
-    "refresh_category": "🔄 Refresh category"
+    "refresh_category": "🔄 Refresh category",
+    "relink_cookie": "🔄 Re-link cookie",
+    "delete_keep": "🗑️ Remove account (keep history)"
   },
   "caption": {
     "auto_76b7d0778c": "Full Inventory",
@@ -244,19 +247,28 @@
     "loading": "⏳ Loading favorites…"
   },
   "rap": {
-    "title": "📈 RAP",
+    "title": "RAP",
     "total": "Total RAP: {value} R$",
     "item_row": "{name} — {rap} R$",
     "lowest": "Lowest: {value} R$",
     "no_items": "No collectibles with RAP found.",
-    "refresh": "🔄 Refresh"
+    "refresh": "🔄 Refresh",
+    "loading": "⏳ Loading…",
+    "empty_private": "No collectibles found. If the inventory is private, open it or use a valid cookie for this account.",
+    "empty_generic": "Looks like no collectibles were found. Try again later.",
+    "details": "📄 Details",
+    "back_to_summary": "⬅ Back to summary",
+    "item_row_with_id": "{name} (ID {id}) — {rap} R$"
   },
   "offsale": {
-    "title": "🛑 Off-sale",
+    "title": "Off-sale",
     "mode": "Mode: {mode}",
     "mode_collectibles": "Collectibles",
     "empty": "No off-sale collectibles found.",
-    "row_collectible": "{name} — RAP {rap} R$ (no sellers)"
+    "row_collectible": "{name} — RAP {rap} R$ (no sellers)",
+    "loading": "⏳ Loading…",
+    "empty_private": "No off-sale collectibles. If the inventory is private, open it or use a valid cookie for this account.",
+    "empty_generic": "No off-sale collectibles were found. Try again later."
   },
   "revenue": {
     "title": "💸 Revenue",
@@ -266,12 +278,22 @@
     "empty": "No transactions.",
     "prev": "◀ Prev",
     "next": "Next ▶",
-    "refresh": "🔄 Refresh"
+    "refresh": "🔄 Refresh",
+    "loading": "⏳ Loading revenue…",
+    "summary_page": "On this page: {sum} R$",
+    "page_summary": "Transactions on this page: {count}",
+    "details": "📄 Details",
+    "back_to_summary": "⬅️ Back to summary",
+    "total_count": "Total transactions: {count}",
+    "total_sum": "Total: {sum} R$"
   },
   "usernames": {
     "title": "📝 Past usernames",
     "row": "{name} — {changedAt}",
     "empty": "No past usernames.",
-    "page": "Page {cur}/{total}"
+    "page": "Page {cur}/{total}",
+    "loading": "⏳ Loading…",
+    "empty_private": "No past usernames. If access is restricted, a valid cookie is required.",
+    "empty_generic": "No past usernames found."
   }
 }

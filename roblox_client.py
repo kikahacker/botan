@@ -57,6 +57,7 @@ import time
 from typing import Optional, Dict, Any, List
 
 import httpx
+logger = logging.getLogger('roblox_client')
 
 # roblox_client.py — CSV append-only (skip existing) + правильный collectible
 from http_shared import get_client, PROXY_POOL
@@ -558,18 +559,16 @@ def _price_pick(detail: dict) -> int:
 
 
 def _is_collectible(detail: dict) -> bool:
-    """True только если в itemRestrictions реально есть тег 'Collectible'."""
+    """Return True only if itemRestrictions explicitly contain 'Collectible'."""
+    if not isinstance(detail, dict):
+        return False
     ir = detail.get("itemRestrictions") or []
+    if not isinstance(ir, list):
+        return False
     try:
-        for x in ir:
-            if str(x).strip().lower() == "collectible":
-                return True
+        return any(str(x).strip().lower() == "collectible" for x in ir)
     except Exception:
-        pass
-    use_fallback = str(os.getenv("USE_COLLECTIBLE_ITEMID_FALLBACK", "0")).lower() in ("1", "true", "yes", "y")
-    if use_fallback and detail.get("collectibleItemId"):
-        return True
-    return False
+        return False
 
 
 def _parse_asset_types_from_cfg() -> List[int]:
@@ -674,6 +673,11 @@ async def get_full_inventory(tg_id: int, roblox_id: int, force_refresh: bool = F
     except Exception:
         return {"total": 0, "byCategory": {}}
 
+    return await _build_full_inventory_for_cookie(roblox_id, cookie, force_refresh=force_refresh)
+
+
+
+async def _build_full_inventory_for_cookie(roblox_id: int, cookie: str, force_refresh: bool = False) -> dict:
     asset_types = _parse_asset_types_from_cfg()
     ats_hash = hashlib.sha1(",".join(map(str, asset_types)).encode()).hexdigest()[:8]
     cache_key = f"inv:{roblox_id}:{ats_hash}"
@@ -726,7 +730,8 @@ async def get_full_inventory(tg_id: int, roblox_id: int, force_refresh: bool = F
                 "priceInfo": {"value": int(price)},
                 "name": d.get("name") or "",
                 "assetType": int(at),
-                'itemId': _to_int(d.get('itemId') or d.get('collectibleItemId') or 0)})
+                'itemId': _to_int(d.get('itemId') or d.get('collectibleItemId') or 0),
+            })
         if arr:
             by_cat.setdefault(cat, []).extend(arr)
             total_count += len(arr)
@@ -735,6 +740,15 @@ async def get_full_inventory(tg_id: int, roblox_id: int, force_refresh: bool = F
     await cache.set_json(cache_key, data)
     return data
 
+
+async def get_full_inventory_with_cookie(roblox_id: int, cookie: str | None, force_refresh: bool = False) -> dict:
+    """
+    Public helper to fetch full inventory using a raw .ROBLOSECURITY cookie.
+    Uses the same cache key and aggregation logic as get_full_inventory.
+    """
+    if not cookie:
+        return {"total": 0, "byCategory": {}}
+    return await _build_full_inventory_for_cookie(roblox_id, cookie, force_refresh=force_refresh)
 
 # === Helper: fetch inventory for a target Roblox ID using a provided ENCRYPTED cookie ===
 async def get_full_inventory_by_encrypted_cookie(enc_cookie: str, roblox_id: int, force_refresh: bool = False) -> dict:
@@ -1742,6 +1756,7 @@ async def get_recent_enriched_by_encrypted_cookie(enc_cookie: str, user_id: int,
 # === RAP / OFFSALE / REVENUE / USERNAMES ADDITIONS ===
 
 import httpx
+logger = logging.getLogger('roblox_client')
 from typing import Optional, List, Dict, Any, Tuple
 
 COLLECTIBLES_URL = "https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles"
@@ -1762,14 +1777,14 @@ async def _http_get_json(url: str, params: dict | None = None, headers: dict | N
     except Exception:
         return None
 
-async def get_collectibles(user_id: int, *, limit_per_page: int = 100) -> List[Dict[str, Any]]:
+async def get_collectibles(user_id: int, *, limit_per_page: int = 100, cookie: Optional[str] = None) -> List[Dict[str, Any]]:
     """Public. Returns all collectibles for a user with RAP fields if present."""
     out, cursor = [], None
     for _ in range(20):  # hard stop
         params = {"limit": limit_per_page}
         if cursor:
             params["cursor"] = cursor
-        data = await _http_get_json(COLLECTIBLES_URL.format(user_id=user_id), params=params, timeout=8.0)
+        data = await _http_get_json(COLLECTIBLES_URL.format(user_id=user_id), params=params, headers=_cookie_headers(cookie), timeout=8.0)
         if not data or "data" not in data:
             break
         out.extend(data.get("data", []))
@@ -1794,7 +1809,7 @@ async def get_asset_resale(asset_id: int) -> Optional[Dict[str, Any]]:
         pass
     return data
 
-async def calc_user_rap(user_id: int) -> Dict[str, Any]:
+async def calc_user_rap(user_id: int, cookie: Optional[str] = None) -> Dict[str, Any]:
     """Returns dict: {'total': int, 'items': List[{assetId,name,rap,lowest}]}"""
     key = f"rap:{user_id}"
     try:
@@ -1803,7 +1818,7 @@ async def calc_user_rap(user_id: int) -> Dict[str, Any]:
             return cached
     except Exception:
         pass
-    items = await get_collectibles(user_id)
+    items = await get_collectibles(user_id, cookie=cookie)
     rows, total = [], 0
     for it in items:
         name = it.get("name") or it.get("assetName") or "Unknown"
@@ -1825,7 +1840,7 @@ async def calc_user_rap(user_id: int) -> Dict[str, Any]:
         pass
     return out
 
-async def get_offsale_collectibles(user_id: int) -> List[Dict[str, Any]]:
+async def get_offsale_collectibles(user_id: int, cookie: Optional[str] = None) -> List[Dict[str, Any]]:
     """Collectibles with no active sellers (no lowestResalePrice)."""
     key = f"offsale_col:{user_id}"
     try:
@@ -1834,7 +1849,7 @@ async def get_offsale_collectibles(user_id: int) -> List[Dict[str, Any]]:
             return cached
     except Exception:
         pass
-    items = await get_collectibles(user_id)
+    items = await get_collectibles(user_id, cookie=cookie)
     out = []
     for it in items:
         lowest = it.get("lowestResalePrice")
@@ -1859,6 +1874,7 @@ async def get_username_history(user_id: int, *, limit: int = 100) -> List[Dict[s
         pass
     out, cursor = [], None
     for _ in range(20):
+        logger.debug('[rc.get_username_history] user_id=%s', user_id)
         params = {"limit": min(100, limit), "sortOrder": "Asc"}
         if cursor:
             params["cursor"] = cursor
@@ -1908,3 +1924,555 @@ async def get_revenue(user_id: int, cookie: Optional[str], *, limit: int = 1000,
     return {"total": int(total), "items": out}
 
 
+# === RAP / OFFSALE / REVENUE / USERNAMES ADDITIONS ===
+
+import httpx
+import logging
+from typing import Optional, List, Dict, Any
+import cache
+
+logger = logging.getLogger('roblox_client')
+
+COLLECTIBLES_URL = "https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles"
+RESALE_URL = "https://economy.roblox.com/v1/assets/{asset_id}/resale-data"
+USERNAME_HISTORY_URL = "https://users.roblox.com/v1/users/{user_id}/username-history"
+USER_TX_URL = "https://economy.roblox.com/v2/users/{user_id}/transactions"
+
+
+async def _http_get_json(url: str, params: dict | None = None, headers: dict | None = None, timeout: float = 10.0):
+    """Универсальная функция для HTTP запросов"""
+    try:
+        proxy = PROXY_POOL.any()
+        client = await get_client(proxy)
+        r = await client.get(url, params=params, headers=headers or {}, timeout=timeout)
+        if r.status_code == 200:
+            try:
+                return r.json()
+            except Exception as e:
+                logger.error(f"JSON parse error for {url}: {e}")
+                return None
+        else:
+            logger.warning(f"HTTP {r.status_code} for {url}")
+            return None
+    except Exception as e:
+        logger.error(f"HTTP request error for {url}: {e}")
+        return None
+
+
+async def get_collectibles(user_id: int, *, limit_per_page: int = 100, cookie: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Public. Returns all collectibles for a user with RAP fields if present."""
+    out, cursor = [], None
+    for _ in range(20):  # hard stop
+        params = {"limit": limit_per_page}
+        if cursor:
+            params["cursor"] = cursor
+        data = await _http_get_json(COLLECTIBLES_URL.format(user_id=user_id), params=params, headers=_cookie_headers(cookie), timeout=8.0)
+        if not data or "data" not in data:
+            break
+        out.extend(data.get("data", []))
+        cursor = data.get("nextPageCursor")
+        if not cursor:
+            break
+    return out
+
+
+async def get_asset_resale(asset_id: int) -> Optional[Dict[str, Any]]:
+    key = f"resale:{asset_id}"
+    try:
+        cached = await cache.get_json(key, 300)
+        if cached:
+            return cached
+    except Exception:
+        pass
+    data = await _http_get_json(RESALE_URL.format(asset_id=asset_id), timeout=6.0)
+    try:
+        if data:
+            await cache.set_json(key, data, ttl=300)
+    except Exception:
+        pass
+    return data
+
+
+async def calc_user_rap(user_id: int, cookie: Optional[str] = None) -> Dict[str, Any]:
+    """Returns dict: {'total': int, 'items': List[{assetId,name,rap,lowest}]}"""
+    key = f"rap:{user_id}"
+    try:
+        cached = await cache.get_json(key, 180)
+        if cached:
+            return cached
+    except Exception:
+        pass
+
+    logger.info(f"[RAP] Calculating RAP for user {user_id}")
+    items = await get_collectibles(user_id, cookie=cookie)
+    logger.info(f"[RAP] Found {len(items)} collectibles for user {user_id}")
+
+    rows, total = [], 0
+    for it in items:
+        name = it.get("name") or it.get("assetName") or "Unknown"
+        rap = it.get("recentAveragePrice") or 0
+        lowest = it.get("lowestResalePrice")
+
+        # Если lowest нет, пробуем получить через resale API
+        if lowest is None:
+            try:
+                rd = await get_asset_resale(it.get("assetId"))
+                lowest = rd.get("lowestResalePrice") if rd else None
+            except Exception as e:
+                logger.debug(f"[RAP] Resale API error for asset {it.get('assetId')}: {e}")
+
+        if isinstance(rap, (int, float)) and rap > 0:
+            total += int(rap)
+        rows.append({
+            "assetId": it.get("assetId"),
+            "name": name,
+            "rap": rap or 0,
+            "lowest": lowest
+        })
+
+    out = {"total": int(total), "items": rows}
+    logger.info(f"[RAP] Total RAP: {total} for {len(rows)} items")
+
+    try:
+        await cache.set_json(key, out, ttl=180)
+    except Exception:
+        pass
+    return out
+
+
+async def get_offsale_collectibles(user_id: int, cookie: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Collectibles with no active sellers (no lowestResalePrice)."""
+    key = f"offsale_col:{user_id}"
+    try:
+        cached = await cache.get_json(key, 300)
+        if cached:
+            return cached
+    except Exception:
+        pass
+
+    logger.info(f"[OFFSALE] Getting offsale collectibles for user {user_id}")
+    items = await get_collectibles(user_id, cookie=cookie)
+    logger.info(f"[OFFSALE] Found {len(items)} total collectibles")
+
+    out = []
+    for it in items:
+        lowest = it.get("lowestResalePrice")
+        if lowest is None:
+            # Проверяем через resale API
+            try:
+                rd = await get_asset_resale(it.get("assetId"))
+                lowest = rd.get("lowestResalePrice") if rd else None
+            except Exception as e:
+                logger.debug(f"[OFFSALE] Resale API error for asset {it.get('assetId')}: {e}")
+
+        # Если после всех проверок lowest все еще None, значит товар не продается
+        if lowest is None:
+            out.append({
+                "assetId": it.get("assetId"),
+                "name": it.get("name") or it.get("assetName") or "Unknown",
+                "rap": it.get("recentAveragePrice") or 0
+            })
+
+    logger.info(f"[OFFSALE] Found {len(out)} offsale collectibles")
+
+    try:
+        await cache.set_json(key, out, ttl=300)
+    except Exception:
+        pass
+    return out
+
+
+async def get_username_history(user_id: int, *, limit: int = 100) -> List[Dict[str, Any]]:
+    key = f"usernames:{user_id}"
+    try:
+        cached = await cache.get_json(key, 24 * 60 * 60)
+        if cached:
+            return cached
+    except Exception:
+        pass
+
+    logger.info(f"[USERNAMES] Getting username history for user {user_id}")
+    out, cursor = [], None
+    for _ in range(20):
+        params = {"limit": min(100, limit), "sortOrder": "Asc"}
+        if cursor:
+            params["cursor"] = cursor
+
+        data = await _http_get_json(USERNAME_HISTORY_URL.format(user_id=user_id), params=params, timeout=8.0)
+        if not data or "data" not in data:
+            break
+
+        batch = data.get("data", [])
+        out.extend(batch)
+        logger.info(f"[USERNAMES] Got batch of {len(batch)} usernames")
+
+        cursor = data.get("nextPageCursor")
+        if not cursor or len(out) >= limit:
+            break
+
+    logger.info(f"[USERNAMES] Total usernames found: {len(out)}")
+
+    try:
+        await cache.set_json(key, out, ttl=24 * 60 * 60)
+    except Exception:
+        pass
+    return out
+
+
+def _cookie_headers(cookie: Optional[str]) -> dict:
+    if not cookie:
+        return {}
+    return {"Cookie": f".ROBLOSECURITY={cookie}"}
+
+
+async def get_revenue(user_id: int, cookie: Optional[str], *, limit: int = 1000, types: List[str] | None = None) -> \
+Dict[str, Any]:
+    """Requires cookie. Returns summary and items."""
+    if not types:
+        types = ["Sale", "PremiumPayout"]
+
+    headers = _cookie_headers(cookie)
+    out, cursor = [], None
+    got = 0
+
+    logger.info(f"[REVENUE] Getting revenue for user {user_id}")
+
+    for _ in range(50):
+        params = {"transactionType": ",".join(types), "limit": min(100, limit - got)}
+        if cursor:
+            params["cursor"] = cursor
+
+        data = await _http_get_json(USER_TX_URL.format(user_id=user_id), params=params, headers=headers, timeout=8.0)
+        if not data or "data" not in data:
+            break
+
+        batch = data.get("data", [])
+        out.extend(batch)
+        got += len(batch)
+        logger.info(f"[REVENUE] Got batch of {len(batch)} transactions, total: {got}")
+
+        cursor = data.get("nextPageCursor")
+        if not cursor or got >= limit:
+            break
+
+    total = 0
+    for it in out:
+        amt = (it.get("currency") or {}).get("amount") or 0
+        if isinstance(amt, (int, float)):
+            total += int(amt)
+
+    logger.info(f"[REVENUE] Total revenue: {total} from {len(out)} transactions")
+
+    return {"total": int(total), "items": out}
+
+
+# --- PATCH: robust RAP & off-sale built on common inventory/collectibles fetchers ---
+
+from typing import Any, Dict, List, Optional
+import asyncio, time, logging, hashlib
+
+logger = logging.getLogger("roblox_client")
+
+try:
+    from http_shared import get_client, PROXY_POOL
+except Exception:  # pragma: no cover
+    PROXY_POOL = None
+    async def get_client(_proxy=None):
+        import httpx
+        return httpx.AsyncClient(http2=True)
+
+import httpx
+import cache
+
+COLLECTIBLES_URL = "https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles"
+RESALE_URL       = "https://economy.roblox.com/v1/assets/{asset_id}/resale-data"
+USERNAME_HISTORY_URL = "https://users.roblox.com/v1/users/{user_id}/username-history"
+USER_TX_URL          = "https://economy.roblox.com/v2/users/{user_id}/transactions"
+
+
+def _cookie_headers(cookie: Optional[str]) -> dict:
+    return {"Cookie": f".ROBLOSECURITY={cookie}"} if cookie else {}
+
+async def _http_get_json(url: str, *, params: dict|None=None, headers: dict|None=None, timeout: float=8.0):
+    try:
+        proxy = PROXY_POOL.any() if PROXY_POOL else None
+        client = await get_client(proxy)
+        r = await client.get(url, params=params, headers=headers or {}, timeout=httpx.Timeout(timeout, connect=2.0, read=timeout-1.5))
+        if r.status_code != 200:
+            logger.debug("[rc.http] %s -> %s", url, r.status_code)
+            return None
+        try:
+            return r.json()
+        except Exception:
+            return None
+    except Exception as e:
+        logger.debug("[rc.http] fail %s: %s", url, e)
+        return None
+
+async def get_collectibles(user_id: int, *, limit_per_page: int = 100, cookie: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Returns all collectibles (limited/limitedU) for a user. Works with or without cookie."""
+    out, cursor = [], None
+    rounds = 0
+    while rounds < 30:
+        rounds += 1
+        params = {"limit": min(100, int(limit_per_page or 100))}
+        if cursor:
+            params["cursor"] = cursor
+        data = await _http_get_json(COLLECTIBLES_URL.format(user_id=user_id), params=params, headers=_cookie_headers(cookie), timeout=8.0)
+        if not data or "data" not in data:
+            break
+        batch = data.get("data", []) or []
+        out.extend(batch)
+        cursor = data.get("nextPageCursor")
+        if not cursor:
+            break
+    return out
+
+async def get_asset_resale(asset_id: int) -> Optional[Dict[str, Any]]:
+    key = f"resale:{asset_id}"
+    cached = None
+    try:
+        cached = await cache.get_json(key, 30*60)
+    except Exception:
+        cached = None
+    if cached is not None:
+        return cached
+    js = await _http_get_json(RESALE_URL.format(asset_id=asset_id), timeout=8.0)
+    try:
+        await cache.set_json(key, js or {}, ttl=30*60)
+    except Exception:
+        pass
+    return js or {}
+
+async def calc_user_rap(user_id: int, *, cookie: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Build RAP based on /v1/users/{id}/assets/collectibles.
+    Sums 'recentAveragePrice' when present; otherwise falls back to resale 'recentAveragePrice'.
+    """
+    key = f"rap:{user_id}"
+    try:
+        cached = await cache.get_json(key, 5*60)
+        if cached:
+            return cached
+    except Exception:
+        pass
+
+    items = await get_collectibles(int(user_id), cookie=cookie)
+    norm: List[Dict[str, Any]] = []
+    total = 0
+    for it in items:
+        aid = it.get("assetId") or it.get("id")
+        name = it.get("name") or it.get("assetName") or "Unknown"
+        rap  = it.get("recentAveragePrice")
+        if rap is None:
+            # try resale endpoint as a fallback
+            try:
+                resale = await get_asset_resale(int(aid))
+                rap = resale.get("recentAveragePrice")
+            except Exception:
+                rap = 0
+        try:
+            rap_i = int(rap or 0)
+        except Exception:
+            rap_i = 0
+        total += rap_i
+        norm.append({"assetId": int(aid or 0), "name": name, "rap": rap_i})
+
+    out = {"total": int(total), "items": norm}
+    try:
+        await cache.set_json(key, out, ttl=5*60)
+    except Exception:
+        pass
+    return out
+
+async def get_offsale_collectibles(user_id: int, *, cookie: Optional[str] = None, limit_check: int = 200) -> List[Dict[str, Any]]:
+    """
+    Off-sale = collectible with NO active resale offers now (lowestResalePrice is None).
+    """
+    items = await get_collectibles(int(user_id), cookie=cookie)
+    offs: List[Dict[str, Any]] = []
+    sem = asyncio.Semaphore(16)
+
+    async def probe(it):
+        aid = int(it.get("assetId") or 0)
+        async with sem:
+            res = await get_asset_resale(aid)
+        # Heuristic: no lowestResalePrice OR numberRemaining==0 => treat as off-sale at the moment
+        lowest = res.get("lowestResalePrice")
+        remaining = res.get("numberRemaining")
+        if lowest in (None, 0) and (remaining in (None, 0)):
+            offs.append({
+                "assetId": aid,
+                "name": it.get("name") or it.get("assetName") or "Unknown",
+                "rap": int((it.get("recentAveragePrice") or 0) or 0)
+            })
+
+    # cap probes to first N assets to stay fast
+    tasks = [probe(it) for it in items[:max(1, int(limit_check))]]
+    await asyncio.gather(*tasks)
+    # sort by RAP desc for nicer output
+    offs.sort(key=lambda x: x.get("rap", 0), reverse=True)
+    return offs
+
+
+# === Inventory-based RAP/off-sale (uses existing fast inventory + catalog + resale) ===
+from typing import Optional, Dict, Any, List
+
+async def _catalog_details_bulk_simple(asset_ids: List[int], cookie: Optional[str]):
+    details = []
+    batch = []
+    for aid in asset_ids:
+        if not aid:
+            continue
+        batch.append({"itemType": "Asset", "id": int(aid)})
+        if len(batch) >= BATCH_SIZE:
+            try:
+                data = await _post_catalog_details_once(batch, cookie, PROXY_POOL.any() if PROXY_POOL else None, csrf=None)
+                js = data.json() if data is not None else {}
+                payload = js.get("data") if isinstance(js, dict) else (js if isinstance(js, list) else [])
+            except Exception:
+                payload = []
+            details.extend(payload or [])
+            batch = []
+    if batch:
+        try:
+            data = await _post_catalog_details_once(batch, cookie, PROXY_POOL.any() if PROXY_POOL else None, csrf=None)
+            js = data.json() if data is not None else {}
+            payload = js.get("data") if isinstance(js, dict) else (js if isinstance(js, list) else [])
+        except Exception:
+            payload = []
+        details.extend(payload or [])
+    return details
+
+async def calc_user_rap_from_inventory(user_id: int, *, cookie: Optional[str] = None) -> Dict[str, Any]:
+    try:
+        types = _parse_asset_types_from_cfg()
+    except Exception:
+        types = [8,11,12,18,19,21,41,42,43,44,45,46,47,48,49,50,51]
+    inv_map = await fetch_full_inventory_parallel_fast(int(user_id), types, cookie)
+    asset_ids = []
+    for lst in inv_map.values():
+        for aid in (lst or []):
+            try:
+                asset_ids.append(int(aid))
+            except Exception:
+                pass
+    asset_ids = list(dict.fromkeys(asset_ids))
+
+    details = await _catalog_details_bulk_simple(asset_ids, cookie)
+    collectible_ids = []
+    names = {}
+    for d in details:
+        try:
+            aid = int(d.get("id") or 0)
+        except Exception:
+            continue
+        if not aid:
+            continue
+        if _is_collectible(d):
+            collectible_ids.append(aid)
+            names[aid] = _pick_item_name(d) or d.get("name") or "Unknown"
+
+    out_items = []
+    total = 0
+    import asyncio
+    async def probe(aid: int):
+        res = await get_asset_resale(aid)
+        rap = 0
+        try:
+            rap = int(res.get("recentAveragePrice") or 0)
+        except Exception:
+            rap = 0
+        out_items.append({"assetId": aid, "name": names.get(aid, "Unknown"), "rap": rap})
+    await asyncio.gather(*(probe(a) for a in collectible_ids))
+    total = sum(x.get("rap", 0) for x in out_items)
+    out_items.sort(key=lambda x: x.get("rap", 0), reverse=True)
+    return {"total": int(total), "items": out_items}
+
+async def get_offsale_collectibles_from_inventory(user_id: int, *, cookie: Optional[str] = None, limit_check: int = 240):
+    rap_data = await calc_user_rap_from_inventory(user_id, cookie=cookie)
+    items = rap_data.get("items") or []
+    off = []
+    import asyncio
+    async def probe(it):
+        aid = int(it.get("assetId") or 0)
+        res = await get_asset_resale(aid)
+        lowest = res.get("lowestResalePrice")
+        remaining = res.get("numberRemaining")
+        if lowest in (None, 0) and (remaining in (None, 0)):
+            off.append(it)
+    await asyncio.gather(*(probe(it) for it in items[:limit_check]))
+    off.sort(key=lambda x: x.get("rap", 0), reverse=True)
+    return off
+
+
+# === Resale-only robust RAP/off-sale (fallback when catalog/details fails) ===
+from typing import Optional, Dict, Any, List
+import asyncio, logging
+_log = logging.getLogger("roblox_client")
+
+async def calc_user_rap_resale_only(user_id: int, *, cookie: Optional[str] = None, limit_check: int = 600) -> Dict[str, Any]:
+    """
+    Build RAP by probing resale-data for each asset in fast inventory.
+    Treat asset as collectible if resale endpoint returns a payload with recentAveragePrice or any numeric fields.
+    """
+    try:
+        types = _parse_asset_types_from_cfg()
+    except Exception:
+        types = [2,3,8,11,12,17,18,19,24,27,41,42,43,44,45,46,47,48,49,50,51,61]
+    inv_map = await fetch_full_inventory_parallel_fast(int(user_id), types, cookie)
+
+    # gather unique asset ids
+    asset_ids: List[int] = []
+    for lst in inv_map.values():
+        for aid in (lst or []):
+            try:
+                asset_ids.append(int(aid))
+            except Exception:
+                pass
+    asset_ids = list(dict.fromkeys(asset_ids))
+    _log.info("[rap_resale] uid=%s assets=%d", user_id, len(asset_ids))
+
+    out_items: List[Dict[str, Any]] = []
+    sem = asyncio.Semaphore(24)
+
+    async def probe(aid: int):
+        async with sem:
+            res = await get_asset_resale(aid)
+        if not isinstance(res, dict):
+            return
+        rap = 0
+        try:
+            rap = int(res.get("recentAveragePrice") or 0)
+        except Exception:
+            rap = 0
+        # include only those that look like limiteds (have resale info)
+        keys = set(res.keys())
+        looks_collectible = ("recentAveragePrice" in keys) or ("volume" in keys) or ("numberRemaining" in keys)
+        if looks_collectible:
+            out_items.append({"assetId": aid, "name": str(aid), "rap": rap})
+
+    await asyncio.gather(*(probe(a) for a in asset_ids[:limit_check]))
+    total = sum(x.get("rap", 0) for x in out_items)
+    out_items.sort(key=lambda x: x.get("rap", 0), reverse=True)
+    _log.info("[rap_resale] uid=%s collectibles=%d total=%d", user_id, len(out_items), total)
+    return {"total": int(total), "items": out_items}
+
+async def get_offsale_collectibles_resale_only(user_id: int, *, cookie: Optional[str] = None, limit_check: int = 600) -> List[Dict[str, Any]]:
+    data = await calc_user_rap_resale_only(user_id, cookie=cookie, limit_check=limit_check)
+    items = data.get("items") or []
+    out: List[Dict[str, Any]] = []
+    import asyncio
+    sem = asyncio.Semaphore(24)
+    async def probe(it: Dict[str, Any]):
+        aid = int(it.get("assetId") or 0)
+        async with sem:
+            res = await get_asset_resale(aid)
+        lowest = res.get("lowestResalePrice") if isinstance(res, dict) else None
+        remaining = res.get("numberRemaining") if isinstance(res, dict) else None
+        if lowest in (None, 0) and (remaining in (None, 0)):
+            out.append(it)
+    await asyncio.gather(*(probe(it) for it in items[:limit_check]))
+    out.sort(key=lambda x: x.get("rap", 0), reverse=True)
+    _log.info("[offsale_resale] uid=%s offsale=%d", user_id, len(out))
+    return out

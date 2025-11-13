@@ -1,11 +1,11 @@
 {
   "currency": {
-    "robux": "[tr] R$"
+    "robux": "R$"
   },
   "footer": {
     "checked_by": "Kontrol eden: {username}",
-    "domain": "[tr] raika.gg",
-    "date": "[tr] {day} {month} {year}"
+    "domain": "raika.gg",
+    "date": "{day} {month} {year}"
   },
   "inventory": {
     "title": "Envanter",
@@ -62,8 +62,8 @@
   "profile": {
     "title": "Profil",
     "user": "Kullanıcı",
-    "roblox_id": "[tr] Roblox ID: {id}",
-    "roblox_id_label": "[tr] Roblox ID:",
+    "roblox_id": "Roblox Kimliği: {id}",
+    "roblox_id_label": "Roblox Kimliği:",
     "username": "Kullanıcı adı: {username}",
     "username_label": "Kullanıcı adı:",
     "stats": "İstatistikler",
@@ -116,7 +116,8 @@
     "loading_profile": "Profil yükleniyor…",
     "file_received": "📥 Dosya alındı, kontrol ediliyor...",
     "cookie_validation_error": "❌ Çerez doğrulama hatası.",
-    "cookie_dead": "[tr] 🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
+    "cookie_dead": "🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue.",
+    "cookie_dead_actions": "Çerez geçersiz veya süresi dolmuş.\nYeni bir çerez bağlayabilir veya bu hesabı listenden kaldırabilirsin.\nAnlık görüntüler (geçmiş) korunacak."
   },
   "buttons": {
     "all_items": "📦 Tüm eşyalar",
@@ -127,7 +128,9 @@
     "home": "🔙 Geri",
     "next": "✅ İleri",
     "refresh": "🔄 Yenile",
-    "refresh_category": "🔄 Kategoriyi yenile"
+    "refresh_category": "🔄 Kategoriyi yenile",
+    "relink_cookie": "🔄 Çerezi yeniden bağla",
+    "delete_keep": "🗑️ Hesabı kaldır (geçmiş kalsın)"
   },
   "caption": {
     "auto_76b7d0778c": "Tam Envanter",
@@ -144,11 +147,11 @@
     "unknown": "Bilinmiyor",
     "active": "Aktif",
     "banned": "Yasaklı",
-    "dash": "[tr] —",
-    "ellipsis": "[tr] …",
+    "dash": "—",
+    "ellipsis": "…",
     "na": "M/U",
     "regular": "❌ Normal",
-    "premium": "[tr] ⭐ Premium",
+    "premium": "⭐ Premium",
     "decrypt_error": "<şifre çözme hatası>",
     "pcs": "adet",
     "total": "Toplam"
@@ -174,11 +177,11 @@
     "to_accounts": "📋 Hesap listesine dön",
     "to_home": "🔙 Geri",
     "spending": "💸 Harcamalar",
-    "favorites": "[tr] ⭐ Favorites",
-    "rap": "[tr] 📈 RAP",
-    "offsale": "[tr] 🛑 Off-sale",
-    "revenue": "[tr] 💸 Revenue",
-    "usernames": "[tr] 📝 Past usernames"
+    "favorites": "⭐ Favoriler",
+    "rap": "📈 RAP",
+    "offsale": "🛑 Satışta değil",
+    "revenue": "💸 Gelir",
+    "usernames": "📝 Eski kullanıcı adları"
   },
   "status": {
     "account_deleted": "🗑 Hesap silindi.",
@@ -229,49 +232,49 @@
     "page": "Sayfa {current}/{total}"
   },
   "spending": {
-    "title": "[tr] 💸 Spending history (total: {total})",
-    "loading": "[tr] ⏳ Loading spending history…",
-    "empty": "[tr] 🫙 No purchases found.",
+    "title": "💸 Harcama geçmişi (toplam: {total})",
+    "loading": "⏳ Harcama geçmişi yükleniyor…",
+    "empty": "🫙 Satın alma bulunamadı.",
     "header": "💸 Harcamalar — toplam: {sum} R$"
   },
   "games": {
-    "fav_title": "[tr] ⭐ Favorites",
-    "fav_summary": "[tr] ⭐ Favorites: {count}",
-    "empty_favorites": "[tr] No favorites.",
-    "page": "[tr] Page {cur}/{total}",
-    "prev": "[tr] ◀ Prev",
-    "next": "[tr] Next ▶",
-    "loading": "[tr] ⏳ Loading favorites…"
+    "fav_title": "⭐ Favorites",
+    "fav_summary": "⭐ Favorites: {count}",
+    "empty_favorites": "No favorites.",
+    "page": "Page {cur}/{total}",
+    "prev": "◀ Prev",
+    "next": "Next ▶",
+    "loading": "⏳ Favoriler yükleniyor…"
   },
   "rap": {
-    "title": "[tr] 📈 RAP",
-    "total": "[tr] Total RAP: {value} R$",
-    "item_row": "[tr] {name} — {rap} R$",
-    "lowest": "[tr] Lowest: {value} R$",
-    "no_items": "[tr] No collectibles with RAP found.",
-    "refresh": "[tr] 🔄 Refresh"
+    "title": "📈 RAP",
+    "total": "Toplam RAP: {value} R$",
+    "item_row": "{name} — {rap} R$",
+    "lowest": "En düşük: {value} R$",
+    "no_items": "RAP'li koleksiyon bulunamadı.",
+    "refresh": "🔄 Yenile"
   },
   "offsale": {
-    "title": "[tr] 🛑 Off-sale",
-    "mode": "[tr] Mode: {mode}",
-    "mode_collectibles": "[tr] Collectibles",
-    "empty": "[tr] No off-sale collectibles found.",
-    "row_collectible": "[tr] {name} — RAP {rap} R$ (no sellers)"
+    "title": "🛑 Satışta değil",
+    "mode": "Mod: {mode}",
+    "mode_collectibles": "Koleksiyonlar",
+    "empty": "Satışta olmayan koleksiyon bulunamadı.",
+    "row_collectible": "{name} — RAP {rap} R$ (satıcı yok)"
   },
   "revenue": {
-    "title": "[tr] 💸 Revenue",
-    "auth_required": "[tr] 🔐 Revenue is available only with a cookie.",
-    "summary": "[tr] All time: {sum} R$",
-    "row": "[tr] {date} — {type} — {amount} R$ — {source}",
-    "empty": "[tr] No transactions.",
-    "prev": "[tr] ◀ Prev",
-    "next": "[tr] Next ▶",
-    "refresh": "[tr] 🔄 Refresh"
+    "title": "💸 Gelir",
+    "auth_required": "🔐 Gelir yalnızca çerez ile kullanılabilir.",
+    "summary": "Tüm zamanlar: {sum} R$",
+    "row": "{date} — {type} — {amount} R$ — {source}",
+    "empty": "İşlem yok.",
+    "prev": "◀ Geri",
+    "next": "İleri ▶",
+    "refresh": "🔄 Yenile"
   },
   "usernames": {
-    "title": "[tr] 📝 Past usernames",
-    "row": "[tr] {name} — {changedAt}",
-    "empty": "[tr] No past usernames.",
-    "page": "[tr] Page {cur}/{total}"
+    "title": "📝 Eski kullanıcı adları",
+    "row": "{name} — {changedAt}",
+    "empty": "Önceki kullanıcı adları yok.",
+    "page": "Sayfa {cur}/{total}"
   }
 }

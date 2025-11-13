@@ -1,10 +1,10 @@
 {
   "currency": {
-    "robux": "[hu] R$"
+    "robux": "R$"
   },
   "footer": {
     "checked_by": "Ellenőrizte: {username}",
-    "domain": "[hu] raika.gg",
+    "domain": "raika.gg",
     "date": "{year}. {month} {day}."
   },
   "inventory": {
@@ -62,8 +62,8 @@
   "profile": {
     "title": "Profil",
     "user": "Felhasználó",
-    "roblox_id": "[hu] Roblox ID: {id}",
-    "roblox_id_label": "[hu] Roblox ID:",
+    "roblox_id": "Roblox ID: {id}",
+    "roblox_id_label": "Roblox ID:",
     "username": "Felhasználónév: {username}",
     "username_label": "Felhasználónév:",
     "stats": "Statisztikák",
@@ -116,7 +116,8 @@
     "loading_profile": "Profil betöltése…",
     "file_received": "📥 Fájl megérkezett, ellenőrzés...",
     "cookie_validation_error": "❌ Cookie érvényesítési hiba.",
-    "cookie_dead": "[hu] 🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
+    "cookie_dead": "🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue.",
+    "cookie_dead_actions": "A cookie érvénytelen vagy lejárt.\nÚj cookie-t kapcsolhatsz, vagy eltávolíthatod ezt a fiókot a listádról.\nA pillanatképek (előzmények) megmaradnak."
   },
   "buttons": {
     "all_items": "📦 Összes tárgy",
@@ -127,7 +128,9 @@
     "home": "🔙 Vissza",
     "next": "✅ Tovább",
     "refresh": "🔄 Frissítés",
-    "refresh_category": "🔄 Kategória frissítése"
+    "refresh_category": "🔄 Kategória frissítése",
+    "relink_cookie": "🔄 Cookie újralinkelése",
+    "delete_keep": "🗑️ Fiók eltávolítása (előzmények maradnak)"
   },
   "caption": {
     "auto_76b7d0778c": "Teljes leltár",
@@ -144,9 +147,9 @@
     "unknown": "Ismeretlen",
     "active": "Aktív",
     "banned": "Kitiltva",
-    "dash": "[hu] —",
-    "ellipsis": "[hu] …",
-    "na": "[hu] N/A",
+    "dash": "—",
+    "ellipsis": "…",
+    "na": "N/A",
     "regular": "❌ Normál",
     "premium": "⭐ Prémium",
     "decrypt_error": "<visszafejtési hiba>",
@@ -174,11 +177,11 @@
     "to_accounts": "📋 Vissza a fióklistához",
     "to_home": "🔙 Vissza",
     "spending": "💸 Kiadások",
-    "favorites": "[hu] ⭐ Favorites",
-    "rap": "[hu] 📈 RAP",
-    "offsale": "[hu] 🛑 Off-sale",
-    "revenue": "[hu] 💸 Revenue",
-    "usernames": "[hu] 📝 Past usernames"
+    "favorites": "⭐ Kedvencek",
+    "rap": "📈 RAP",
+    "offsale": "🛑 Nincs forgalomban",
+    "revenue": "💸 Bevételek",
+    "usernames": "📝 Korábbi felhasználónevek"
   },
   "status": {
     "account_deleted": "🗑 Fiók törölve.",
@@ -229,9 +232,9 @@
     "page": "Oldal {current}/{total}"
   },
   "spending": {
-    "title": "[hu] 💸 Spending history (total: {total})",
-    "loading": "[hu] ⏳ Loading spending history…",
-    "empty": "[hu] 🫙 No purchases found.",
+    "title": "💸 Vásárlási előzmények (összesen: {total})",
+    "loading": "⏳ Vásárlási előzmények betöltése…",
+    "empty": "🫙 Nem találhatók vásárlások.",
     "header": "💸 Kiadások — összesen: {sum} R$"
   },
   "games": {
@@ -241,37 +244,37 @@
     "page": "Oldal {cur}/{total}",
     "prev": "◀ Előző",
     "next": "Következő ▶",
-    "loading": "[hu] ⏳ Loading favorites…"
+    "loading": "⏳ Kedvencek betöltése…"
   },
   "rap": {
-    "title": "[hu] 📈 RAP",
-    "total": "[hu] Total RAP: {value} R$",
-    "item_row": "[hu] {name} — {rap} R$",
-    "lowest": "[hu] Lowest: {value} R$",
-    "no_items": "[hu] No collectibles with RAP found.",
-    "refresh": "[hu] 🔄 Refresh"
+    "title": "📈 RAP",
+    "total": "Összes RAP: {value} R$",
+    "item_row": "{name} — {rap} R$",
+    "lowest": "Legalacsonyabb: {value} R$",
+    "no_items": "Nem találhatók RAP‑pal rendelkező gyűjthető tárgyak.",
+    "refresh": "🔄 Frissítés"
   },
   "offsale": {
-    "title": "[hu] 🛑 Off-sale",
-    "mode": "[hu] Mode: {mode}",
-    "mode_collectibles": "[hu] Collectibles",
-    "empty": "[hu] No off-sale collectibles found.",
-    "row_collectible": "[hu] {name} — RAP {rap} R$ (no sellers)"
+    "title": "🛑 Nincs forgalomban",
+    "mode": "Mód: {mode}",
+    "mode_collectibles": "Gyűjthető tárgyak",
+    "empty": "Nincs forgalomban lévő gyűjthető tárgy.",
+    "row_collectible": "{name} — RAP {rap} R$ (nincs eladó)"
   },
   "revenue": {
-    "title": "[hu] 💸 Revenue",
-    "auth_required": "[hu] 🔐 Revenue is available only with a cookie.",
-    "summary": "[hu] All time: {sum} R$",
-    "row": "[hu] {date} — {type} — {amount} R$ — {source}",
-    "empty": "[hu] No transactions.",
-    "prev": "[hu] ◀ Prev",
-    "next": "[hu] Next ▶",
-    "refresh": "[hu] 🔄 Refresh"
+    "title": "💸 Bevételek",
+    "auth_required": "🔐 Bevételek csak cookie-val érhetők el.",
+    "summary": "Összesen: {sum} R$",
+    "row": "{date} — {type} — {amount} R$ — {source}",
+    "empty": "Nincs tranzakció.",
+    "prev": "◀ Előző",
+    "next": "Következő ▶",
+    "refresh": "🔄 Frissítés"
   },
   "usernames": {
-    "title": "[hu] 📝 Past usernames",
-    "row": "[hu] {name} — {changedAt}",
-    "empty": "[hu] No past usernames.",
-    "page": "[hu] Page {cur}/{total}"
+    "title": "📝 Korábbi felhasználónevek",
+    "row": "{name} — {changedAt}",
+    "empty": "Nincsenek korábbi felhasználónevek.",
+    "page": "Oldal {cur}/{total}"
   }
 }

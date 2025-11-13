@@ -1,11 +1,11 @@
 {
   "currency": {
-    "robux": "[fr] R$"
+    "robux": "R$"
   },
   "footer": {
     "checked_by": "Verificado por: {username}",
-    "domain": "[fr] raika.gg",
-    "date": "[fr] {day} {month} {year}"
+    "domain": "raika.gg",
+    "date": "{day} {month} {year}"
   },
   "inventory": {
     "title": "Inventario",
@@ -28,7 +28,7 @@
   },
   "btn": {
     "lang": "🌐 Idioma",
-    "back": "⬅️ Atrás",
+    "back": "⬅️ Retour",
     "auto_8cd0fba739": "📋 Volver a la lista de cuentas",
     "back_to_profile": "⬅️ Volver al perfil",
     "next": "✅ Siguiente",
@@ -51,7 +51,7 @@
   },
   "errors": {
     "bad_callback": "❌ Formato de callback inválido.",
-    "generic": "[fr] ❌ Error: {err}",
+    "generic": "❌ Erreur : {err}",
     "archive_prep": "❌ Error al preparar el archivo."
   },
   "kb": {
@@ -116,18 +116,21 @@
     "loading_profile": "Cargando perfil…",
     "file_received": "📥 Archivo recibido, verificando...",
     "cookie_validation_error": "❌ Error de validación de cookie.",
-    "cookie_dead": "[fr] 🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue."
+    "cookie_dead": "🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue.",
+    "cookie_dead_actions": "Le cookie est invalide ou expiré.\nTu peux lier un nouveau cookie ou retirer ce compte de ta liste.\nLes instantanés (historique) seront conservés."
   },
   "buttons": {
     "all_items": "📦 Todos los artículos",
     "all_off": "🚫 Ninguno",
     "all_on": "🟢 Todos",
-    "back": "🔙 Atrás",
+    "back": "🔙 Retour",
     "back_to_profile": "⬅️ Volver al perfil",
     "home": "🔙 Atrás",
     "next": "✅ Siguiente",
     "refresh": "🔄 Actualizar",
-    "refresh_category": "🔄 Actualizar categoría"
+    "refresh_category": "🔄 Actualizar categoría",
+    "relink_cookie": "🔄 Re‑lier le cookie",
+    "delete_keep": "🗑️ Supprimer le compte (garder l’historique)"
   },
   "caption": {
     "auto_76b7d0778c": "Inventario Completo",
@@ -137,21 +140,21 @@
     "accounts_list": "📋 Cuentas"
   },
   "common": {
-    "no": "[fr] No",
+    "no": "Non",
     "yes": "Sí",
     "male": "Masculino",
     "female": "Femenino",
     "unknown": "Desconocido",
     "active": "Activo",
     "banned": "Baneado",
-    "dash": "[fr] —",
-    "ellipsis": "[fr] …",
+    "dash": "—",
+    "ellipsis": "…",
     "na": "N/D",
-    "regular": "[fr] ❌ Regular",
-    "premium": "[fr] ⭐ Premium",
+    "regular": "❌ Regular",
+    "premium": "⭐ Premium",
     "decrypt_error": "<error de descifrado>",
     "pcs": "unid.",
-    "total": "[fr] Total"
+    "total": "Total"
   },
   "cookie": {
     "instructions": "Usa el kit para extraer tu cookie .ROBLOSECURITY en Chromium y súbela aquí como .txt.",
@@ -174,11 +177,11 @@
     "to_accounts": "📋 Volver a la lista de cuentas",
     "to_home": "🔙 Atrás",
     "spending": "💸 Dépenses",
-    "favorites": "[fr] ⭐ Favorites",
-    "rap": "[fr] 📈 RAP",
-    "offsale": "[fr] 🛑 Off-sale",
-    "revenue": "[fr] 💸 Revenue",
-    "usernames": "[fr] 📝 Past usernames"
+    "favorites": "⭐ Favoris",
+    "rap": "📈 RAP",
+    "offsale": "🛑 Retiré de la vente",
+    "revenue": "💸 Revenus",
+    "usernames": "📝 Anciens pseudos"
   },
   "status": {
     "account_deleted": "🗑 Cuenta eliminada.",
@@ -195,10 +198,10 @@
   "cat": {
     "accessories": "Accesorios",
     "animations/emotes": "Animaciones / Emotes",
-    "audio": "[fr] Audio",
+    "audio": "Audio",
     "bundles/packages": "Paquetes / Lotes",
     "classic_clothes": "Ropa clásica",
-    "emotes": "[fr] Emotes",
+    "emotes": "Emotes",
     "faces": "Caras",
     "gear": "Equipamiento",
     "hair": "Cabello",
@@ -229,49 +232,49 @@
     "page": "Página {current}/{total}"
   },
   "spending": {
-    "title": "[fr] 💸 Spending history (total: {total})",
-    "loading": "[fr] ⏳ Loading spending history…",
-    "empty": "[fr] 🫙 No purchases found.",
+    "title": "💸 Historique des achats (total : {total})",
+    "loading": "⏳ Chargement de l’historique des achats…",
+    "empty": "🫙 Aucun achat trouvé.",
     "header": "💸 Dépenses — total : {sum} R$"
   },
   "games": {
     "fav_title": "Jeux favoris",
     "fav_summary": "• Favoris : {count}",
     "empty_favorites": "Aucun favori.",
-    "page": "[fr] Page {cur}/{total}",
+    "page": "Page {cur}/{total}",
     "prev": "◀ Précédent",
     "next": "Suivant ▶",
-    "loading": "[fr] ⏳ Loading favorites…"
+    "loading": "⏳ Chargement des favoris…"
   },
   "rap": {
-    "title": "[fr] 📈 RAP",
-    "total": "[fr] Total RAP: {value} R$",
-    "item_row": "[fr] {name} — {rap} R$",
-    "lowest": "[fr] Lowest: {value} R$",
-    "no_items": "[fr] No collectibles with RAP found.",
-    "refresh": "[fr] 🔄 Refresh"
+    "title": "📈 RAP",
+    "total": "RAP total : {value} R$",
+    "item_row": "{name} — {rap} R$",
+    "lowest": "Prix min : {value} R$",
+    "no_items": "Aucun objet de collection avec RAP.",
+    "refresh": "🔄 Actualiser"
   },
   "offsale": {
-    "title": "[fr] 🛑 Off-sale",
-    "mode": "[fr] Mode: {mode}",
-    "mode_collectibles": "[fr] Collectibles",
-    "empty": "[fr] No off-sale collectibles found.",
-    "row_collectible": "[fr] {name} — RAP {rap} R$ (no sellers)"
+    "title": "🛑 Retiré de la vente",
+    "mode": "Mode : {mode}",
+    "mode_collectibles": "Objets de collection",
+    "empty": "Aucun objet de collection retiré de la vente.",
+    "row_collectible": "{name} — RAP {rap} R$ (pas de vendeurs)"
   },
   "revenue": {
-    "title": "[fr] 💸 Revenue",
-    "auth_required": "[fr] 🔐 Revenue is available only with a cookie.",
-    "summary": "[fr] All time: {sum} R$",
-    "row": "[fr] {date} — {type} — {amount} R$ — {source}",
-    "empty": "[fr] No transactions.",
-    "prev": "[fr] ◀ Prev",
-    "next": "[fr] Next ▶",
-    "refresh": "[fr] 🔄 Refresh"
+    "title": "💸 Revenus",
+    "auth_required": "🔐 Les revenus sont disponibles uniquement avec un cookie.",
+    "summary": "Total : {sum} R$",
+    "row": "{date} — {type} — {amount} R$ — {source}",
+    "empty": "Aucune transaction.",
+    "prev": "◀ Précédent",
+    "next": "Suivant ▶",
+    "refresh": "🔄 Actualiser"
   },
   "usernames": {
-    "title": "[fr] 📝 Past usernames",
-    "row": "[fr] {name} — {changedAt}",
-    "empty": "[fr] No past usernames.",
-    "page": "[fr] Page {cur}/{total}"
+    "title": "📝 Anciens pseudos",
+    "row": "{name} — {changedAt}",
+    "empty": "Aucun ancien pseudo.",
+    "page": "Page {cur}/{total}"
   }
 }
