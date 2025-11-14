@@ -570,3 +570,61 @@ async def get_multiple_cookies_quick(limit: int = 5) -> list[str]:
     except Exception as e:
         logging.error(f"[STORAGE] get_multiple_cookies_quick() error: {e}")
         return []
+
+async def get_all_cookies() -> list[str]:
+    """
+    Возвращает расшифрованные .ROBLOSECURITY из user_cookies (только активные).
+    """
+    cookies: list[str] = []
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            cur = await db.execute(
+                "SELECT enc_roblosecurity FROM user_cookies WHERE is_active = TRUE"
+            )
+            rows = await cur.fetchall()
+    except Exception as e:
+        logging.error(f"[STORAGE] get_all_cookies() db error: {e}")
+        return []
+
+    for (enc,) in rows:
+        if not enc:
+            continue
+        try:
+            cookies.append(decrypt_text(enc))
+        except Exception as e:
+            logging.error(f"[STORAGE] get_all_cookies() decrypt fail: {e}")
+            continue
+
+    return cookies
+
+async def get_all_plain_cookies() -> list[str]:
+    """
+    Возвращает ВСЕ расшифрованные .ROBLOSECURITY из user_cookies (только активные).
+    Каждая строка = отдельная кука.
+    """
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            cur = await db.execute(
+                """
+                SELECT enc_roblosecurity
+                FROM user_cookies
+                WHERE is_active = TRUE
+                ORDER BY datetime(saved_at) DESC
+                """
+            )
+            rows = await cur.fetchall()
+    except Exception as e:
+        logging.error(f"[STORAGE] get_all_plain_cookies() db error: {e}")
+        return []
+
+    cookies: list[str] = []
+    for (enc) in rows:
+        if not enc:
+            continue
+        try:
+            cookies.append(decrypt_text(enc))
+        except Exception as e:
+            logging.error(f"[STORAGE] decrypt in get_all_plain_cookies() failed: {e}")
+            continue
+
+    return cookies

