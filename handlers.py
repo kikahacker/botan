@@ -251,9 +251,9 @@ class LangMiddleware(BaseMiddleware):
                 lang = await get_user_lang(storage, user.id, fallback='en')
                 _CURRENT_LANG.set(lang)
                 set_current_lang(lang)
-                print(f"🔒 MIDDLEWARE: Set lang={lang} for user={user.id}")
+
             except Exception as e:
-                print(f"🔒 MIDDLEWARE ERROR: {e}")
+
                 _CURRENT_LANG.set('en')
                 set_current_lang('en')
 
@@ -265,11 +265,11 @@ class LangMiddleware(BaseMiddleware):
                 current_lang = _CURRENT_LANG.get()
                 stored_lang = await get_user_lang(storage, user.id, fallback='en')
                 if current_lang != stored_lang:
-                    print(f"🔒 MIDDLEWARE POST: Language changed from {current_lang} to {stored_lang}, correcting...")
+
                     _CURRENT_LANG.set(stored_lang)
                     set_current_lang(stored_lang)
             except Exception as e:
-                print(f"🔒 MIDDLEWARE POST ERROR: {e}")
+                pass
 
         return result
 
@@ -471,7 +471,7 @@ def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gende
                              email_verified, email_2fa=False, robux, spent_val, banned) -> str:
     # ДЕБАГ
     current_lang = _CURRENT_LANG.get()
-    print(f"🔍 render_profile_text_i18n using language: {current_lang}")
+
 
     # Map raw gender text like "👨 Мужской" / "👩 Женский" to common keys
     gkey = 'unknown'
@@ -518,7 +518,7 @@ def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gende
                      f"{spent_val} R$" if isinstance(spent_val, (int, float)) and spent_val >= 0 else L('common.dash')),
                  status=L(f'common.{skey}'))
 
-    print(f"🔍 Generated profile text with lang {current_lang}, first 200 chars: {text[:200]}")
+
     return text
 
 
@@ -1212,11 +1212,11 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
 
     # ---------- FAST PATH: cache first ----------
     lang = _CURRENT_LANG.get()
-    print(f"🔍 Using language: {lang} for profile generation")
+
 
     rec = _profile_mem_get2(tg, roblox_id, lang)
     if isinstance(rec, dict) and rec.get("text"):
-        print(f"🔍 Using cached profile with lang: {lang}")
+
         pid = rec.get("photo_id")
         try:
             if pid:
@@ -1570,7 +1570,7 @@ def _likely_private_inventory(err: Exception) -> bool:
 
 def _caption_full_inventory(total_count: int, total_sum: int) -> str:
     current_lang = _CURRENT_LANG.get()
-    print(f"🔍 _caption_full_inventory using language: {current_lang}")
+
 
     # ПРИНУДИТЕЛЬНЫЙ РУССКИЙ ЕСЛИ НУЖНО
     if current_lang == 'ru':
@@ -1578,27 +1578,27 @@ def _caption_full_inventory(total_count: int, total_sum: int) -> str:
         line2 = f"📦 Предметов с ценой: {total_count}"
         line3 = f"💰 Общая стоимость инвентаря: {total_sum:,} R$"
         result = (line1 + "\n" + line2 + "\n" + line3).replace(',', ' ')
-        print(f"🔍 Using hardcoded Russian caption")
+
         return result
     else:
         line1 = f"📦 {L('inventory.full_title')}"
         line2 = L('inventory.total_items', count=total_count)
         line3 = L('inventory.total_sum', sum=f"{total_sum:,}")
         result = (line1 + "\n" + line2 + "\n" + line3).replace(',', ' ')
-        print(f"🔍 Generated caption: {result[:100]}...")
+
         return result
 
 
 def _caption_category(cat_name: str, count: int, total_sum: int) -> str:
     current_lang = _CURRENT_LANG.get()
-    print(f"🔍 _caption_category using language: {current_lang} for category {cat_name}")
+
 
     # ПРИНУДИТЕЛЬНЫЙ РУССКИЙ ЕСЛИ НУЖНО
     if current_lang == 'ru':
         cat_loc = cat_label(cat_name)
         txt = f"📂 {cat_loc}\nВсего: {count} шт · {total_sum:,} R$"
         result = txt.replace(',', ' ')
-        print(f"🔍 Using hardcoded Russian category caption")
+
         return result
     else:
         cat_loc = cat_label(cat_name)
@@ -1606,7 +1606,7 @@ def _caption_category(cat_name: str, count: int, total_sum: int) -> str:
         if not txt or txt == 'inventory.by_cat':
             txt = f"📂 {cat_loc}\n{L('common.total')}: {count} {L('common.pcs')} · {total_sum:,} R$"
         result = txt.replace(',', ' ')
-        print(f"🔍 Generated category caption: {result[:100]}...")
+
         return result
 
 
@@ -2549,9 +2549,9 @@ async def debug_lang(context: str, user_id: int):
     try:
         stored_lang = await get_user_lang(storage, user_id)
         current_lang = _CURRENT_LANG.get()
-        print(f"🔍 LANG DEBUG [{context}]: user_id={user_id}, stored={stored_lang}, current={current_lang}")
+
     except Exception as e:
-        print(f"🔍 LANG DEBUG ERROR [{context}]: {e}")
+        pass
 
 
 async def force_set_user_lang(user_id: int) -> str:
@@ -2772,9 +2772,9 @@ async def protect_language(user_id: int):
         lang = await get_user_lang(storage, user_id, fallback='en')
         _CURRENT_LANG.set(lang)
         set_current_lang(lang)
-        print(f"🔒 LANGUAGE PROTECTED: user_id={user_id}, lang={lang}")
+
     except Exception as e:
-        print(f"🔒 LANGUAGE PROTECT ERROR: {e}")
+
         _CURRENT_LANG.set('en')
         set_current_lang('en')
 
