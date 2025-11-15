@@ -13,7 +13,7 @@
     "empty": "🫙 Vazio.",
     "total_sum": "💰 Valor total do inventário: {sum} R$",
     "total_items": "📦 Itens com preço: {count}",
-    "by_cat": "📂 {cat}\nTotal: {count} unid. · {sum} R$",
+    "by_cat": "📂 {cat}\nTotal: {count} unids · {sum} R$",
     "full_title": "Inventário completo",
     "selected": {
       "summary": "💰 Total selecionado: {total} R$\n📦 Itens: {count}"
@@ -62,10 +62,10 @@
   "profile": {
     "title": "Perfil",
     "user": "Usuário",
-    "roblox_id": "ID do Roblox: {id}",
-    "roblox_id_label": "ID do Roblox:",
-    "username": "Nome de usuário: {username}",
-    "username_label": "Nome de usuário:",
+    "roblox_id": "ID Roblox: {id}",
+    "roblox_id_label": "ID Roblox:",
+    "username": "Usuário: {username}",
+    "username_label": "Usuário:",
     "stats": "Estatísticas",
     "favorites": "Favoritos: {n}",
     "favorites_label": "Favoritos:",
@@ -85,7 +85,7 @@
     "auto_2ea715f34f": "🔐 Cookie para usuário {rid}:\n<code>{cookie}</code>",
     "auto_349c12ce4e": "📝 Uso: /get_cookie &lt;roblox_id&gt;",
     "auto_5b9ec32c3a": "⏳ Carregando inventário…",
-    "auto_742e941465": "❌ Formato de ID do Roblox inválido.",
+    "auto_742e941465": "❌ Formato de ID Roblox inválido.",
     "auto_7581c6cb74": "⏳ Carregando categoria…",
     "auto_7d8934a45d": "⏳ Carregando inventário…",
     "auto_92248ed4b0": "❌ Nenhum snapshot encontrado para esta conta.",
@@ -102,22 +102,22 @@
     "auto_f707b4e058": "🫙 Nenhum item nas categorias selecionadas.",
     "delete_pick_account": "Selecione uma conta para excluir:",
     "settings": "⚙️ Configurações",
-    "welcome": "👋 Bem-vindo ao bot Raika!\n\n📰 Nosso canal de notícias - t.me/RaikaChecker\n\nUsando o bot, você concorda automaticamente com os <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Termos de Serviço</a>",
+    "welcome": "👋 Bem-vindo ao bot Raika!\n\n📰 Nosso canal de notícias - t.me/RaikaChecker\n\nAo usar o bot, você concorda automaticamente com os <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Termos de Serviço</a>",
     "no_valid_cookies": "❌ Todos os cookies são inválidos.",
-    "file_not_txt": "⚠️ Isto não é um arquivo .txt. Envie um arquivo de cookie no formato .txt",
+    "file_not_txt": "⚠️ Isto não é um arquivo .txt. Envie um arquivo de cookie em formato .txt",
     "account_deleted_error": "❌ Erro ao excluir conta.",
     "profile_load_error": "❌ Falha ao carregar perfil.",
     "accounts_load_error": "❌ Erro ao carregar contas.",
     "delete_accounts_error": "❌ Erro ao carregar contas para exclusão.",
-    "cookie_script_error": "❌ Erro no zip do script de cookie.",
+    "cookie_script_error": "❌ Erro ao compactar script de cookie.",
     "menu_accounts_error": "❌ Erro ao carregar contas.",
     "no_cookie_for_account": "⚠️ Cookie para esta conta não encontrado.",
     "profile_load_failed": "❌ Falha ao carregar perfil.",
     "loading_profile": "Carregando perfil…",
     "file_received": "📥 Arquivo recebido, verificando...",
     "cookie_validation_error": "❌ Erro de validação de cookie.",
-    "cookie_dead": "🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue.",
-    "cookie_dead_actions": "O cookie é inválido ou expirou.\nVocê pode vincular um novo cookie ou remover esta conta da sua lista.\nOs snapshots (histórico) serão mantidos."
+    "cookie_dead": "🔐 O cookie para esta conta é inválido ou expirado. Faça upload de um novo cookie (.ROBLOSECURITY) para continuar.",
+    "cookie_dead_actions": "Cookie é inválido ou expirado.\nVocê pode vincular um novo cookie ou remover esta conta da sua lista.\nSnapshots (histórico) serão mantidos."
   },
   "buttons": {
     "all_items": "📦 Todos os itens",
@@ -129,7 +129,7 @@
     "next": "✅ Próximo",
     "refresh": "🔄 Atualizar",
     "refresh_category": "🔄 Atualizar categoria",
-    "relink_cookie": "🔄 Vincular cookie novamente",
+    "relink_cookie": "🔄 Revincular cookie",
     "delete_keep": "🗑️ Remover conta (manter histórico)"
   },
   "caption": {
@@ -153,11 +153,11 @@
     "regular": "❌ Regular",
     "premium": "⭐ Premium",
     "decrypt_error": "<erro de descriptografia>",
-    "pcs": "unid.",
+    "pcs": "unids",
     "total": "Total"
   },
   "cookie": {
-    "instructions": "Use o kit abaixo para extrair seu cookie .ROBLOSECURITY no Chromium e envie aqui como .txt.",
+    "instructions": "Use o kit abaixo para extrair seu cookie .ROBLOSECURITY no Chromium e faça upload aqui como .txt.",
     "kit_caption": "Kit para extrair cookie (.ROBLOSECURITY). Execute batnik.bat, faça login, pressione Enter, depois envie cookies.txt aqui.",
     "instructions_short": "1) Extraia\n2) Execute batnik.bat\n3) Faça login no Roblox no Chromium\n4) Pressione Enter\n5) Pegue cookies.txt"
   },
@@ -169,7 +169,7 @@
   "messages": {
     "choose_categories": "Escolha categorias (ativar/desativar):",
     "choose_language": "Escolha seu idioma:",
-    "welcome": "👋 Bem-vindo ao bot Raika!\n\n📰 Nosso canal de notícias - t.me/RaikaChecker\n\nUsando o bot, você concorda automaticamente com os <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Termos de Serviço</a>"
+    "welcome": "👋 Bem-vindo ao bot Raika!\n\n📰 Nosso canal de notícias - t.me/RaikaChecker\n\nAo usar o bot, você concorda automaticamente com os <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Termos de Serviço</a>"
   },
   "nav": {
     "categories": "📂 Categorias",
@@ -181,7 +181,7 @@
     "rap": "📈 RAP",
     "offsale": "🛑 Fora de venda",
     "revenue": "💸 Receita",
-    "usernames": "📝 Nomes anteriores"
+    "usernames": "📝 Nomes de usuário anteriores"
   },
   "status": {
     "account_deleted": "🗑 Conta excluída.",
@@ -194,7 +194,7 @@
     "file_received": "📥 Arquivo recebido, verificando...",
     "no_accounts_to_delete": "⚠️ Nenhuma conta para excluir."
   },
-  "welcome": "👋 Bem-vindo ao bot Raika!\n\n📰 Nosso canal de notícias - t.me/RaikaChecker\n\nUsando o bot, você concorda automaticamente com os <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Termos de Serviço</a>",
+  "welcome": "👋 Bem-vindo ao bot Raika!\n\n📰 Nosso canal de notícias - t.me/RaikaChecker\n\nAo usar o bot, você concorda automaticamente com os <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Termos de Serviço</a>",
   "cat": {
     "accessories": "Acessórios",
     "animations/emotes": "Animações / Emotes",
@@ -209,72 +209,101 @@
     "heads": "Cabeças"
   },
   "public": {
-    "ask_id": "🆔 Envie um ID do Roblox para mostrar informações públicas.",
+    "ask_id": "🆔 Envie um ID Roblox para mostrar informações públicas.",
     "note_limited": "ℹ️ Modo público: alguns dados não estão disponíveis sem cookie.",
     "bad_id": "⚠️ ID inválido. Envie um número (ex: 123456789).",
     "not_found": "❌ Usuário não encontrado ou indisponível.",
     "inventory_private": "⚠️ O inventário deste usuário é privado no Roblox.",
-    "spending_login_required": "🔐 Os gastos só ficam disponíveis se houver um cookie salvo para esta conta."
+    "spending_login_required": "🔐 Gastos disponíveis apenas se um cookie for salvo para esta conta."
   },
   "settings": {
     "title": "⚙️ Configurações"
   },
   "admin": {
-    "stats": "📊 <b>Estatísticas do Bot</b>\n👥 Total de usuários: {total_users}\n🆕 Novos hoje: {new_today}\n📈 Ativos hoje: {active_today}\n🔗 Com contas vinculadas: {users_with_accounts}\n🔎 Total de verificações: {checks_total}\n📅 Verificações hoje: {checks_today}",
+    "stats": "📊 <b>Estatísticas do Bot</b>\n👥 Total de usuários: {total_users}\n🆕 Novos hoje: {new_today}\n📈 Ativos hoje: {active_today}\n🔗 Com contas vinculadas: {users_with_accounts}\n🔎 Verificações totais: {checks_total}\n📅 Verificações hoje: {checks_today}",
     "user_snapshot": "🧾 <b>Snapshot da Conta</b>\n🆔 ID Roblox: {rid}\n💰 Inventário: {inventory_val} R$\n💸 Total gasto: {total_spent} R$\n🕒 Atualizado: {updated_at}"
   },
   "inventory_view": {
-    "public_title": "📦 Inventário público\nTotal: {total} unid. · {total_sum} R$",
-    "category_title": "📂 {category}\nTotal: {count} unid. · {total_sum} R$",
-    "all_categories": "📦 Todas as categorias juntas\nTotal: {total} unid. · {total_sum} R$",
+    "public_title": "📦 Inventário público\nTotal: {total} unids · {total_sum} R$",
+    "category_title": "📂 {category}\nTotal: {count} unids · {total_sum} R$",
+    "all_categories": "📦 Todas categorias juntas\nTotal: {total} unids · {total_sum} R$",
     "grand_total": "💰 Valor total do inventário: {total_sum} R$\n📦 Total de itens com preço: {total_count}",
-    "render_too_large": "📦 Todos os itens: renderização muito grande. Reduza o tamanho ou refine a seleção.",
+    "render_too_large": "📦 Todos os itens: render muito grande. Reduza o tamanho ou ajuste a seleção.",
     "page": "Página {current}/{total}"
   },
   "spending": {
-    "title": "💸 Histórico de compras (total: {total})",
-    "loading": "⏳ Carregando histórico de compras…",
+    "title": "💸 Histórico de gastos (total: {total})",
+    "loading": "⏳ Carregando histórico de gastos…",
     "empty": "🫙 Nenhuma compra encontrada.",
-    "header": "💸 Gastos — total: {sum} R$"
+    "header": "💸 Gastos — Total: {sum} R$"
   },
   "games": {
-    "fav_title": "Jogos favoritos",
-    "fav_summary": "• Favoritos: {count}",
-    "empty_favorites": "Sem favoritos.",
+    "fav_title": "⭐ Favoritos",
+    "fav_summary": "⭐ Favoritos: {count}",
+    "empty_favorites": "Nenhum favorito.",
     "page": "Página {cur}/{total}",
     "prev": "◀ Anterior",
     "next": "Próximo ▶",
     "loading": "⏳ Carregando favoritos…"
   },
   "rap": {
-    "title": "📈 RAP",
+    "title": "RAP",
     "total": "RAP total: {value} R$",
     "item_row": "{name} — {rap} R$",
-    "lowest": "Mínimo: {value} R$",
-    "no_items": "Nenhum colecionável com RAP encontrado.",
-    "refresh": "🔄 Atualizar"
+    "lowest": "Mais baixo: {value} R$",
+    "no_items": "Nenhum item colecionável com RAP encontrado.",
+    "refresh": "🔄 Atualizar",
+    "loading": "⏳ Carregando…",
+    "empty_private": "Nenhum item colecionável encontrado. Se o inventário é privado, abra-o ou use um cookie válido para esta conta.",
+    "empty_generic": "Parece que nenhum item colecionável foi encontrado. Tente novamente mais tarde.",
+    "details": "📄 Detalhes",
+    "back_to_summary": "⬅ Voltar para resumo",
+    "item_row_with_id": "{name} (ID {id}) — {rap} R$"
   },
   "offsale": {
-    "title": "🛑 Fora de venda",
+    "title": "Fora de venda",
     "mode": "Modo: {mode}",
-    "mode_collectibles": "Colecionáveis",
-    "empty": "Nenhum colecionável fora de venda.",
-    "row_collectible": "{name} — RAP {rap} R$ (sem vendedores)"
+    "mode_collectibles": "Itens colecionáveis",
+    "empty": "Nenhum item colecionável fora de venda encontrado.",
+    "row_collectible": "{name} — RAP {rap} R$ (sem vendedores)",
+    "loading": "⏳ Carregando…",
+    "empty_private": "Nenhum item colecionável fora de venda. Se o inventário é privado, abra-o ou use um cookie válido para esta conta.",
+    "empty_generic": "Nenhum item colecionável fora de venda encontrado. Tente novamente mais tarde."
   },
   "revenue": {
     "title": "💸 Receita",
     "auth_required": "🔐 Receita disponível apenas com cookie.",
-    "summary": "Todo o período: {sum} R$",
+    "summary": "Total: {sum} R$",
     "row": "{date} — {type} — {amount} R$ — {source}",
-    "empty": "Sem transações.",
+    "empty": "Nenhuma transação.",
     "prev": "◀ Anterior",
     "next": "Próximo ▶",
-    "refresh": "🔄 Atualizar"
+    "refresh": "🔄 Atualizar",
+    "loading": "⏳ Carregando receita…",
+    "summary_page": "Nesta página: {sum} R$",
+    "page_summary": "Transações nesta página: {count}",
+    "details": "📄 Detalhes",
+    "back_to_summary": "⬅️ Voltar para resumo",
+    "total_count": "Total de transações: {count}",
+    "total_sum": "Total: {sum} R$"
   },
   "usernames": {
-    "title": "📝 Nomes anteriores",
+    "title": "📝 Nomes de usuário anteriores",
     "row": "{name} — {changedAt}",
-    "empty": "Sem nomes anteriores.",
-    "page": "Página {cur}/{total}"
-  }
+    "empty": "Nenhum nome de usuário anterior.",
+    "page": "Página {cur}/{total}",
+    "loading": "⏳ Carregando…",
+    "empty_private": "Nenhum nome de usuário anterior. Se o acesso é restrito, um cookie válido é necessário.",
+    "empty_generic": "Nenhum nome de usuário anterior encontrado."
+  },
+  "masscheck.need_txt": "Você precisa enviar um arquivo .txt com cookies 😅",
+  "masscheck.empty_file": "O arquivo está vazio, nenhum cookie encontrado 😬",
+  "masscheck.start": "Encontradas {count} linhas, iniciando verificação em massa...",
+  "masscheck.no_results": "Nada pôde ser processado :(",
+  "masscheck.summary_title": "RESUMO DA VERIFICAÇÃO EM MASSA",
+  "masscheck.details_title": "PERFIS DETALHADOS",
+  "masscheck.zip_caption": "Verificação em massa: perfis + inventários em um único arquivo 😎",
+  "masscheck.wait_txt": "Envie um arquivo .txt com cookies como uma mensagem de documento separada — assim que eu receber o arquivo, coletarei perfis e inventários em um arquivo.",
+  "masscheck.inv_prefix": "Inventário: ",
+  "masscheck.no_priced_items": "nenhum item com preço"
 }

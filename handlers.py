@@ -46,6 +46,67 @@ _PROFILE_TTL = 6 * 60 * 60  # 6 hours
 LOG_DIR = pathlib.Path(os.getenv("LOG_DIR") or pathlib.Path(__file__).resolve().parent / "logs")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 _INVLOG_PATH = LOG_DIR / "inventory.debug.log"
+_CHECKLOG_PATH = LOG_DIR / "checks.log"
+
+
+def _checklog(event: str, tg_id: int | None = None, roblox_id: int | None = None,
+              scope: str | None = None, what: str | None = None, extra: dict | None = None) -> None:
+    """Глобальный лог того, кто / когда / что проверил.
+
+    Пишет JSON-строку в logs/checks.log:
+    {
+      "ts": "...",
+      "event": "check",
+      "tg_id": 123,
+      "roblox_id": 456,
+      "scope": "private|public|mass",
+      "what": "profile|inventory_full|inventory_cat|masscheck",
+      "extra": {...}
+    }
+    """
+    try:
+        row = {
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            "event": event,
+        }
+        if tg_id is not None:
+            row["tg_id"] = int(tg_id)
+        if roblox_id is not None:
+            row["roblox_id"] = int(roblox_id)
+        if scope:
+            row["scope"] = scope
+        if what:
+            row["what"] = what
+        if extra:
+            row["extra"] = extra
+        with _CHECKLOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception:
+        try:
+            logging.getLogger("handlers").warning("[checklog fail]", exc_info=True)
+        except Exception:
+            pass
+
+
+async def _log_check(tg_id: int, roblox_id: int | None, scope: str, what: str, extra: dict | None = None):
+    """Обёртка над storage.log_event + файловый лог.
+
+    scope: "private" | "public" | "mass" | "admin" | ...
+    what:  "profile" | "inventory_full" | "inventory_cat" | "masscheck" | ...
+    """
+    _checklog("check", tg_id=tg_id, roblox_id=roblox_id, scope=scope, what=what, extra=extra or {})
+    try:
+        # оставляем старое событие 'check', чтобы /stat и прочее не сломалось
+        if roblox_id is not None:
+            await storage.log_event("check", telegram_id=tg_id, roblox_id=roblox_id)
+        else:
+            await storage.log_event("check", telegram_id=tg_id)
+    except Exception:
+        # падать здесь нельзя, лог просто пропускаем
+        pass
+
+
+
 
 
 def _invlog(event: str, **kw):
@@ -674,10 +735,14 @@ async def edit_or_send(message: types.Message, text: str, reply_markup: Optional
 
 def kb_main() -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(text=L('menu.add_accounts'), callback_data='menu:add'),
-         InlineKeyboardButton(text=L('menu.saved_accounts'), callback_data='menu:accounts')],
-        [InlineKeyboardButton(text=L('menu.public_info'), callback_data='menu:public'),
-         InlineKeyboardButton(text=L('menu.delete_account'), callback_data='menu:delete')],
+        [
+            InlineKeyboardButton(text=L('menu.add_accounts'), callback_data='menu:add'),
+            InlineKeyboardButton(text=L('menu.saved_accounts'), callback_data='menu:accounts'),
+        ],
+        [
+            InlineKeyboardButton(text=L('menu.public_info'), callback_data='menu:public'),
+            InlineKeyboardButton(text=L('menu.delete_account'), callback_data='menu:delete'),
+        ],
         [InlineKeyboardButton(text=L('menu.cookie_script'), callback_data='menu:script')],
         [InlineKeyboardButton(text=L('menu.settings'), callback_data='menu:settings')],
     ]
@@ -979,7 +1044,9 @@ async def cb_public_open(call: types.CallbackQuery) -> None:
     await edit_or_send(call.message, L('public.ask_id'), reply_markup=kb_only_back())
 
 
-@router.callback_query(F.data.startswith('menu:'))
+@router.callback_query(
+    F.data.startswith('menu:') & (F.data != 'menu:login_pass')
+)
 async def cb_menu(call: types.CallbackQuery) -> None:
     await protect_language(call.from_user.id)
     try:
@@ -1137,6 +1204,9 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
 
     tg = call.from_user.id
     roblox_id = int(call.data.split(':', 1)[1])
+
+    # глобальный лог: приватный профиль
+    await _log_check(tg, roblox_id, scope="private", what="profile")
 
     invalidate_profile_mem(tg, roblox_id)
 
@@ -1571,7 +1641,7 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
         data = await _get_inventory_cached(tg, roblox_id)
 
         logger.info(f"[inv_full] got inventory dict={isinstance(data, dict)} keys={list((data or {}).keys())}")
-        await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
+        await _log_check(tg, roblox_id, scope="private", what="inventory_full")
 
         # ЗАЩИТА ПЕРЕД ОБРАБОТКОЙ ДАННЫХ
         await protect_language(call.from_user.id)
@@ -1634,7 +1704,7 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
     try:
         await protect_language(call.from_user.id)
         data = await _get_inventory_cached(tg, roblox_id)
-        await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
+        await _log_check(tg, roblox_id, scope="private", what="inventory_cfg_next")
 
         await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
@@ -1747,7 +1817,7 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
     try:
         await protect_language(call.from_user.id)
         data = await _get_inventory_cached(tg, roblox_id)
-        await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
+        await _log_check(tg, roblox_id, scope="private", what="inventory_full")
 
         await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
@@ -1809,7 +1879,7 @@ async def cb_inventory_category_refresh(call: types.CallbackQuery) -> None:
     loader = await call.message.answer(L('msg.auto_ec50e4a25a'))
     try:
         data = await _get_inventory_cached(tg, roblox_id)
-        await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
+        await _log_check(tg, roblox_id, scope="private", what="inventory_by_cat")
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         full = _CAT_SHORTMAP.get((roblox_id, short), short)
         items = _filter_nonzero(by_cat.get(full, []))
@@ -1895,7 +1965,7 @@ async def cb_inventory_stream(call: types.CallbackQuery) -> None:
         # ЗАЩИТА ПЕРЕД ЗАГРУЗКОЙ ДАННЫХ
         await protect_language(call.from_user.id)
         data = await _get_inventory_cached(tg, roblox_id)
-        await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
+        await _log_check(tg, roblox_id, scope="private", what="inventory_stream")
 
         await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
@@ -2245,7 +2315,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
         # ЗАЩИТА ПЕРЕД ЗАГРУЗКОЙ
         await protect_language(call.from_user.id)
         data = await _get_inventory_cached(tg, roblox_id)
-        await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
+        await _log_check(tg, roblox_id, scope="private", what="inventory_cfg_next")
 
         logger.info(f"[inv_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
 
@@ -2597,7 +2667,7 @@ async def handle_public_id(message: types.Message) -> None:
         return
     await force_set_user_lang(message.from_user.id)
     rid = int(message.text.strip())
-    await storage.log_event('check', telegram_id=tg, roblox_id=rid)
+    await _log_check(tg, rid, scope="public", what="profile")
     # reset flag
     await _set_public_pending(tg, False)
     # Fetch minimal public profile (no cookie)
@@ -2769,7 +2839,7 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
         data = await _get_inventory_public_only(roblox_id)
 
         # ✅ Логируем публичную проверку, чтобы она считалась в /stat
-        await storage.log_event('check', telegram_id=tg, roblox_id=roblox_id)
+        await _log_check(tg, roblox_id, scope="public", what="inventory_cfg_next")
 
         logger.info(
             f"[inv_pub_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
@@ -4131,25 +4201,19 @@ def _check_antiflood(user_id: int, limit: int = 7, per_seconds: int = 10) -> boo
     return len(ts_list) > limit
 
 
-
 from aiogram.types import BufferedInputFile
+from aiogram.fsm.context import FSMContext
+from aiogram.filters import StateFilter, Command
 
-@router.message(Command("masscheck"))
-async def cmd_masscheck(message: Message):
-    # 1) ищем, к какому файлу привязаться: либо текущее сообщение, либо реплай
-    doc = message.document
-    if not doc and message.reply_to_message and message.reply_to_message.document:
-        doc = message.reply_to_message.document
+# ======================= MASSCHECK (profiles + inventory images to ZIP) =======================
 
-    if not doc:
-        return await message.answer(
-            "скинь .txt с куками:\n"
-            "• как документ с подписью /masscheck\n"
-            "• или отправь файл и ответь на него /masscheck"
-        )
+async def _run_masscheck_for_doc(message: Message, doc) -> None:
+    await protect_language(message.from_user.id)
+    tg = message.from_user.id
 
     if not doc.file_name.lower().endswith(".txt"):
-        return await message.answer("бро, нужен именно .txt 😭")
+        await message.answer(L("masscheck.need_txt"))
+        return
 
     file = await message.bot.get_file(doc.file_id)
     file_data = await message.bot.download_file(file.file_path)
@@ -4157,48 +4221,216 @@ async def cmd_masscheck(message: Message):
 
     cookies = [c.strip() for c in content.splitlines() if c.strip()]
     if not cookies:
-        return await message.answer("файл пустой, там даже куки нет 😬")
+        await message.answer(L("masscheck.empty_file"))
+        return
 
-    await message.answer(f"нашёл {len(cookies)} строк, ща пробегусь по ним...")
+    await message.answer(L("masscheck.start", count=len(cookies)))
 
-    results: list[str] = []
+    import io, zipfile, html, asyncio, datetime, httpx
+    from roblox_imagegen import generate_full_inventory_grids, tr, get_current_lang
 
-    for raw_cookie in cookies:
-        try:
-            # валидируем и одновременно получаем юзера
-            ok, cleaned_cookie, user_data = await validate_and_clean_cookie(raw_cookie)
-            if not ok or not user_data:
-                results.append("INVALID | - | - | -")
+    # Итоговый ZIP с текстом и картинками
+    zip_buf = io.BytesIO()
+    summary_lines = []
+    profile_blocks = []
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        for idx, raw_cookie in enumerate(cookies, start=1):
+            try:
+                ok, cleaned_cookie, user_data = await validate_and_clean_cookie(raw_cookie)
+                if not ok or not user_data:
+                    summary_lines.append(f"{idx}. INVALID | - | - | - | - | -")
+                    continue
+
+                rid = int(user_data.get("id") or 0)
+                if not rid:
+                    summary_lines.append(f"{idx}. INVALID | - | - | - | - | -")
+                    continue
+
+                nickname = user_data.get("name") or f"id{rid}"
+
+                # глобальный лог masscheck по этому аккаунту
+                await _log_check(tg, rid, scope="mass", what="masscheck")
+
+                # ---------- ПОЛНЫЙ ИНВЕНТ (как в профиле) ----------
+                inv = await roblox_client.get_full_inventory_with_cookie(rid, cleaned_cookie)
+                by_cat = _merge_categories(inv.get("byCategory", {}) or {})
+                all_items = []
+                for arr in by_cat.values():
+                    all_items.extend(arr)
+                all_items = _filter_nonzero(all_items)
+                total_items = len(all_items)
+                total_inv_val = _sum_items(all_items)
+
+                # ---------- RAP ----------
+                try:
+                    rap_info = await roblox_client.calc_user_rap(rid, cookie=cleaned_cookie)
+                    rap_total = int(rap_info.get("total") or 0)
+                except Exception:
+                    rap_total = 0
+
+                # ---------- ПРОФИЛЬ (почти как при обычном просмотре) ----------
+                # базовые данные пользователя
+                uname = html.escape(user_data.get("name") or "")
+                dname = html.escape(user_data.get("displayName") or uname or L('common.dash'))
+                created = (user_data.get("created") or L('common.na')).split("T")[0]
+                banned = bool(user_data.get("isBanned", False))
+
+                headers = getattr(roblox_client, "_cookie_headers", lambda c: {"Cookie": f".ROBLOSECURITY={c}"})(cleaned_cookie)
+
+                country = L('common.dash')
+                try:
+                    r = await client.get('https://accountsettings.roblox.com/v1/account/settings/account-country', headers=headers)
+                    if r.status_code == 200:
+                        v = (r.json() or {}).get('value', {})
+                        country = v.get('localizedName') or v.get('countryName') or L('common.dash')
+                except Exception:
+                    pass
+
+                email = L('common.dash')
+                email_verified = False
+                email_2fa = False
+                try:
+                    r = await client.get('https://accountsettings.roblox.com/v1/email', headers=headers)
+                    if r.status_code == 200:
+                        ej = r.json() or {}
+                        email = ej.get('emailAddress') or ej.get('email') or email
+                        email_verified = bool(ej.get('verified') or ej.get('isVerified'))
+                except Exception:
+                    pass
+
+                gender = L('common.unknown')
+                try:
+                    r = await client.get('https://accountinformation.roblox.com/v1/gender', headers=headers)
+                    if r.status_code == 200:
+                        g = (r.json() or {}).get('gender')
+                        if g == 1:
+                            gender = L('common.female')
+                        elif g == 2:
+                            gender = L('common.male')
+                except Exception:
+                    pass
+
+                birthdate = L('common.dash')
+                age = L('common.dash')
+                try:
+                    r = await client.get('https://accountinformation.roblox.com/v1/birthdate', headers=headers)
+                    if r.status_code == 200:
+                        bj = r.json() or {}
+                        y = bj.get('birthYear')
+                        m = bj.get('birthMonth')
+                        d = bj.get('birthDay')
+                        if all(isinstance(x, int) and x > 0 for x in (y, m, d)):
+                            birthdate = f"{d:02d}.{m:02d}.{y}"
+                            today = datetime.date.today()
+                            age_val = today.year - y - ((today.month, today.day) < (m, d))
+                            age = max(0, age_val)
+                except Exception:
+                    pass
+
+                robux = 0
+                try:
+                    r = await client.get('https://economy.roblox.com/v1/user/currency', headers=headers)
+                    if r.status_code == 200:
+                        robux = int((r.json() or {}).get('robux', 0))
+                except Exception:
+                    pass
+
+                spent_val = -1
+                try:
+                    import asyncio as _a
+                    spent_val = await _a.wait_for(
+                        roblox_client.get_total_spent_robux(rid, cleaned_cookie),
+                        timeout=1.5
+                    )
+                    spent_val = int(spent_val)
+                except Exception:
+                    spent_val = -1
+
+                profile_text = render_profile_text_i18n(
+                    uname=uname, dname=dname, roblox_id=rid, created=created,
+                    country=country, gender_raw=gender, birthdate=birthdate, age=age,
+                    email=email, email_verified=email_verified, email_2fa=email_2fa,
+                    robux=robux, spent_val=spent_val, banned=banned,
+                )
+
+                # ---------- ГЕНЕРИМ КАРТИНКИ ИНВЕНТАРЯ (как в профиле/инвентаре) ----------
+                img_names = []
+                if all_items:
+                    lang = get_current_lang()
+                    title = tr(lang, 'inventory.full_title')
+                    pages = await generate_full_inventory_grids(
+                        all_items,
+                        tile=int(os.getenv("INVENTORY_TILE", "150")),
+                        username=nickname,
+                        user_id=tg,
+                        title=title,
+                    )
+                    for page_idx, img_bytes in enumerate(pages, start=1):
+                        img_name = f"inventory_{rid}_{page_idx}.png"
+                        img_names.append(img_name)
+                        zip_buf_inner = io.BytesIO(img_bytes)
+                        zip_buf_inner.seek(0)
+                        with zipfile.ZipFile(zip_buf, 'a', zipfile.ZIP_DEFLATED) as zf_inner:
+                            zf_inner.writestr(img_name, img_bytes)
+
+                # строка в сводном списке
+                summary_lines.append(
+                    f"{idx}. {nickname} | {rid} | items={total_items} | inv={total_inv_val} | rap={rap_total} | spent={spent_val}"
+                )
+
+                # блок профиля для results.txt
+                inv_line = L("masscheck.inv_prefix") + (", ".join(img_names) if img_names else L("masscheck.no_priced_items"))
+                block = f"=== {nickname} (ID: {rid}) ===\n\n{profile_text}\n\n{inv_line}\n"
+                profile_blocks.append(block)
+
+            except Exception as e:
+                summary_lines.append(f"{idx}. ERROR | {e}")
                 continue
 
-            rid = int(user_data["id"])
-            nickname = user_data.get("name") or ""
+    # после цикла формируем текстовый файл
+    if not summary_lines and not profile_blocks:
+        await message.answer(L("masscheck.no_results"))
+        return
 
-            # инвент по куке
-            inv = await roblox_client.get_full_inventory_with_cookie(rid, cleaned_cookie)
-            try:
-                total_inv, _ = await _compute_totals_cached(0, rid, inv)
-            except Exception:
-                total_inv = 0
+    text_parts = []
+    text_parts.append(L("masscheck.summary_title"))
+    text_parts.append("\n".join(summary_lines))
+    if profile_blocks:
+        text_parts.append("\n\n" + L("masscheck.details_title") + "\n")
+        text_parts.append("\n\n".join(profile_blocks))
+    txt_content = "\n\n".join(text_parts)
 
-            # RAP
-            try:
-                rap_info = await roblox_client.calc_user_rap(rid, cookie=cleaned_cookie)
-                rap_total = int(rap_info.get("total") or 0)
-            except Exception:
-                rap_total = 0
+    with zipfile.ZipFile(zip_buf, "a", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("results.txt", txt_content)
 
-            results.append(f"{nickname} | {rid} | {total_inv} | {rap_total}")
+    zip_buf.seek(0)
+    out = BufferedInputFile(zip_buf.read(), filename="mass_check_results.zip")
+    await message.answer_document(out, caption=L("masscheck.zip_caption"))
 
-        except Exception as e:
-            logger.error(f"[masscheck] error: {e}")
-            results.append("ERROR | - | - | -")
 
-    output = "\n".join(results) if results else "ничего не получилось обработать"
+@router.message(Command("masscheck"))
+async def cmd_masscheck(message: Message, state: FSMContext):
+    # пытаемся сразу найти файл (текущее сообщение или реплай)
+    doc = message.document
+    if not doc and message.reply_to_message and message.reply_to_message.document:
+        doc = message.reply_to_message.document
 
-    data = output.encode("utf-8")
-    out = BufferedInputFile(data, filename="mass_check_results.txt")
-    await message.answer_document(out, caption="mass-check готов 😎")
+    if doc:
+        await _run_masscheck_for_doc(message, doc)
+        return
+
+    # если файла нет — включаем режим ожидания txt
+    await state.set_state("masscheck.wait_file")
+    await message.answer(L("masscheck.wait_txt"))
+
+
+@router.message(StateFilter("masscheck.wait_file"), F.document & F.document.file_name.endswith(".txt"))
+async def masscheck_wait_file(message: Message, state: FSMContext):
+    await _run_masscheck_for_doc(message, message.document)
+    await state.clear()
+
+
 
 
 
@@ -4277,7 +4509,7 @@ async def cmd_export_cookies_txt(msg: types.Message):
 
 
 LAST_MENU_MESSAGES: dict[int, int] = {}
-@router.message()
+@router.message(StateFilter(None))
 async def any_message_show_menu(message: types.Message) -> None:
     """Ловим ЛЮБОЕ сообщение от обычного пользователя и показываем главное меню как при /start.
 

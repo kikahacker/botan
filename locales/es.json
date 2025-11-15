@@ -13,7 +13,7 @@
     "empty": "🫙 Vacío.",
     "total_sum": "💰 Valor total del inventario: {sum} R$",
     "total_items": "📦 Artículos con precio: {count}",
-    "by_cat": "📂 {cat}\nTotal: {count} unid. · {sum} R$",
+    "by_cat": "📂 {cat}\nTotal: {count} unids · {sum} R$",
     "full_title": "Inventario completo",
     "selected": {
       "summary": "💰 Total seleccionado: {total} R$\n📦 Artículos: {count}"
@@ -24,7 +24,7 @@
   },
   "lang": {
     "choose": "Elige tu idioma:",
-    "saved": "✅ Idioma establecido en: {lang_name}"
+    "saved": "✅ Idioma establecido: {lang_name}"
   },
   "btn": {
     "lang": "🌐 Idioma",
@@ -41,12 +41,12 @@
     "categories": "📂 Categorías"
   },
   "menu": {
-    "add_accounts": "➕ Agregar cuentas (.txt)",
+    "add_accounts": "➕ Añadir cuentas (.txt)",
     "cookie_script": "🧰 Script de cookies",
     "delete_account": "🗑 Eliminar cuenta",
     "saved_accounts": "🧾 Cuentas guardadas",
     "public_info": "🌐 Información pública",
-    "settings": "⚙️ Configuración",
+    "settings": "⚙️ Ajustes",
     "main": "🏠 Menú principal"
   },
   "errors": {
@@ -101,23 +101,23 @@
     "auto_f3d5341cc3": "❌ Error al construir el inventario. Intenta más tarde.",
     "auto_f707b4e058": "🫙 No hay artículos en las categorías seleccionadas.",
     "delete_pick_account": "Selecciona una cuenta para eliminar:",
-    "settings": "⚙️ Configuración",
+    "settings": "⚙️ Ajustes",
     "welcome": "👋 ¡Bienvenido al bot Raika!\n\n📰 Nuestro canal de noticias - t.me/RaikaChecker\n\nAl usar el bot, aceptas automáticamente los <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Términos de Servicio</a>",
     "no_valid_cookies": "❌ Todas las cookies son inválidas.",
-    "file_not_txt": "⚠️ Esto no es un archivo .txt. Envía un archivo de cookie en formato .txt",
+    "file_not_txt": "⚠️ Esto no es un archivo .txt. Envía un archivo de cookies en formato .txt",
     "account_deleted_error": "❌ Error al eliminar la cuenta.",
     "profile_load_error": "❌ Error al cargar el perfil.",
     "accounts_load_error": "❌ Error al cargar las cuentas.",
     "delete_accounts_error": "❌ Error al cargar cuentas para eliminar.",
-    "cookie_script_error": "❌ Error en el zip del script de cookies.",
+    "cookie_script_error": "❌ Error al comprimir el script de cookies.",
     "menu_accounts_error": "❌ Error al cargar las cuentas.",
     "no_cookie_for_account": "⚠️ No se encontró cookie para esta cuenta.",
     "profile_load_failed": "❌ Error al cargar el perfil.",
     "loading_profile": "Cargando perfil…",
     "file_received": "📥 Archivo recibido, verificando...",
     "cookie_validation_error": "❌ Error de validación de cookie.",
-    "cookie_dead": "🔐 La cookie de esta cuenta es inválida o expiró. Sube una cookie nueva (.ROBLOSECURITY) para continuar.",
-    "cookie_dead_actions": "La cookie es inválida o expiró.\nPuedes volver a vincular una nueva cookie o eliminar esta cuenta de tu lista.\nSe conservarán los snapshots (historial)."
+    "cookie_dead": "🔐 La cookie de esta cuenta es inválida o ha expirado. Sube una cookie nueva (.ROBLOSECURITY) para continuar.",
+    "cookie_dead_actions": "La cookie es inválida o ha expirado.\nPuedes volver a vincular una nueva cookie o eliminar esta cuenta de tu lista.\nSe conservarán los snapshots (historial)."
   },
   "buttons": {
     "all_items": "📦 Todos los artículos",
@@ -129,8 +129,8 @@
     "next": "✅ Siguiente",
     "refresh": "🔄 Actualizar",
     "refresh_category": "🔄 Actualizar categoría",
-    "relink_cookie": "🔄 Volver a vincular cookie",
-    "delete_keep": "🗑️ Eliminar cuenta (conservar historial)"
+    "relink_cookie": "🔄 Revincular cookie",
+    "delete_keep": "🗑️ Eliminar cuenta (guardar historial)"
   },
   "caption": {
     "auto_76b7d0778c": "Inventario Completo",
@@ -153,12 +153,12 @@
     "regular": "❌ Regular",
     "premium": "⭐ Premium",
     "decrypt_error": "<error de descifrado>",
-    "pcs": "unid.",
+    "pcs": "unids",
     "total": "Total"
   },
   "cookie": {
-    "instructions": "Usa el kit para extraer tu cookie .ROBLOSECURITY en Chromium y súbela aquí como .txt.",
-    "kit_caption": "Kit para extraer cookie (.ROBLOSECURITY). Ejecuta batnik.bat, inicia sesión, presiona Enter, luego envía cookies.txt aquí.",
+    "instructions": "Usa el kit de abajo para extraer tu cookie .ROBLOSECURITY en Chromium y súbela aquí como .txt.",
+    "kit_caption": "Kit para extraer la cookie (.ROBLOSECURITY). Ejecuta batnik.bat, inicia sesión, presiona Enter, luego envía cookies.txt aquí.",
     "instructions_short": "1) Descomprimir\n2) Ejecutar batnik.bat\n3) Iniciar sesión en Roblox en Chromium\n4) Presionar Enter\n5) Tomar cookies.txt"
   },
   "err": {
@@ -185,8 +185,8 @@
   },
   "status": {
     "account_deleted": "🗑 Cuenta eliminada.",
-    "added_result": "✅ Agregadas: {ok}\n❌ Inválidas: {bad}",
-    "done_back_home": "✅ Listo. ¿Volver al inicio?",
+    "added_result": "✅ Añadidas: {ok}\n❌ Inválidas: {bad}",
+    "done_back_home": "✅ Hecho. ¿Volver al inicio?",
     "file_empty": "⚠️ El archivo está vacío.",
     "loading_profile": "Cargando perfil…",
     "no_accounts": "⚠️ Aún no hay cuentas vinculadas.",
@@ -199,11 +199,11 @@
     "accessories": "Accesorios",
     "animations/emotes": "Animaciones / Emotes",
     "audio": "Audio",
-    "bundles/packages": "Paquetes / Bundles",
+    "bundles/packages": "Lotes / Paquetes",
     "classic_clothes": "Ropa clásica",
     "emotes": "Emotes",
     "faces": "Caras",
-    "gear": "Equipo",
+    "gear": "Equipamiento",
     "hair": "Cabello",
     "hats": "Sombreros",
     "heads": "Cabezas"
@@ -214,20 +214,20 @@
     "bad_id": "⚠️ ID inválido. Envía un número (ej: 123456789).",
     "not_found": "❌ Usuario no encontrado o no disponible.",
     "inventory_private": "⚠️ El inventario de este usuario es privado en Roblox.",
-    "spending_login_required": "🔐 Los gastos solo están disponibles si hay una cookie guardada para esta cuenta."
+    "spending_login_required": "🔐 Los gastos solo están disponibles si se guarda una cookie para esta cuenta."
   },
   "settings": {
-    "title": "⚙️ Configuración"
+    "title": "⚙️ Ajustes"
   },
   "admin": {
-    "stats": "📊 <b>Estadísticas del Bot</b>\n👥 Usuarios totales: {total_users}\n🆕 Nuevos hoy: {new_today}\n📈 Activos hoy: {active_today}\n🔗 Con cuentas vinculadas: {users_with_accounts}\n🔎 Comprobaciones totales: {checks_total}\n📅 Comprobaciones hoy: {checks_today}",
+    "stats": "📊 <b>Estadísticas del Bot</b>\n👥 Total de usuarios: {total_users}\n🆕 Nuevos hoy: {new_today}\n📈 Activos hoy: {active_today}\n🔗 Con cuentas vinculadas: {users_with_accounts}\n🔎 Total de verificaciones: {checks_total}\n📅 Verificaciones hoy: {checks_today}",
     "user_snapshot": "🧾 <b>Snapshot de Cuenta</b>\n🆔 ID de Roblox: {rid}\n💰 Inventario: {inventory_val} R$\n💸 Total gastado: {total_spent} R$\n🕒 Actualizado: {updated_at}"
   },
   "inventory_view": {
-    "public_title": "📦 Inventario público\nTotal: {total} unid. · {total_sum} R$",
-    "category_title": "📂 {category}\nTotal: {count} unid. · {total_sum} R$",
-    "all_categories": "📦 Todas las categorías juntas\nTotal: {total} unid. · {total_sum} R$",
-    "grand_total": "💰 Valor total del inventario: {total_sum} R$\n📦 Artículos con precio total: {total_count}",
+    "public_title": "📦 Inventario público\nTotal: {total} unids · {total_sum} R$",
+    "category_title": "📂 {category}\nTotal: {count} unids · {total_sum} R$",
+    "all_categories": "📦 Todas las categorías juntas\nTotal: {total} unids · {total_sum} R$",
+    "grand_total": "💰 Valor total del inventario: {total_sum} R$\n📦 Total de artículos con precio: {total_count}",
     "render_too_large": "📦 Todos los artículos: render demasiado grande. Reduce el tamaño o ajusta la selección.",
     "page": "Página {current}/{total}"
   },
@@ -235,12 +235,12 @@
     "title": "💸 Historial de gastos (total: {total})",
     "loading": "⏳ Cargando historial de gastos…",
     "empty": "🫙 No se encontraron compras.",
-    "header": "💸 Gastos — total: {sum} R$"
+    "header": "💸 Gastos — Total: {sum} R$"
   },
   "games": {
     "fav_title": "⭐ Favoritos",
     "fav_summary": "⭐ Favoritos: {count}",
-    "empty_favoritos": "No hay favoritos.",
+    "empty_favorites": "No hay favoritos.",
     "page": "Página {cur}/{total}",
     "prev": "◀ Anterior",
     "next": "Siguiente ▶",
@@ -267,13 +267,13 @@
     "empty": "No se encontraron coleccionables fuera de venta.",
     "row_collectible": "{name} — RAP {rap} R$ (sin vendedores)",
     "loading": "⏳ Cargando…",
-    "empty_private": "No hay coleccionables fuera de venta. Si el inventario es privado, ábrelo o usa una cookie válida.",
+    "empty_private": "No hay coleccionables fuera de venta. Si el inventario es privado, ábrelo o usa una cookie válida para esta cuenta.",
     "empty_generic": "No se encontraron coleccionables fuera de venta. Intenta más tarde."
   },
   "revenue": {
     "title": "💸 Ingresos",
     "auth_required": "🔐 Los ingresos solo están disponibles con una cookie.",
-    "summary": "Todo el tiempo: {sum} R$",
+    "summary": "Todos los tiempos: {sum} R$",
     "row": "{date} — {type} — {amount} R$ — {source}",
     "empty": "No hay transacciones.",
     "prev": "◀ Anterior",
@@ -295,5 +295,15 @@
     "loading": "⏳ Cargando…",
     "empty_private": "No hay nombres de usuario anteriores. Si el acceso está restringido, se requiere una cookie válida.",
     "empty_generic": "No se encontraron nombres de usuario anteriores."
-  }
+  },
+  "masscheck.need_txt": "Necesitas subir un archivo .txt con cookies 😅",
+  "masscheck.empty_file": "El archivo está vacío, no se encontraron cookies 😬",
+  "masscheck.start": "Se encontraron {count} líneas, iniciando verificación masiva...",
+  "masscheck.no_results": "No se pudo procesar nada :(",
+  "masscheck.summary_title": "RESUMEN DE VERIFICACIÓN MASIVA",
+  "masscheck.details_title": "PERFILES DETALLADOS",
+  "masscheck.zip_caption": "Verificación masiva: perfiles + inventarios en un solo archivo 😎",
+  "masscheck.wait_txt": "Envía un archivo .txt con cookies como un mensaje de documento separado — tan pronto como reciba el archivo, recopilaré perfiles e inventarios en un archivo.",
+  "masscheck.inv_prefix": "Inventario: ",
+  "masscheck.no_priced_items": "no hay artículos con precio"
 }

@@ -295,5 +295,15 @@
     "loading": "⏳ Loading…",
     "empty_private": "No past usernames. If access is restricted, a valid cookie is required.",
     "empty_generic": "No past usernames found."
-  }
+  },
+  "masscheck.need_txt": "You need to upload a .txt file with cookies 😅",
+  "masscheck.empty_file": "The file is empty, no cookies found 😬",
+  "masscheck.start": "Found {count} lines, starting mass check...",
+  "masscheck.no_results": "Nothing could be processed :(",
+  "masscheck.summary_title": "MASSCHECK SUMMARY",
+  "masscheck.details_title": "DETAIL PROFILES",
+  "masscheck.zip_caption": "Mass-check: profiles + inventories in a single archive 😎",
+  "masscheck.wait_txt": "Send a .txt file with cookies as a separate document message — as soon as I get the file, I’ll collect profiles and inventories into an archive.",
+  "masscheck.inv_prefix": "Inventory: ",
+  "masscheck.no_priced_items": "no priced items"
 }

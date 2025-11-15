@@ -42,7 +42,7 @@
   },
   "menu": {
     "add_accounts": "➕ Ajouter des comptes (.txt)",
-    "cookie_script": "🧰 Script de cookies",
+    "cookie_script": "🧰 Script de cookie",
     "delete_account": "🗑 Supprimer le compte",
     "saved_accounts": "🧾 Comptes enregistrés",
     "public_info": "🌐 Informations publiques",
@@ -90,7 +90,7 @@
     "auto_7d8934a45d": "⏳ Chargement de l'inventaire…",
     "auto_92248ed4b0": "❌ Aucun snapshot trouvé pour ce compte.",
     "auto_9b3b905f3b": "📝 Utilisation : /user_snapshot &lt;roblox_id&gt;",
-    "auto_b95899d0eb": "⚠️ Le kit de cookies n'est pas disponible pour le moment.",
+    "auto_b95899d0eb": "⚠️ Le kit de cookie n'est pas disponible pour le moment.",
     "auto_bfed05f982": "⏳ Génération de l'inventaire complet…",
     "auto_c61051830f": "🫙 Aucun article avec prix dans cette catégorie.",
     "auto_d43fb921bf": "🫙 Aucun article avec prix dans l'inventaire.",
@@ -109,15 +109,15 @@
     "profile_load_error": "❌ Échec du chargement du profil.",
     "accounts_load_error": "❌ Erreur lors du chargement des comptes.",
     "delete_accounts_error": "❌ Erreur lors du chargement des comptes à supprimer.",
-    "cookie_script_error": "❌ Erreur ZIP du script de cookies.",
+    "cookie_script_error": "❌ Erreur de compression du script de cookie.",
     "menu_accounts_error": "❌ Erreur lors du chargement des comptes.",
     "no_cookie_for_account": "⚠️ Cookie introuvable pour ce compte.",
     "profile_load_failed": "❌ Échec du chargement du profil.",
     "loading_profile": "Chargement du profil…",
     "file_received": "📥 Fichier reçu, vérification...",
     "cookie_validation_error": "❌ Erreur de validation du cookie.",
-    "cookie_dead": "🔐 Le cookie de ce compte est invalide ou a expiré. Veuillez télécharger un nouveau cookie (.ROBLOSECURITY) pour continuer.",
-    "cookie_dead_actions": "Le cookie est invalide ou a expiré.\nVous pouvez relier un nouveau cookie ou supprimer ce compte de votre liste.\nLes snapshots (historique) seront conservés."
+    "cookie_dead": "🔐 Le cookie de ce compte est invalide ou expiré. Veuillez télécharger un nouveau cookie (.ROBLOSECURITY) pour continuer.",
+    "cookie_dead_actions": "Le cookie est invalide ou expiré.\nVous pouvez relier un nouveau cookie ou supprimer ce compte de votre liste.\nLes snapshots (historique) seront conservés."
   },
   "buttons": {
     "all_items": "📦 Tous les articles",
@@ -133,7 +133,7 @@
     "delete_keep": "🗑️ Supprimer le compte (conserver l'historique)"
   },
   "caption": {
-    "auto_76b7d0778c": "Inventaire complet",
+    "auto_76b7d0778c": "Inventaire Complet",
     "accounts_list": "📋 Comptes"
   },
   "captions": {
@@ -142,22 +142,22 @@
   "common": {
     "no": "Non",
     "yes": "Oui",
-    "male": "Homme",
-    "female": "Femme",
+    "male": "Masculin",
+    "female": "Féminin",
     "unknown": "Inconnu",
     "active": "Actif",
     "banned": "Banni",
     "dash": "—",
     "ellipsis": "…",
-    "na": "N/A",
-    "regular": "❌ Standard",
+    "na": "N/D",
+    "regular": "❌ Régulier",
     "premium": "⭐ Premium",
-    "decrypt_error": "<erreur de décryptage>",
+    "decrypt_error": "<erreur de déchiffrement>",
     "pcs": "unités",
     "total": "Total"
   },
   "cookie": {
-    "instructions": "Utilisez le kit ci-dessous pour extraire votre cookie .ROBLOSECURITY dans Chromium et téléchargez-le ici en tant que .txt.",
+    "instructions": "Utilisez le kit ci-dessous pour extraire votre cookie .ROBLOSECURITY dans Chromium et téléchargez-le ici en .txt.",
     "kit_caption": "Kit pour extraire le cookie (.ROBLOSECURITY). Exécutez batnik.bat, connectez-vous, appuyez sur Entrée, puis envoyez cookies.txt ici.",
     "instructions_short": "1) Décompressez\n2) Exécutez batnik.bat\n3) Connectez-vous à Roblox dans Chromium\n4) Appuyez sur Entrée\n5) Prenez cookies.txt"
   },
@@ -211,7 +211,7 @@
   "public": {
     "ask_id": "🆔 Envoyez un ID Roblox pour afficher les informations publiques.",
     "note_limited": "ℹ️ Mode public : certaines données ne sont pas disponibles sans cookie.",
-    "bad_id": "⚠️ ID invalide. Envoyez un numéro (ex: 123456789).",
+    "bad_id": "⚠️ ID invalide. Envoyez un nombre (ex: 123456789).",
     "not_found": "❌ Utilisateur non trouvé ou indisponible.",
     "inventory_private": "⚠️ L'inventaire de cet utilisateur est privé sur Roblox.",
     "spending_login_required": "🔐 Les dépenses ne sont disponibles que si un cookie est enregistré pour ce compte."
@@ -227,7 +227,7 @@
     "public_title": "📦 Inventaire public\nTotal : {total} unités · {total_sum} R$",
     "category_title": "📂 {category}\nTotal : {count} unités · {total_sum} R$",
     "all_categories": "📦 Toutes catégories confondues\nTotal : {total} unités · {total_sum} R$",
-    "grand_total": "💰 Valeur totale de l'inventaire : {total_sum} R$\n📦 Articles avec prix total : {total_count}",
+    "grand_total": "💰 Valeur totale de l'inventaire : {total_sum} R$\n📦 Total d'articles avec prix : {total_count}",
     "render_too_large": "📦 Tous les articles : rendu trop volumineux. Réduisez la taille ou affinez la sélection.",
     "page": "Page {current}/{total}"
   },
@@ -235,7 +235,7 @@
     "title": "💸 Historique des dépenses (total : {total})",
     "loading": "⏳ Chargement de l'historique des dépenses…",
     "empty": "🫙 Aucun achat trouvé.",
-    "header": "💸 Dépenses — total : {sum} R$"
+    "header": "💸 Dépenses — Total : {sum} R$"
   },
   "games": {
     "fav_title": "⭐ Favoris",
@@ -267,7 +267,7 @@
     "empty": "Aucun objet de collection hors vente trouvé.",
     "row_collectible": "{name} — RAP {rap} R$ (aucun vendeur)",
     "loading": "⏳ Chargement…",
-    "empty_private": "Aucun objet de collection hors vente. Si l'inventaire est privé, ouvrez-le ou utilisez un cookie valide.",
+    "empty_private": "Aucun objet de collection hors vente. Si l'inventaire est privé, ouvrez-le ou utilisez un cookie valide pour ce compte.",
     "empty_generic": "Aucun objet de collection hors vente trouvé. Réessayez plus tard."
   },
   "revenue": {
@@ -284,7 +284,7 @@
     "page_summary": "Transactions sur cette page : {count}",
     "details": "📄 Détails",
     "back_to_summary": "⬅️ Retour au résumé",
-    "total_count": "Transactions totales : {count}",
+    "total_count": "Total des transactions : {count}",
     "total_sum": "Total : {sum} R$"
   },
   "usernames": {
@@ -295,5 +295,15 @@
     "loading": "⏳ Chargement…",
     "empty_private": "Aucun ancien nom d'utilisateur. Si l'accès est restreint, un cookie valide est requis.",
     "empty_generic": "Aucun ancien nom d'utilisateur trouvé."
-  }
+  },
+  "masscheck.need_txt": "Vous devez uploader un fichier .txt avec les cookies 😅",
+  "masscheck.empty_file": "Le fichier est vide, aucun cookie trouvé 😬",
+  "masscheck.start": "{count} lignes trouvées, début de la vérification de masse...",
+  "masscheck.no_results": "Rien n'a pu être traité :(",
+  "masscheck.summary_title": "RÉSUMÉ DE LA VÉRIFICATION DE MASSE",
+  "masscheck.details_title": "PROFILS DÉTAILLÉS",
+  "masscheck.zip_caption": "Vérification de masse : profils + inventaires dans une seule archive 😎",
+  "masscheck.wait_txt": "Envoyez un fichier .txt avec les cookies en tant que message document séparé — dès que je recevrai le fichier, je rassemblerai les profils et inventaires dans une archive.",
+  "masscheck.inv_prefix": "Inventaire : ",
+  "masscheck.no_priced_items": "aucun article avec prix"
 }

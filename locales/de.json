@@ -90,7 +90,7 @@
     "auto_7d8934a45d": "⏳ Lade Inventar…",
     "auto_92248ed4b0": "❌ Kein Snapshot für dieses Konto gefunden.",
     "auto_9b3b905f3b": "📝 Verwendung: /user_snapshot &lt;roblox_id&gt;",
-    "auto_b95899d0eb": "⚠️ Cookie-Kit ist momentan nicht verfügbar.",
+    "auto_b95899d0eb": "⚠️ Cookie-Kit ist derzeit nicht verfügbar.",
     "auto_bfed05f982": "⏳ Erstelle vollständiges Inventar…",
     "auto_c61051830f": "🫙 Keine preisgekennzeichneten Artikel in dieser Kategorie.",
     "auto_d43fb921bf": "🫙 Keine preisgekennzeichneten Artikel im Inventar.",
@@ -100,7 +100,7 @@
     "auto_ec50e4a25a": "⏳ Aktualisiere Kategorie…",
     "auto_f3d5341cc3": "❌ Fehler beim Aufbau des Inventars. Versuche es später erneut.",
     "auto_f707b4e058": "🫙 Keine Artikel in ausgewählten Kategorien.",
-    "delete_pick_account": "Wähle ein Konto zum Löschen aus:",
+    "delete_pick_account": "Wähle ein Konto zum Löschen:",
     "settings": "⚙️ Einstellungen",
     "welcome": "👋 Willkommen beim Raika Bot!\n\n📰 Unser News-Kanal - t.me/RaikaChecker\n\nDurch die Nutzung des Bots stimmst du automatisch den <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Nutzungsbedingungen</a> zu",
     "no_valid_cookies": "❌ Alle Cookies sind ungültig.",
@@ -150,16 +150,16 @@
     "dash": "—",
     "ellipsis": "…",
     "na": "N/V",
-    "regular": "❌ Standard",
+    "regular": "❌ Regulär",
     "premium": "⭐ Premium",
     "decrypt_error": "<Entschlüsselungsfehler>",
-    "pcs": "Stk.",
+    "pcs": "Stk",
     "total": "Gesamt"
   },
   "cookie": {
     "instructions": "Verwende das folgende Kit, um deinen .ROBLOSECURITY-Cookie in Chromium zu extrahieren und lade ihn hier als .txt hoch.",
     "kit_caption": "Kit zum Extrahieren des Cookies (.ROBLOSECURITY). Führe batnik.bat aus, melde dich an, drücke Enter, dann sende cookies.txt hierher.",
-    "instructions_short": "1) Entpacken\n2) Führe batnik.bat aus\n3) Melde dich bei Roblox in Chromium an\n4) Drücke Enter\n5) Nimm cookies.txt"
+    "instructions_short": "1) Entpacken\n2) Batnik.bat ausführen\n3) Bei Roblox in Chromium anmelden\n4) Enter drücken\n5) Cookies.txt nehmen"
   },
   "err": {
     "download_file": "❌ Fehler beim Herunterladen der Datei: {error}",
@@ -213,7 +213,7 @@
     "note_limited": "ℹ️ Öffentlicher Modus: Einige Daten sind ohne Cookie nicht verfügbar.",
     "bad_id": "⚠️ Ungültige ID. Sende eine Zahl (z.B. 123456789).",
     "not_found": "❌ Benutzer nicht gefunden oder nicht verfügbar.",
-    "inventory_private": "⚠️ Das Inventar dieses Benutzers ist bei Roblox privat.",
+    "inventory_private": "⚠️ Das Inventar dieses Benutzers ist auf Roblox privat.",
     "spending_login_required": "🔐 Ausgaben sind nur verfügbar, wenn ein Cookie für dieses Konto gespeichert ist."
   },
   "settings": {
@@ -228,14 +228,14 @@
     "category_title": "📂 {category}\nGesamt: {count} Stk. · {total_sum} R$",
     "all_categories": "📦 Alle Kategorien zusammen\nGesamt: {total} Stk. · {total_sum} R$",
     "grand_total": "💰 Gesamter Inventarwert: {total_sum} R$\n📦 Artikel mit Preis gesamt: {total_count}",
-    "render_too_large": "📦 Alle Artikel: Darstellung zu groß. Verkleinere die Kachelgröße oder schränke die Auswahl ein.",
+    "render_too_large": "📦 Alle Artikel: Darstellung zu groß. Verringere die Kachelgröße oder schränke die Auswahl ein.",
     "page": "Seite {current}/{total}"
   },
   "spending": {
     "title": "💸 Ausgabenverlauf (gesamt: {total})",
     "loading": "⏳ Lade Ausgabenverlauf…",
     "empty": "🫙 Keine Käufe gefunden.",
-    "header": "💸 Ausgaben — gesamt: {sum} R$"
+    "header": "💸 Ausgaben — Gesamt: {sum} R$"
   },
   "games": {
     "fav_title": "⭐ Favoriten",
@@ -251,11 +251,11 @@
     "total": "RAP gesamt: {value} R$",
     "item_row": "{name} — {rap} R$",
     "lowest": "Niedrigster: {value} R$",
-    "no_items": "Keine Sammlerstücke mit RAP gefunden.",
+    "no_items": "Keine sammelbaren Items mit RAP gefunden.",
     "refresh": "🔄 Aktualisieren",
     "loading": "⏳ Lade…",
-    "empty_private": "Keine Sammlerstücke gefunden. Wenn das Inventar privat ist, öffne es oder verwende einen gültigen Cookie für dieses Konto.",
-    "empty_generic": "Es scheint, dass keine Sammlerstücke gefunden wurden. Versuche es später erneut.",
+    "empty_private": "Keine sammelbaren Items gefunden. Wenn das Inventar privat ist, öffne es oder verwende einen gültigen Cookie für dieses Konto.",
+    "empty_generic": "Es wurden keine sammelbaren Items gefunden. Versuche es später erneut.",
     "details": "📄 Details",
     "back_to_summary": "⬅ Zurück zur Übersicht",
     "item_row_with_id": "{name} (ID {id}) — {rap} R$"
@@ -263,12 +263,12 @@
   "offsale": {
     "title": "Nicht im Verkauf",
     "mode": "Modus: {mode}",
-    "mode_collectibles": "Sammlerstücke",
-    "empty": "Keine nicht verkauften Sammlerstücke gefunden.",
+    "mode_collectibles": "Sammelstücke",
+    "empty": "Keine nicht verkäuflichen Sammelstücke gefunden.",
     "row_collectible": "{name} — RAP {rap} R$ (keine Verkäufer)",
     "loading": "⏳ Lade…",
-    "empty_private": "Keine nicht verkauften Sammlerstücke. Wenn das Inventar privat ist, öffne es oder verwende einen gültigen Cookie für dieses Konto.",
-    "empty_generic": "Es wurden keine nicht verkauften Sammlerstücke gefunden. Versuche es später erneut."
+    "empty_private": "Keine nicht verkäuflichen Sammelstücke. Wenn das Inventar privat ist, öffne es oder verwende einen gültigen Cookie für dieses Konto.",
+    "empty_generic": "Es wurden keine nicht verkäuflichen Sammelstücke gefunden. Versuche es später erneut."
   },
   "revenue": {
     "title": "💸 Einnahmen",
@@ -295,5 +295,15 @@
     "loading": "⏳ Lade…",
     "empty_private": "Keine früheren Benutzernamen. Wenn der Zugriff eingeschränkt ist, ist ein gültiger Cookie erforderlich.",
     "empty_generic": "Keine früheren Benutzernamen gefunden."
-  }
+  },
+  "masscheck.need_txt": "Du musst eine .txt-Datei mit Cookies hochladen 😅",
+  "masscheck.empty_file": "Die Datei ist leer, keine Cookies gefunden 😬",
+  "masscheck.start": "{count} Zeilen gefunden, starte Massenprüfung...",
+  "masscheck.no_results": "Es konnte nichts verarbeitet werden :(",
+  "masscheck.summary_title": "MASSENPRÜFUNGSZUSAMMENFASSUNG",
+  "masscheck.details_title": "DETAILPROFILE",
+  "masscheck.zip_caption": "Massenprüfung: Profile + Inventare in einem einzigen Archiv 😎",
+  "masscheck.wait_txt": "Sende eine .txt-Datei mit Cookies als separate Dokumentennachricht — sobald ich die Datei erhalte, sammle ich Profile und Inventare in einem Archiv.",
+  "masscheck.inv_prefix": "Inventar: ",
+  "masscheck.no_priced_items": "keine preisgekennzeichneten Artikel"
 }

@@ -16,14 +16,14 @@
     "by_cat": "📂 {cat}\nRazem: {count} szt. · {sum} R$",
     "full_title": "Pełny inwentarz",
     "selected": {
-      "summary": "💰 Suma wybranych: {total} R$\n📦 Przedmioty: {count}"
+      "summary": "💰 Wybrane łącznie: {total} R$\n📦 Przedmioty: {count}"
     }
   },
   "app": {
     "name": "Twój Bot"
   },
   "lang": {
-    "choose": "Wybierz język:",
+    "choose": "Wybierz swój język:",
     "saved": "✅ Ustawiono język: {lang_name}"
   },
   "btn": {
@@ -56,7 +56,7 @@
   },
   "kb": {
     "inventory": "📦 Inwentarz",
-    "inventory_select": "🧩 Inwentarz (wybór kategorii)",
+    "inventory_select": "🧩 Inwentarz (wybierz kategorie)",
     "accounts": "📋 Lista kont"
   },
   "profile": {
@@ -76,7 +76,7 @@
     "inventory_value": "💰 Wartość inwentarza: {value} R$",
     "inventory_value_label": "💰 Wartość inwentarza:",
     "inventory_private": "🔒 Inwentarz jest prywatny",
-    "card": "📘 Informacje o koncie\n👤 Nazwa: {uname}\n🏷️ Nazwa wyświetlana: {display_name}\n🆔 ID: {rid}\n📅 Utworzono: {created}\n🌍 Kraj: {country}\n🧬 Płeć: {gender}\n🎂 Data urodzenia: {birthday}\n📏 Wiek: {age}\n✉️ Email: {email} (Zweryfikowany: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Łącznie wydano: {spent}\n🟢 Status: {status}"
+    "card": "📘 Informacje o koncie\n👤 Nazwa: {uname}\n🏷️ Wyświetlana nazwa: {display_name}\n🆔 ID: {rid}\n📅 Utworzono: {created}\n🌍 Kraj: {country}\n🧬 Płeć: {gender}\n🎂 Data urodzenia: {birthday}\n📏 Wiek: {age}\n✉️ Email: {email} (Zweryfikowany: {email_verified}, 2FA: {email_2fa})\n💰 Robux: {robux}\n🧾 Łącznie wydano: {spent}\n🟢 Status: {status}"
   },
   "msg": {
     "auto_a6dc67d175": "❌ Błąd podczas przygotowywania archiwum.",
@@ -109,15 +109,15 @@
     "profile_load_error": "❌ Nie udało się załadować profilu.",
     "accounts_load_error": "❌ Błąd ładowania kont.",
     "delete_accounts_error": "❌ Błąd ładowania kont do usunięcia.",
-    "cookie_script_error": "❌ Błąd archiwum skryptu cookie.",
+    "cookie_script_error": "❌ Błąd zip skryptu cookie.",
     "menu_accounts_error": "❌ Błąd ładowania kont.",
     "no_cookie_for_account": "⚠️ Nie znaleziono ciasteczka dla tego konta.",
     "profile_load_failed": "❌ Nie udało się załadować profilu.",
     "loading_profile": "Ładowanie profilu…",
     "file_received": "📥 Otrzymano plik, sprawdzanie...",
     "cookie_validation_error": "❌ Błąd walidacji ciasteczka.",
-    "cookie_dead": "🔐 Cookie for this account is invalid or expired. Please upload a fresh cookie (.ROBLOSECURITY) to continue.",
-    "cookie_dead_actions": "Cookie jest nieważne lub wygasło.\nMożesz podłączyć nowe cookie albo usunąć to konto z listy.\nMigawki (historia) zostaną zachowane."
+    "cookie_dead": "🔐 Ciasteczko dla tego konta jest nieprawidłowe lub wygasło. Prześlij nowe ciasteczko (.ROBLOSECURITY), aby kontynuować.",
+    "cookie_dead_actions": "Ciasteczko jest nieprawidłowe lub wygasło.\nMożesz powiązać nowe ciasteczko lub usunąć to konto z listy.\nMigawki (historia) zostaną zachowane."
   },
   "buttons": {
     "all_items": "📦 Wszystkie przedmioty",
@@ -129,7 +129,7 @@
     "next": "✅ Dalej",
     "refresh": "🔄 Odśwież",
     "refresh_category": "🔄 Odśwież kategorię",
-    "relink_cookie": "🔄 Podłącz cookie ponownie",
+    "relink_cookie": "🔄 Ponownie powiąż ciasteczko",
     "delete_keep": "🗑️ Usuń konto (zachowaj historię)"
   },
   "caption": {
@@ -153,7 +153,7 @@
     "regular": "❌ Zwykły",
     "premium": "⭐ Premium",
     "decrypt_error": "<błąd odszyfrowania>",
-    "pcs": "szt.",
+    "pcs": "szt",
     "total": "Razem"
   },
   "cookie": {
@@ -168,20 +168,20 @@
   },
   "messages": {
     "choose_categories": "Wybierz kategorie (włącz/wyłącz):",
-    "choose_language": "Wybierz język:",
+    "choose_language": "Wybierz swój język:",
     "welcome": "👋 Witaj w bocie Raika!\n\n📰 Nasz kanał newsowy - t.me/RaikaChecker\n\nKorzystając z bota, automatycznie akceptujesz <a href=\"https://telegra.ph/Terms-of-Service-TOS-for-Raika-Roblox-11-04\">Warunki Usługi</a>"
   },
   "nav": {
     "categories": "📂 Kategorie",
-    "inventory_categories": "🧩 Inwentarz (wybór kategorii)",
+    "inventory_categories": "🧩 Inwentarz (wybierz kategorie)",
     "to_accounts": "📋 Powrót do listy kont",
     "to_home": "🔙 Wstecz",
     "spending": "💸 Wydatki",
     "favorites": "⭐ Ulubione",
     "rap": "📈 RAP",
-    "offsale": "🛑 Wycofane ze sprzedaży",
-    "revenue": "💸 Przychody",
-    "usernames": "📝 Poprzednie nazwy"
+    "offsale": "🛑 Wycofane",
+    "revenue": "💸 Przychód",
+    "usernames": "📝 Poprzednie nazwy użytkownika"
   },
   "status": {
     "account_deleted": "🗑 Konto usunięte.",
@@ -204,23 +204,23 @@
     "emotes": "Emotki",
     "faces": "Twarze",
     "gear": "Wyposażenie",
-    "hair": "Fryzury",
+    "hair": "Włosy",
     "hats": "Kapelusze",
     "heads": "Głowy"
   },
   "public": {
     "ask_id": "🆔 Wyślij ID Roblox, aby pokazać informacje publiczne.",
     "note_limited": "ℹ️ Tryb publiczny: niektóre dane są niedostępne bez ciasteczka.",
-    "bad_id": "⚠️ Nieprawidłowe ID. Wyślij numer (np. 123456789).",
+    "bad_id": "⚠️ Nieprawidłowe ID. Wyślij liczbę (np. 123456789).",
     "not_found": "❌ Użytkownik nie znaleziony lub niedostępny.",
-    "inventory_private": "⚠️ Inwentarz tego użytkownika jest prywatny w Roblox.",
-    "spending_login_required": "🔐 Wydatki są dostępne tylko, jeśli dla tego konta zapisano cookie."
+    "inventory_private": "⚠️ Inwentarz tego użytkownika jest prywatny na Roblox.",
+    "spending_login_required": "🔐 Wydatki są dostępne tylko, jeśli ciasteczko jest zapisane dla tego konta."
   },
   "settings": {
     "title": "⚙️ Ustawienia"
   },
   "admin": {
-    "stats": "📊 <b>Statystyki Bota</b>\n👥 Łącznie użytkowników: {total_users}\n🆕 Nowych dzisiaj: {new_today}\n📈 Aktywnych dziś: {active_today}\n🔗 Z połączonymi kontami: {users_with_accounts}\n🔎 Łącznie sprawdzeń: {checks_total}\n📅 Sprawdzeń dziś: {checks_today}",
+    "stats": "📊 <b>Statystyki Bota</b>\n👥 Łącznie użytkowników: {total_users}\n🆕 Nowi dziś: {new_today}\n📈 Aktywni dziś: {active_today}\n🔗 Z połączonymi kontami: {users_with_accounts}\n🔎 Łączne sprawdzenia: {checks_total}\n📅 Sprawdzenia dziś: {checks_today}",
     "user_snapshot": "🧾 <b>Migawka Konta</b>\n🆔 ID Roblox: {rid}\n💰 Inwentarz: {inventory_val} R$\n💸 Łącznie wydano: {total_spent} R$\n🕒 Zaktualizowano: {updated_at}"
   },
   "inventory_view": {
@@ -228,53 +228,82 @@
     "category_title": "📂 {category}\nRazem: {count} szt. · {total_sum} R$",
     "all_categories": "📦 Wszystkie kategorie razem\nRazem: {total} szt. · {total_sum} R$",
     "grand_total": "💰 Całkowita wartość inwentarza: {total_sum} R$\n📦 Łącznie przedmiotów z ceną: {total_count}",
-    "render_too_large": "📦 Wszystkie przedmioty: renderowanie zbyt duże. Zmniejsz rozmiar lub zawęź wybór.",
+    "render_too_large": "📦 Wszystkie przedmioty: renderowanie zbyt duże. Zmniejsz rozmiar kafelków lub zawęź wybór.",
     "page": "Strona {current}/{total}"
   },
   "spending": {
-    "title": "💸 Historia zakupów (łącznie: {total})",
-    "loading": "⏳ Ładowanie historii zakupów…",
+    "title": "💸 Historia wydatków (łącznie: {total})",
+    "loading": "⏳ Ładowanie historii wydatków…",
     "empty": "🫙 Nie znaleziono zakupów.",
-    "header": "💸 Wydatki — łącznie: {sum} R$"
+    "header": "💸 Wydatki — Razem: {sum} R$"
   },
   "games": {
-    "fav_title": "Ulubione gry",
-    "fav_summary": "• Ulubione: {count}",
-    "empty_favorites": "Brak ulubionych gier.",
+    "fav_title": "⭐ Ulubione",
+    "fav_summary": "⭐ Ulubione: {count}",
+    "empty_favorites": "Brak ulubionych.",
     "page": "Strona {cur}/{total}",
     "prev": "◀ Poprzednia",
     "next": "Następna ▶",
     "loading": "⏳ Ładowanie ulubionych…"
   },
   "rap": {
-    "title": "📈 RAP",
+    "title": "RAP",
     "total": "Łączny RAP: {value} R$",
     "item_row": "{name} — {rap} R$",
-    "lowest": "Najniższa: {value} R$",
-    "no_items": "Nie znaleziono kolekcjonerskich z RAP.",
-    "refresh": "🔄 Odśwież"
+    "lowest": "Najniższy: {value} R$",
+    "no_items": "Nie znaleziono kolekcjonowanych przedmiotów z RAP.",
+    "refresh": "🔄 Odśwież",
+    "loading": "⏳ Ładowanie…",
+    "empty_private": "Nie znaleziono kolekcjonowanych przedmiotów. Jeśli inwentarz jest prywatny, otwórz go lub użyj ważnego ciasteczka dla tego konta.",
+    "empty_generic": "Wygląda na to, że nie znaleziono kolekcjonowanych przedmiotów. Spróbuj ponownie później.",
+    "details": "📄 Szczegóły",
+    "back_to_summary": "⬅ Powrót do podsumowania",
+    "item_row_with_id": "{name} (ID {id}) — {rap} R$"
   },
   "offsale": {
-    "title": "🛑 Wycofane ze sprzedaży",
+    "title": "Wycofane",
     "mode": "Tryb: {mode}",
-    "mode_collectibles": "Kolekcjonerskie",
-    "empty": "Brak kolekcjonerskich wycofanych ze sprzedaży.",
-    "row_collectible": "{name} — RAP {rap} R$ (brak sprzedawców)"
+    "mode_collectibles": "Kolekcjonowane",
+    "empty": "Nie znaleziono wycofanych przedmiotów kolekcjonowanych.",
+    "row_collectible": "{name} — RAP {rap} R$ (brak sprzedających)",
+    "loading": "⏳ Ładowanie…",
+    "empty_private": "Brak wycofanych przedmiotów kolekcjonowanych. Jeśli inwentarz jest prywatny, otwórz go lub użyj ważnego ciasteczka dla tego konta.",
+    "empty_generic": "Nie znaleziono wycofanych przedmiotów kolekcjonowanych. Spróbuj ponownie później."
   },
   "revenue": {
-    "title": "💸 Przychody",
-    "auth_required": "🔐 Przychody dostępne tylko z cookie.",
+    "title": "💸 Przychód",
+    "auth_required": "🔐 Przychód jest dostępny tylko z ciasteczkiem.",
     "summary": "Łącznie: {sum} R$",
     "row": "{date} — {type} — {amount} R$ — {source}",
     "empty": "Brak transakcji.",
     "prev": "◀ Poprzednia",
     "next": "Następna ▶",
-    "refresh": "🔄 Odśwież"
+    "refresh": "🔄 Odśwież",
+    "loading": "⏳ Ładowanie przychodu…",
+    "summary_page": "Na tej stronie: {sum} R$",
+    "page_summary": "Transakcje na tej stronie: {count}",
+    "details": "📄 Szczegóły",
+    "back_to_summary": "⬅️ Powrót do podsumowania",
+    "total_count": "Łącznie transakcji: {count}",
+    "total_sum": "Razem: {sum} R$"
   },
   "usernames": {
-    "title": "📝 Poprzednie nazwy",
+    "title": "📝 Poprzednie nazwy użytkownika",
     "row": "{name} — {changedAt}",
-    "empty": "Brak poprzednich nazw.",
-    "page": "Strona {cur}/{total}"
-  }
+    "empty": "Brak poprzednich nazw użytkownika.",
+    "page": "Strona {cur}/{total}",
+    "loading": "⏳ Ładowanie…",
+    "empty_private": "Brak poprzednich nazw użytkownika. Jeśli dostęp jest ograniczony, wymagane jest ważne ciasteczko.",
+    "empty_generic": "Nie znaleziono poprzednich nazw użytkownika."
+  },
+  "masscheck.need_txt": "Musisz przesłać plik .txt z ciasteczkami 😅",
+  "masscheck.empty_file": "Plik jest pusty, nie znaleziono ciasteczek 😬",
+  "masscheck.start": "Znaleziono {count} linii, rozpoczynanie masowego sprawdzania...",
+  "masscheck.no_results": "Nie udało się przetworzyć niczego :(",
+  "masscheck.summary_title": "PODSUMOWANIE MASOWEGO SPRAWDZANIA",
+  "masscheck.details_title": "SZCZEGÓŁOWE PROFILE",
+  "masscheck.zip_caption": "Masowe sprawdzanie: profile + inwentarze w jednym archiwum 😎",
+  "masscheck.wait_txt": "Wyślij plik .txt z ciasteczkami jako oddzielna wiadomość z dokumentem — gdy tylko otrzymam plik, zbiorę profile i inwentarze do archiwum.",
+  "masscheck.inv_prefix": "Inwentarz: ",
+  "masscheck.no_priced_items": "brak przedmiotów z ceną"
 }
