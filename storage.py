@@ -258,11 +258,31 @@ async def get_encrypted_cookie(telegram_id: int, roblox_id: int) -> Optional[str
 
 
 async def delete_cookie(telegram_id: int, roblox_id: int) -> None:
-    """Удаляет и куки и запись об аккаунте"""
+    """
+    Удаляет:
+      - запись с кукой из user_cookies
+      - связку аккаунта из authorized_users
+      - снапшот этого аккаунта из account_snapshots
+    """
     async with aiosqlite.connect(DB_STR) as db:
-        await db.execute('DELETE FROM user_cookies WHERE telegram_id=? AND roblox_id=?', (telegram_id, roblox_id))
-        await db.execute('DELETE FROM authorized_users WHERE telegram_id=? AND roblox_id=?', (telegram_id, roblox_id))
+        # кука
+        await db.execute(
+            'DELETE FROM user_cookies WHERE telegram_id=? AND roblox_id=?',
+            (telegram_id, roblox_id)
+        )
+        # привязка аккаунта
+        await db.execute(
+            'DELETE FROM authorized_users WHERE telegram_id=? AND roblox_id=?',
+            (telegram_id, roblox_id)
+        )
+        # снапшот по этому roblox_id
+        await db.execute(
+            'DELETE FROM account_snapshots WHERE roblox_id=?',
+            (roblox_id,)
+        )
+
         await db.commit()
+
 
 
 async def deactivate_cookie(telegram_id: int, roblox_id: int) -> None:
@@ -628,3 +648,47 @@ async def get_all_plain_cookies() -> list[str]:
             continue
 
     return cookies
+
+
+import aiosqlite
+import logging
+from typing import List, Tuple
+
+# ... у тебя это уже есть сверху файла
+
+# --- НОВЫЙ ХЕЛПЕР ---
+
+async def get_all_cookies_with_ids() -> List[Tuple[int, int, str]]:
+    """
+    Возвращает все АКТИВНЫЕ куки из user_cookies:
+      список кортежей (telegram_id, roblox_id, enc_roblosecurity)
+    """
+    try:
+        async with aiosqlite.connect(DB_STR) as db:
+            cur = await db.execute(
+                """
+                SELECT telegram_id, roblox_id, enc_roblosecurity
+                FROM user_cookies
+                WHERE is_active = TRUE
+                ORDER BY datetime(saved_at) DESC
+                """
+            )
+            rows = await cur.fetchall()
+    except Exception as e:
+        logging.error(f"[STORAGE] get_all_cookies_with_ids() db error: {e}")
+        return []
+
+    result: List[Tuple[int, int, str]] = []
+    for row in rows:
+        if not row or not row[2]:
+            continue
+        try:
+            tg_id = int(row[0])
+            rid = int(row[1])
+            enc = str(row[2])
+            result.append((tg_id, rid, enc))
+        except Exception as e:
+            logging.error(f"[STORAGE] row parse in get_all_cookies_with_ids() failed: {e}")
+            continue
+
+    return result

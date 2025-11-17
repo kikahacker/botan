@@ -1,337 +1,199 @@
 import requests
-import json
-import sys
-import os
-import re
-from typing import Optional, Dict, Tuple
+import time
+import random
+import hashlib
+
+from http_shared import PROXY_POOL  # добавили импорт пула проксей
 
 
 class RobloxCookieRefresher:
     def __init__(self):
         self.session = requests.Session()
-        self.base_headers = {
+        self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-CSRF-TOKEN': None
-        }
+        })
 
-    def debug_cookie(self, cookie: str) -> None:
-        """Выводит отладочную информацию о куке"""
-        print("\n🔍 Отладочная информация о куке:")
-        print(f"Длина куки: {len(cookie)} символов")
-        print(f"Начинается с: {cookie[:50]}...")
-        print(f"Содержит '::': {'::' in cookie}")
+    def _apply_random_proxy(self):
+        """
+        Вешает рандомный прокси на requests-сессию.
+        Если прокси не заданы (нет файла proxies.txt и переменной окружения),
+        то работаем без прокси, как раньше.
+        """
+        proxy = PROXY_POOL.any()
+        if proxy:
+            # proxy строка вида: http://user:pass@host:port или http://host:port
+            self.session.proxies = {
+                "http": proxy,
+                "https": proxy,
+            }
+            print(f"🌐 Использую прокси: {proxy}")
+        else:
+            # очищаем прокси, чтобы не мешали
+            self.session.proxies = {}
+            # print("🌐 Прокси не заданы, работаю напрямую")  # можно раскомментить для дебага
 
-
-        # Проверяем структуру
-        if '::' in cookie:
-            parts = cookie.split('::')
-            print(f"Количество частей после разделения '::': {len(parts)}")
-            for i, part in enumerate(parts[:3]):  # Показываем первые 3 части
-                print(f"Часть {i}: {part[:30]}... (длина: {len(part)})")
-
-    def validate_cookie(self, cookie: str) -> Tuple[bool, str]:
-        """Проверяем валидность куки с детальной диагностикой"""
+    def check_cookie_validity(self, cookie):
+        """Проверка валидности куки"""
         try:
-            # Очищаем куку
-            clean_cookie = cookie.strip()
+            # перед каждым сетевым чеком вешаем рандомный прокси
+            self._apply_random_proxy()
 
-            # Проверка 1: Длина
-            if len(clean_cookie) < 50:
-                return False, "Слишком короткая кука (менее 50 символов)"
-
-            # Проверка 2: Основные паттерны Roblox куки
-            if not re.match(r'^[_a-zA-Z0-9\-=]+::', clean_cookie):
-                return False, "Неверный формат: должна начинаться с идентификатора и '::'"
-
-            # Проверка 3: Наличие необходимых компонентов
-            if '::' not in clean_cookie:
-                return False, "Отсутствует разделитель '::'"
-
-            parts = clean_cookie.split('::')
-            if len(parts) < 2:
-                return False, "Недостаточно частей после разделения"
-
-            # Проверка 4: Первая часть (обычно содержит дату/время)
-            first_part = parts[0]
-            if len(first_part) < 10:
-                return False, "Первая часть куки слишком короткая"
-
-            return True, "Кука выглядит валидной"
-
+            response = self.session.get(
+                'https://users.roblox.com/v1/users/authenticated',
+                cookies={'.ROBLOSECURITY': cookie},
+                timeout=10
+            )
+            if response.status_code == 200:
+                user_data = response.json()
+                return True, user_data
+            return False, None
         except Exception as e:
-            return False, f"Ошибка при валидации: {e}"
 
-    def clean_cookie(self, cookie: str) -> str:
-        """Очищает куку от лишних символов"""
-        # Удаляем кавычки, пробелы по краям
-        cleaned = cookie.strip().replace('"', '').replace("'", "")
+            return False, None
 
-        # Удаляем возможные префиксы
-        if cleaned.startswith('cookie:'):
-            cleaned = cleaned[7:].strip()
-        if cleaned.startswith('.ROBLOSECURITY='):
-            cleaned = cleaned[15:].strip()
+    def generate_device_id(self):
+        """Генерация уникального device ID"""
+        timestamp = str(int(time.time() * 1000))
+        random_str = str(random.randint(100000, 999999))
+        device_string = f"WEB{timestamp}{random_str}"
+        return hashlib.md5(device_string.encode()).hexdigest()
 
-        return cleaned
+    def refresh_cookie(self, cookie):
+        """РАБОЧИЙ МЕТОД обновления куки через session refresh"""
 
-    def get_csrf_token(self, cookie: str) -> Optional[str]:
-        """Получаем CSRF токен от Roblox"""
+
         try:
-            # Создаем временную сессию для получения токена
-            temp_session = requests.Session()
-            temp_session.cookies.set('.ROBLOSECURITY', cookie, domain='.roblox.com')
+            # ВАЖНО: весь refresh (CSRF + session/refresh) лучше делать с ОДНОГО IP
+            # поэтому один раз ставим прокси в начале метода
+            self._apply_random_proxy()
 
-            headers = {
-                'User-Agent': self.base_headers['User-Agent'],
+            # Шаг 1: Получаем CSRF токен
+            csrf_response = self.session.post(
+                'https://auth.roblox.com/v2/login',
+                cookies={'.ROBLOSECURITY': cookie}
+            )
+            csrf_token = csrf_response.headers.get('x-csrf-token')
+
+            if not csrf_token:
+
+                if csrf_response.text:
+                    pass
+                return None
+
+            # Шаг 2: Используем специальные headers для session refresh
+            refresh_headers = {
+                'X-CSRF-TOKEN': csrf_token,
+                'Roblox-Device-Id': self.generate_device_id(),
+                'Roblox-Client-Version': '2024.11.0',
+                'Referer': 'https://www.roblox.com/',
+                'Origin': 'https://www.roblox.com',
                 'Content-Type': 'application/json'
             }
 
-            response = temp_session.post(
-                'https://auth.roblox.com/v2/login',
-                headers=headers
-            )
-
-            if 'x-csrf-token' in response.headers:
-                token = response.headers['x-csrf-token']
-                print(f"✅ CSRF токен получен: {token[:20]}...")
-                return token
-            else:
-                print("❌ CSRF токен не найден в заголовках ответа")
-                return None
-
-        except Exception as e:
-            print(f"❌ Ошибка при получении CSRF токена: {e}")
-            return None
-
-    def refresh_cookie(self, old_cookie: str) -> Optional[str]:
-        """Обновляем куку .ROBLOSECURITY"""
-        try:
-            # Очищаем куку
-            clean_cookie = self.clean_cookie(old_cookie)
-            print(f"🔄 Очищенная кука: {clean_cookie[:50]}...")
-
-            # Получаем CSRF токен
-            print("🔄 Получаем CSRF токен...")
-            csrf_token = self.get_csrf_token(clean_cookie)
-
-            if not csrf_token:
-                print("❌ Не удалось получить CSRF токен - кука может быть невалидной")
-                return None
-
-            # Настраиваем сессию с кукой и токеном
-            self.session.cookies.set('.ROBLOSECURITY', clean_cookie, domain='.roblox.com')
-            self.base_headers['X-CSRF-TOKEN'] = csrf_token
-
-            print("🔄 Отправляем запрос на обновление сессии...")
-
-            # Отправляем запрос на обновление
+            # Шаг 3: Делаем запрос к session refresh endpoint
             response = self.session.post(
-                'https://auth.roblox.com/v2/login',  # Альтернативный endpoint
-                headers=self.base_headers,
-                json={"ctype": "Username"}
+                'https://auth.roblox.com/v1/session/refresh',
+                headers=refresh_headers,
+                cookies={'.ROBLOSECURITY': cookie},
+                json={}  # Пустой JSON body
             )
 
-            print(f"📊 Статус ответа: {response.status_code}")
+
 
             if response.status_code == 200:
-                # Проверяем куки в ответе
-                if '.ROBLOSECURITY' in self.session.cookies:
-                    new_cookie = self.session.cookies['.ROBLOSECURITY']
-                    print("✅ Новая кука получена из cookies!")
+                # Получаем новый куки из cookies ответа
+                new_cookie = response.cookies.get('.ROBLOSECURITY')
+                if new_cookie:
+
                     return new_cookie
 
-                # Проверяем заголовки Set-Cookie
-                if 'Set-Cookie' in response.headers:
-                    set_cookie_header = response.headers['Set-Cookie']
-                    if '.ROBLOSECURITY' in set_cookie_header:
-                        # Извлекаем куку из заголовка
-                        match = re.search(r'\.ROBLOSECURITY=([^;]+)', set_cookie_header)
-                        if match:
-                            new_cookie = match.group(1)
-                            print("✅ Новая кука получена из заголовков!")
-                            return new_cookie
+                # Если куки нет в cookies, проверяем тело ответа
+                try:
+                    response_data = response.json()
+                    if 'cookie' in response_data:
+                        new_cookie = response_data['cookie']
 
-                print("ℹ️ Новая кука не найдена в ответе, но запрос успешен")
-                print("Возможно, нужен другой метод обновления")
-                return clean_cookie  # Возвращаем оригинальную, если новая не найдена
+                        return new_cookie
+                except Exception:
+                    pass
 
-            elif response.status_code == 403:
-                print("❌ Доступ запрещен (403)")
-                print("Возможные причины:")
-                print("  - Кука невалидна или просрочена")
-                print("  - Аккаунт заблокирован")
-                print("  - Нужна капча")
-                return None
-            elif response.status_code == 401:
-                print("❌ Неавторизован (401) - кука недействительна")
                 return None
             else:
-                print(f"❌ Неожиданный статус: {response.status_code}")
-                print(f"Ответ: {response.text[:200]}...")
+                if response.text:
+                    pass
                 return None
 
-        except requests.exceptions.RequestException as e:
-            print(f"❌ Ошибка сети: {e}")
-            return None
         except Exception as e:
-            print(f"❌ Неожиданная ошибка: {e}")
+
             return None
 
-    def test_cookie(self, cookie: str) -> bool:
-        """Тестируем куку на валидность"""
-        try:
-            clean_cookie = self.clean_cookie(cookie)
-            temp_session = requests.Session()
-            temp_session.cookies.set('.ROBLOSECURITY', clean_cookie, domain='.roblox.com')
+    def comprehensive_refresh(self, cookie):
+        """Комплексное обновление с проверками"""
 
-            response = temp_session.get(
-                'https://users.roblox.com/v1/users/authenticated',
-                headers={'User-Agent': self.base_headers['User-Agent']}
-            )
+        original_cookie = cookie
 
-            if response.status_code == 200:
-                user_data = response.json()
-                print(f"✅ Кука валидна! Пользователь: {user_data.get('name', 'Unknown')}")
-                return True
+        # Проверяем исходную валидность
+        is_valid, user_data = self.check_cookie_validity(cookie)
+        if not is_valid:
+
+            return None
+
+
+        if user_data:
+            pass
+
+        # Запускаем рабочий метод
+        new_cookie = self.refresh_cookie(cookie)
+
+        if not new_cookie:
+
+            return None
+
+        # Проверяем новый куки
+        is_valid, user_data = self.check_cookie_validity(new_cookie)
+
+        if is_valid:
+            if user_data:
+                pass
+
+            # Сравниваем куки
+            if new_cookie != original_cookie:
+                pass
             else:
-                print(f"❌ Кука невалидна. Статус: {response.status_code}")
-                return False
+                pass
 
-        except Exception as e:
-            print(f"❌ Ошибка при тестировании куки: {e}")
-            return False
+            return new_cookie
+        else:
+            return None
 
 
 def main():
-    print("=" * 60)
-    print("       Roblox Cookie Refresher (Улучшенная версия)")
-    print("=" * 60)
-    print()
 
+    # Ввод куки
+    cookie = input("Введите ваш .ROBLOSECURITY куки: ").strip()
+
+    if not cookie:
+        return
+
+    # Создаем экземпляр
     refresher = RobloxCookieRefresher()
 
-    while True:
-        print("\nВыберите вариант:")
-        print("1 - Ввести куку вручную")
-        print("2 - Загрузить из файла")
-        print("3 - Протестировать куку (проверить валидность)")
-        print("4 - Выход")
+    # Запускаем обновление
+    start_time = time.time()
+    new_cookie = refresher.comprehensive_refresh(cookie)
+    end_time = time.time()
 
-        choice = input("\nВаш выбор (1-4): ").strip()
 
-        if choice == '1':
-            print("\n" + "=" * 40)
-            print("ВВОД КУКИ:")
-            print("=" * 40)
-            old_cookie = input("Введите куку .ROBLOSECURITY: ").strip()
+    if new_cookie:
 
-            if not old_cookie:
-                print("❌ Пустая кука!")
-                continue
-
-            # Показываем отладочную информацию
-            refresher.debug_cookie(old_cookie)
-
-            # Проверяем валидность
-            is_valid, message = refresher.validate_cookie(old_cookie)
-            print(f"\n🔍 Результат валидации: {message}")
-
-            if not is_valid:
-                print("\n❌ Кука не прошла валидацию!")
-                print("Попробуйте:")
-                print("  - Скопировать куку заново")
-                print("  - Убедиться, что скопирована вся кука")
-                print("  - Проверить, нет ли лишних пробелов")
-                continue
-
-            # Тестируем куку
-            print("\n🧪 Тестируем куку...")
-            if refresher.test_cookie(old_cookie):
-                print("🔄 Кука валидна, начинаем обновление...")
-                new_cookie = refresher.refresh_cookie(old_cookie)
-            else:
-                print("❌ Кука невалидна, невозможно обновить")
-                continue
-
-        elif choice == '2':
-            filename = input("Введите имя файла (по умолчанию: cookie.txt): ").strip()
-            if not filename:
-                filename = "cookie.txt"
-
-            try:
-                with open(filename, 'r', encoding='utf-8') as f:
-                    old_cookie = f.read().strip()
-
-                if not old_cookie:
-                    print("❌ Файл пустой!")
-                    continue
-
-                print(f"✅ Кука загружена из файла: {filename}")
-                refresher.debug_cookie(old_cookie)
-
-                # Проверяем валидность
-                is_valid, message = refresher.validate_cookie(old_cookie)
-                print(f"🔍 Результат валидации: {message}")
-
-                if not is_valid:
-                    continue
-
-                new_cookie = refresher.refresh_cookie(old_cookie)
-
-            except FileNotFoundError:
-                print("❌ Файл не найден!")
-                continue
-            except Exception as e:
-                print(f"❌ Ошибка при чтении файла: {e}")
-                continue
-
-        elif choice == '3':
-            print("\n🧪 ТЕСТИРОВАНИЕ КУКИ")
-            test_cookie = input("Введите куку для тестирования: ").strip()
-            if test_cookie:
-                refresher.test_cookie(test_cookie)
-            continue
-
-        elif choice == '4':
-            print("👋 Выход из программы...")
-            break
+        # Дополнительная проверка
+        is_valid, user_data = refresher.check_cookie_validity(new_cookie)
+        if is_valid:
+            pass
         else:
-            print("❌ Неверный выбор!")
-            continue
-
-        # Обрабатываем результат обновления
-        if new_cookie and new_cookie != old_cookie:
-            print("\n" + "=" * 60)
-            print("✅ НОВАЯ КУКА УСПЕШНО ПОЛУЧЕНА!")
-            print("=" * 60)
-            print(new_cookie)
-            print("=" * 60)
-
-            # Сохраняем в файл
-            save_choice = input("\n💾 Сохранить новую куку в файл? (y/n): ").strip().lower()
-            if save_choice == 'y':
-                filename = input("Имя файла (по умолчанию: new_cookie.txt): ").strip()
-                if not filename:
-                    filename = "new_cookie.txt"
-                try:
-                    with open(filename, 'w', encoding='utf-8') as f:
-                        f.write(new_cookie)
-                    print(f"✅ Кука сохранена в {filename}")
-                except Exception as e:
-                    print(f"❌ Ошибка при сохранении: {e}")
-
-        elif new_cookie and new_cookie == old_cookie:
-            print("\nℹ️ Кука не изменилась (возможно, уже актуальна)")
-        else:
-            print("\n❌ Не удалось обновить куку")
-
-        # Продолжить?
-        continue_choice = input("\n🔄 Продолжить работу? (y/n): ").strip().lower()
-        if continue_choice != 'y':
-            print("👋 Выход из программы...")
-            break
+            pass
+    else:
+        pass
 
 
 if __name__ == "__main__":

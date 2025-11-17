@@ -10,7 +10,7 @@ from login_pass import router as logpass
 import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
-
+from update_all_cookies import schedule_daily_cookie_refresh
 LOG_PATH = "bot_sections.log"
 
 
@@ -41,7 +41,7 @@ async def main():
     dp.include_router(router)
     dp.include_router(extra_sections)
     dp.include_router(logpass)
-
+    asyncio.create_task(schedule_daily_cookie_refresh(hour=3, minute=30))
     print('✅ bot started (polling)')
     await dp.start_polling(bot)
 
