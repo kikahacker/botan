@@ -1549,7 +1549,7 @@ def _kb_categories_only(roblox_id: int, by_cat: Dict[str, List[Dict[str, Any]]])
     rows: List[List[InlineKeyboardButton]] = []
     for cat, items in sorted(by_cat.items(), key=lambda kv: kv[0].lower()):
         nz = _filter_nonzero(items)
-        if not nz:
+        if not items:
             continue
         rows.append([InlineKeyboardButton(
             text=f'{cat} — {len(nz)} {L("common.pcs")} · {_sum_items(nz):,} {RICON}'.replace(',', ' '),
@@ -1610,6 +1610,111 @@ def _caption_category(cat_name: str, count: int, total_sum: int) -> str:
         return result
 
 
+
+
+INV_CAPTION_LIMIT = 200
+
+
+def _build_full_inventory_caption(
+    *,
+    total: int,
+    total_sum: int,
+    robux: int | None,
+    items: List[Dict[str, Any]],
+    max_len: int = INV_CAPTION_LIMIT,
+) -> str:
+    """
+    ОДНА строка не длиннее max_len:
+    "<count> pcs | <robux> R$ balance | <total_sum> R$ inv | item1 | item2 | ..."
+    Имена предметов берутся из самых дорогих айтемов.
+    """
+    # --- приведение чисел ---
+    try:
+        total_int = int(total)
+    except Exception:
+        total_int = total
+
+    try:
+        sum_int = int(total_sum)
+    except Exception:
+        sum_int = total_sum
+
+    try:
+        robux_int = int(robux) if robux is not None else None
+    except Exception:
+        robux_int = None
+
+    # --- форматирование чисел ---
+    if "_fmt_price" in globals():
+        count_txt = _fmt_price(total_int)
+        sum_txt = _fmt_price(sum_int)
+        robux_txt = _fmt_price(robux_int) if isinstance(robux_int, (int, float)) else "0"
+    else:
+        count_txt = str(total_int)
+        sum_txt = str(sum_int)
+        robux_txt = str(robux_int if robux_int is not None else 0)
+
+    # локализация "pcs" по возможности
+    try:
+        pcs_word = L("common.pcs")
+        if not pcs_word or pcs_word == "common.pcs":
+            pcs_word = "pcs"
+    except Exception:
+        pcs_word = "pcs"
+
+    # базовая строка: "647 pcs | 1 234 R$ balance | 1 018 352 R$ inv"
+    base_parts = [
+        f"{count_txt} {pcs_word}",
+        f"{robux_txt} R$ balance",
+        f"{sum_txt} R$ inv",
+    ]
+    base = " | ".join(base_parts).replace(",", " ")
+
+    # если уже всё забили лимитом — просто обрежем до max_len
+    if len(base) >= max_len:
+        return base[:max_len]
+
+    remaining = max_len - len(base)
+    result = base
+    seen: set[str] = set()
+
+    # --- берём топовые предметы по цене ---
+    try:
+        if "_price_value" in globals():
+            def _sortkey(it):
+                try:
+                    return _price_value(it.get("priceInfo"))
+                except Exception:
+                    return 0
+            sorted_items = sorted(items or [], key=_sortkey, reverse=True)
+        else:
+            sorted_items = list(items or [])
+    except Exception:
+        sorted_items = list(items or [])
+
+    for it in sorted_items:
+        name = str((it.get("name") or "")).strip()
+        if not name:
+            continue
+        low = name.lower()
+        if low in seen:
+            continue
+        seen.add(low)
+
+        # чуть режем очень длинные названия
+        if len(name) > 30:
+            name = name[:27] + "..."
+
+        part = f" | {name}"
+        if len(part) > remaining:
+            break
+
+        result += part
+        remaining -= len(part)
+
+    return result
+
+
 def _kb_category_view(roblox_id: int, short_cat: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=LL('buttons.all_items', 'btn.all_items'),
@@ -1663,7 +1768,21 @@ async def cb_inventory_full_then_categories(call: types.CallbackQuery) -> None:
 
         total = len(all_items)
         total_sum = _sum_items(all_items)
-        caption = L('inventory_view.public_title', total=total, total_sum=total_sum)
+
+        robux_val: int | None = None
+        try:
+            cached_robux = await storage.get_cached_data(roblox_id, 'acc_robux_v1')
+            if cached_robux is not None:
+                robux_val = int(cached_robux)
+        except Exception:
+            robux_val = None
+
+        caption = _build_full_inventory_caption(
+            total=total,
+            total_sum=total_sum,
+            robux=robux_val,
+            items=all_items,
+        )
 
         await loader.delete()
         await _send_full_inventory_paged(
@@ -1710,7 +1829,7 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         all_items: List[Dict[str, Any]] = []
         for arr in by_cat.values():
-            all_items.extend(_filter_nonzero(arr))
+            all_items.extend(arr)
         if not all_items:
             await loader.edit_text(L('public.inventory_private'))
             return
@@ -1721,7 +1840,21 @@ async def cb_inventory_all_again(call: types.CallbackQuery) -> None:
 
         total = len(all_items)
         total_sum = _sum_items(all_items)
-        caption = L('inventory_view.public_title', total=total, total_sum=total_sum)
+
+        robux_val: int | None = None
+        try:
+            cached_robux = await storage.get_cached_data(roblox_id, 'acc_robux_v1')
+            if cached_robux is not None:
+                robux_val = int(cached_robux)
+        except Exception:
+            robux_val = None
+
+        caption = _build_full_inventory_caption(
+            total=total,
+            total_sum=total_sum,
+            robux=robux_val,
+            items=all_items,
+        )
 
         await loader.delete()
         await _send_full_inventory_paged(
@@ -1776,7 +1909,21 @@ async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
 
         total = len(all_items)
         total_sum = _sum_items(all_items)
-        caption = L('inventory_view.public_title', total=total, total_sum=total_sum)
+
+        robux_val: int | None = None
+        try:
+            cached_robux = await storage.get_cached_data(roblox_id, 'acc_robux_v1')
+            if cached_robux is not None:
+                robux_val = int(cached_robux)
+        except Exception:
+            robux_val = None
+
+        caption = _build_full_inventory_caption(
+            total=total,
+            total_sum=total_sum,
+            robux=robux_val,
+            items=all_items,
+        )
 
         await loader.delete()
         await _send_full_inventory_paged(
@@ -1822,7 +1969,7 @@ async def cb_inventory_category(call: types.CallbackQuery) -> None:
         await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         full = _CAT_SHORTMAP.get((roblox_id, short), short)
-        items = _filter_nonzero(by_cat.get(full, []))
+        items = by_cat.get(full, [])
         if not items:
             await loader.edit_text(L('public.inventory_private'))
             return
@@ -1882,7 +2029,7 @@ async def cb_inventory_category_refresh(call: types.CallbackQuery) -> None:
         await _log_check(tg, roblox_id, scope="private", what="inventory_by_cat")
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         full = _CAT_SHORTMAP.get((roblox_id, short), short)
-        items = _filter_nonzero(by_cat.get(full, []))
+        items = by_cat.get(full, [])
         img_bytes = await generate_category_sheets(tg, roblox_id, full, limit=0, tile=150, force=True,
                                                    username=call.from_user.username, items_override=items)
         import os
@@ -2317,7 +2464,9 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
         data = await _get_inventory_cached(tg, roblox_id)
         await _log_check(tg, roblox_id, scope="private", what="inventory_cfg_next")
 
-        logger.info(f"[inv_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
+        logger.info(
+            f"[inv_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}"
+        )
 
         await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
@@ -2327,7 +2476,10 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             by_cat = {k: v for k, v in by_cat.items() if k in allowed}
         if not by_cat:
             await loader.edit_text(L('msg.auto_f707b4e058'))
-            await call.message.answer(await t(storage, tg, 'menu.main'), reply_markup=await kb_main_i18n(tg))
+            await call.message.answer(
+                await t(storage, tg, 'menu.main'),
+                reply_markup=await kb_main_i18n(tg)
+            )
             logger.info(f"[inv_cfg_next] empty_by_cat -> main; dt={time.time() - t0:.3f}s")
             return
         try:
@@ -2348,6 +2500,7 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             except Exception:
                 return 0
 
+        # --- по категориям ---
         for cat in sorted(by_cat.keys(), key=lambda s: s.lower()):
             # ЗАЩИТА ПЕРЕД КАЖДОЙ КАТЕГОРИЕЙ
             await protect_language(call.from_user.id)
@@ -2357,8 +2510,14 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             if not items:
                 continue
 
-            img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, tile=150, force=True,
-                                                       username=call.from_user.username, items_override=items)
+            img_bytes = await generate_category_sheets(
+                tg, roblox_id, cat,
+                limit=0,
+                tile=150,
+                force=True,
+                username=call.from_user.username,
+                items_override=items,
+            )
             tmp_path = f'temp/inventory_sel_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}.png'
             with open(tmp_path, 'wb') as f:
                 f.write(img_bytes)
@@ -2369,93 +2528,53 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
 
             # ЗАЩИТА ПЕРЕД СОЗДАНИЕМ ПОДПИСИ
             await protect_language(call.from_user.id)
-            caption = L('inventory.by_cat', cat=cat_label(cat), count=len(items),
-                        sum=f'{total_sum:,}'.replace(',', ' '))
+            caption = L(
+                'inventory.by_cat',
+                cat=cat_label(cat),
+                count=len(items),
+                sum=f'{total_sum:,}'.replace(',', ' ')
+            )
             await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
 
-        # --- ОДНА общая фотка из всех выбранных айтемов ---
+        # --- ОДНА общая фотка из всех выбранных айтемов (новая подпись) ---
         try:
-            # ЗАЩИТА ПЕРЕД ФИНАЛЬНОЙ ГЕНЕРАЦИЕЙ
             await protect_language(call.from_user.id)
 
             if selected_items:
-                MAX_H = 7000
-                tiles_try = [150, 130, 120, 100, 90]
+                all_items = selected_items
+                total_items = len(all_items)
+                total_sum_all = _sum_items(all_items)
 
-                def per_page(tile: int) -> int:
-                    rows = max(1, MAX_H // tile)
-                    cols = rows
-                    return rows * cols
+                # пробуем достать кешированный баланс робаксов
+                robux_val: int | None = None
+                try:
+                    cached_robux = await storage.get_cached_data(roblox_id, 'acc_robux_v1')
+                    if cached_robux is not None:
+                        robux_val = int(cached_robux)
+                except Exception:
+                    robux_val = None
 
-                def chunks(seq, size):
-                    for i in range(0, len(seq), size):
-                        yield seq[i:i + size]
+                caption = _build_full_inventory_caption(
+                    total=total_items,
+                    total_sum=total_sum_all,
+                    robux=robux_val,
+                    items=all_items,
+                )
 
-                sent = False
-
-                def _pv(v):
-                    try:
-                        return int((v or {}).get('value') or 0)
-                    except Exception:
-                        return 0
-
-                total_items = len(selected_items)
-                total_sum_all = sum((_pv(x.get('priceInfo')) for x in selected_items))
-
-                for tile in tiles_try:
-                    size_per_page = per_page(tile)
-                    pages = list(chunks(selected_items, size_per_page))
-                    ok = True
-                    tmp_final_paths = []
-                    try:
-                        for i, part in enumerate(pages, 1):
-                            # ЗАЩИТА ПЕРЕД КАЖДОЙ СТРАНИЦЕЙ
-                            await protect_language(call.from_user.id)
-
-                            img = await generate_full_inventory_grid(
-                                part,
-                                tile=tile, pad=6,
-                                title=(
-                                    L('inventory.full_title') if len(pages) == 1
-                                    else f"{L('inventory.full_title')} ({L('inventory_view.page', current=i, total=len(pages))})"
-                                ),
-                                username=call.from_user.username,
-                                user_id=tg
-                            )
-                            os.makedirs('temp', exist_ok=True)
-                            final_path = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
-                            with open(final_path, 'wb') as f:
-                                f.write(img)
-                            tmp_final_paths.append(final_path)
-
-                        for i, pth in enumerate(tmp_final_paths, 1):
-                            # ЗАЩИТА ПЕРЕД КАЖДОЙ ПОДПИСЬЮ
-                            await protect_language(call.from_user.id)
-
-                            cap = (
-                                    f"📦 {L('inventory.full_title')} · {total_items} {L('common.pcs')}\n"
-                                    + L('inventory.total_sum', sum=f"{total_sum_all:,}")
-                            ).replace(',', ' ')
-                            if len(tmp_final_paths) > 1:
-                                cap += f"\n{L('inventory_view.page', current=i, total=len(tmp_final_paths))}"
-                            await call.message.answer_photo(FSInputFile(pth), caption=cap)
-                        sent = True
-                    finally:
-                        for pth in tmp_final_paths:
-                            try:
-                                os.remove(pth)
-                            except Exception:
-                                pass
-
-                    if sent:
-                        break
-
-                if not sent:
-                    await call.message.answer(L('inventory_view.render_too_large'))
+                await _send_full_inventory_paged(
+                    message=call.message,
+                    items=all_items,
+                    tg_id=tg,
+                    roblox_id=roblox_id,
+                    username=call.from_user.username,
+                    caption_prefix=caption,
+                    kb_first=None,
+                )
         except Exception as e:
             logger.warning(f'final all-inventory render failed: {e}')
             _invlog('stream.final_error', error=str(e))
 
+        # чистим времянку
         for pth in tmp_paths:
             try:
                 os.remove(pth)
@@ -2465,12 +2584,14 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
         # ЗАЩИТА ПЕРЕД ФИНАЛЬНЫМИ СООБЩЕНИЯМИ
         await protect_language(call.from_user.id)
         await call.message.answer(L('status.done_back_home'), reply_markup=await kb_main_i18n(tg))
+
     except Exception as e:
         await protect_language(call.from_user.id)
         try:
             await loader.edit_text(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
         except Exception:
             await call.message.answer(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
+
 
 
 import pathlib
@@ -2842,7 +2963,8 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
         await _log_check(tg, roblox_id, scope="public", what="inventory_cfg_next")
 
         logger.info(
-            f"[inv_pub_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
+            f"[inv_pub_cfg_next] got inventory keys={list(data.keys()) if isinstance(data, dict) else type(data)}"
+        )
 
         await protect_language(call.from_user.id)
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
@@ -2852,7 +2974,10 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
             by_cat = {k: v for k, v in by_cat.items() if k in allowed}
         if not by_cat:
             await loader.edit_text(L('msg.auto_f707b4e058'))
-            await call.message.answer(await t(storage, tg, 'menu.main'), reply_markup=await kb_main_i18n(tg))
+            await call.message.answer(
+                await t(storage, tg, 'menu.main'),
+                reply_markup=await kb_main_i18n(tg)
+            )
             logger.info(f"[inv_pub_cfg_next] empty_by_cat -> main; dt={time.time() - t0:.3f}s")
             return
         try:
@@ -2873,6 +2998,7 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
             except Exception:
                 return 0
 
+        # --- по категориям (как раньше) ---
         for cat in sorted(by_cat.keys(), key=lambda s: s.lower()):
             # ЗАЩИТА ПЕРЕД КАЖДОЙ КАТЕГОРИЕЙ
             await protect_language(call.from_user.id)
@@ -2882,8 +3008,14 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
             if not items:
                 continue
 
-            img_bytes = await generate_category_sheets(tg, roblox_id, cat, limit=0, tile=150, force=True,
-                                                       username=call.from_user.username, items_override=items)
+            img_bytes = await generate_category_sheets(
+                tg, roblox_id, cat,
+                limit=0,
+                tile=150,
+                force=True,
+                username=call.from_user.username,
+                items_override=items,
+            )
             tmp_path = f'temp/inventory_sel_{tg}_{roblox_id}_{abs(hash(cat)) % 10 ** 8}.png'
             with open(tmp_path, 'wb') as f:
                 f.write(img_bytes)
@@ -2894,93 +3026,55 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
 
             # ЗАЩИТА ПЕРЕД СОЗДАНИЕМ ПОДПИСИ
             await protect_language(call.from_user.id)
-            caption = L('inventory.by_cat', cat=cat_label(cat), count=len(items),
-                        sum=f'{total_sum:,}'.replace(',', ' '))
+            caption = L(
+                'inventory.by_cat',
+                cat=cat_label(cat),
+                count=len(items),
+                sum=f'{total_sum:,}'.replace(',', ' ')
+            )
             await call.message.answer_photo(FSInputFile(tmp_path), caption=caption)
 
-        # --- ОДНА общая фотка из всех выбранных айтемов ---
+        # --- ОДНА общая фотка из всех выбранных айтемов (новая логика подписи) ---
         try:
-            # ЗАЩИТА ПЕРЕД ФИНАЛЬНОЙ ГЕНЕРАЦИЕЙ
             await protect_language(call.from_user.id)
 
             if selected_items:
-                MAX_H = 7000
-                tiles_try = [150, 130, 120, 100, 90]
+                # фильтруем нулевые цены, чтобы подпись и грид были адекватными
+                all_items = selected_items
+                total_items = len(all_items)
+                total_sum_all = _sum_items(all_items)
 
-                def per_page(tile: int) -> int:
-                    rows = max(1, MAX_H // tile)
-                    cols = rows
-                    return rows * cols
+                # баланс в публичном режиме почти наверняка не знаем -> None
+                robux_val: int | None = None
+                try:
+                    cached_robux = await storage.get_cached_data(roblox_id, 'acc_robux_v1')
+                    if cached_robux is not None:
+                        robux_val = int(cached_robux)
+                except Exception:
+                    robux_val = None
 
-                def chunks(seq, size):
-                    for i in range(0, len(seq), size):
-                        yield seq[i:i + size]
+                caption = _build_full_inventory_caption(
+                    total=total_items,
+                    total_sum=total_sum_all,
+                    robux=robux_val,
+                    items=all_items,
+                )
 
-                sent = False
-
-                def _pv(v):
-                    try:
-                        return int((v or {}).get('value') or 0)
-                    except Exception:
-                        return 0
-
-                total_items = len(selected_items)
-                total_sum_all = sum((_pv(x.get('priceInfo')) for x in selected_items))
-
-                for tile in tiles_try:
-                    size_per_page = per_page(tile)
-                    pages = list(chunks(selected_items, size_per_page))
-                    ok = True
-                    tmp_final_paths = []
-                    try:
-                        for i, part in enumerate(pages, 1):
-                            # ЗАЩИТА ПЕРЕД КАЖДОЙ СТРАНИЦЕЙ
-                            await protect_language(call.from_user.id)
-
-                            img = await generate_full_inventory_grid(
-                                part,
-                                tile=tile, pad=6,
-                                title=(
-                                    L('inventory.full_title') if len(pages) == 1
-                                    else f"{L('inventory.full_title')} ({L('inventory_view.page', current=i, total=len(pages))})"
-                                ),
-                                username=call.from_user.username,
-                                user_id=tg
-                            )
-                            os.makedirs('temp', exist_ok=True)
-                            final_path = f'temp/inventory_all_{tg}_{roblox_id}_{tile}_{i}.png'
-                            with open(final_path, 'wb') as f:
-                                f.write(img)
-                            tmp_final_paths.append(final_path)
-
-                        for i, pth in enumerate(tmp_final_paths, 1):
-                            # ЗАЩИТА ПЕРЕД КАЖДОЙ ПОДПИСЬЮ
-                            await protect_language(call.from_user.id)
-
-                            cap = (
-                                    f"📦 {L('inventory.full_title')} · {total_items} {L('common.pcs')}\n"
-                                    + L('inventory.total_sum', sum=f"{total_sum_all:,}")
-                            ).replace(',', ' ')
-                            if len(tmp_final_paths) > 1:
-                                cap += f"\n{L('inventory_view.page', current=i, total=len(tmp_final_paths))}"
-                            await call.message.answer_photo(FSInputFile(pth), caption=cap)
-                        sent = True
-                    finally:
-                        for pth in tmp_final_paths:
-                            try:
-                                os.remove(pth)
-                            except Exception:
-                                pass
-
-                    if sent:
-                        break
-
-                if not sent:
-                    await call.message.answer(L('inventory_view.render_too_large'))
+                # рендерим сразу пейджингом (подпись + номер страницы на новой строке)
+                await _send_full_inventory_paged(
+                    message=call.message,
+                    items=all_items,
+                    tg_id=tg,
+                    roblox_id=roblox_id,
+                    username=call.from_user.username,
+                    caption_prefix=caption,
+                    kb_first=None,
+                )
         except Exception as e:
-            logger.warning(f'final all-inventory render failed: {e}')
-            _invlog('stream.final_error', error=str(e))
+            logger.warning(f'[inv_pub_cfg_next] final all-inventory render failed: {e}')
+            _invlog('stream.final_error_public', error=str(e))
 
+        # чистим временные файлы категорий
         for pth in tmp_paths:
             try:
                 os.remove(pth)
@@ -2990,12 +3084,14 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
         # ЗАЩИТА ПЕРЕД ФИНАЛЬНЫМИ СООБЩЕНИЯМИ
         await protect_language(call.from_user.id)
         await call.message.answer(L('status.done_back_home'), reply_markup=await kb_main_i18n(tg))
+
     except Exception as e:
         await protect_language(call.from_user.id)
         try:
             await loader.edit_text(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
         except Exception:
             await call.message.answer(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
+
 
 
 import pathlib

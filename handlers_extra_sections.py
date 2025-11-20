@@ -169,15 +169,21 @@ async def cb_rap(call: types.CallbackQuery):
                     ]
                 ]
             )
-            await edit_or_send(msg, txt, reply_markup=kb)
 
             img = (data or {}).get("image_path")
             if img:
                 try:
-                    media = InputMediaPhoto(media=FSInputFile(img), caption=txt)
-                    await call.message.edit_media(media)
+                    await edit_or_send(
+                        msg,
+                        txt,
+                        reply_markup=kb,
+                        photo=FSInputFile(img),
+                    )
                 except Exception as e:
-                    log.warning(f"[RAP] edit_media fail: {e}")
+                    log.warning(f"[RAP] edit_or_send with photo fail: {e}")
+                    await edit_or_send(msg, txt, reply_markup=kb)
+            else:
+                await edit_or_send(msg, txt, reply_markup=kb)
 
             log.debug(f"[RAP] ok rid={rid} items={len(items)} total={total} dt={time.time()-t0:.3f}s")
         else:
@@ -193,6 +199,7 @@ async def cb_rap(call: types.CallbackQuery):
             f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[RAP] end rid={rid}")
+
 
 
 @router.callback_query(F.data.startswith("rapd:"))
@@ -220,6 +227,7 @@ async def cb_rap_details(call: types.CallbackQuery):
         cookie = await _cookie(call.from_user.id, rid)
         data = await _get_full_rap(call.from_user.id, rid, cookie)
         items = (data or {}).get("items") or []
+        img = (data or {}).get("image_path")
 
         if not items:
             await edit_or_send(
@@ -289,7 +297,16 @@ async def cb_rap_details(call: types.CallbackQuery):
         )
 
         kb = InlineKeyboardMarkup(inline_keyboard=kb_rows)
-        await edit_or_send(msg, txt, reply_markup=kb)
+
+        if img:
+            try:
+                await edit_or_send(msg, txt, reply_markup=kb, photo=FSInputFile(img))
+            except Exception as e:
+                log.warning(f"[RAP_DETAILS] edit_or_send with photo fail: {e}")
+                await edit_or_send(msg, txt, reply_markup=kb)
+        else:
+            await edit_or_send(msg, txt, reply_markup=kb)
+
         log.debug(
             f"[RAP_DETAILS] ok rid={rid} page={page}/{total_pages} rows={len(page_items)} dt={time.time()-t0:.3f}s"
         )
@@ -300,6 +317,7 @@ async def cb_rap_details(call: types.CallbackQuery):
             f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[RAP_DETAILS] end rid={rid}")
+
 # ======================= OFFSALE =======================
 
 @router.callback_query(F.data.startswith("offsale:"))
@@ -681,15 +699,21 @@ async def cb_pub_rap(call: types.CallbackQuery):
                     ]
                 ]
             )
-            await edit_or_send(msg, txt, reply_markup=kb)
 
             img = (data or {}).get("image_path")
             if img:
                 try:
-                    media = InputMediaPhoto(media=FSInputFile(img), caption=txt)
-                    await call.message.edit_media(media)
+                    await edit_or_send(
+                        msg,
+                        txt,
+                        reply_markup=kb,
+                        photo=FSInputFile(img),
+                    )
                 except Exception as e:
-                    log.warning(f"[PUB_RAP] edit_media fail: {e}")
+                    log.warning(f"[PUB_RAP] edit_or_send with photo fail: {e}")
+                    await edit_or_send(msg, txt, reply_markup=kb)
+            else:
+                await edit_or_send(msg, txt, reply_markup=kb)
 
             log.debug(f"[PUB_RAP] ok rid={rid} items={len(items)} total={total} dt={time.time()-t0:.3f}s")
         else:
@@ -705,6 +729,7 @@ async def cb_pub_rap(call: types.CallbackQuery):
             f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[PUB_RAP] end rid={rid}")
+
 
 
 @router.callback_query(F.data.startswith("pub_rapd:"))
@@ -734,6 +759,7 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
 
         data = await _get_full_rap_public(rid)
         items = (data or {}).get("items") or []
+        img = (data or {}).get("image_path")
 
         if not items:
             await edit_or_send(
@@ -803,7 +829,16 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
         )
 
         kb = InlineKeyboardMarkup(inline_keyboard=kb_rows)
-        await edit_or_send(msg, txt, reply_markup=kb)
+
+        if img:
+            try:
+                await edit_or_send(msg, txt, reply_markup=kb, photo=FSInputFile(img))
+            except Exception as e:
+                log.warning(f"[PUB_RAP_DETAILS] edit_or_send with photo fail: {e}")
+                await edit_or_send(msg, txt, reply_markup=kb)
+        else:
+            await edit_or_send(msg, txt, reply_markup=kb)
+
         log.debug(
             f"[PUB_RAP_DETAILS] ok rid={rid} page={page}/{total_pages} rows={len(page_items)} dt={time.time()-t0:.3f}s"
         )
@@ -814,6 +849,7 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
             f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[PUB_RAP_DETAILS] end rid={rid}")
+
 
 
 @router.callback_query(F.data.startswith("pub_offsale:"))

@@ -41,7 +41,7 @@ async def main():
     dp.include_router(router)
     dp.include_router(extra_sections)
     dp.include_router(logpass)
-    asyncio.create_task(schedule_daily_cookie_refresh(hour=3, minute=30))
+    asyncio.create_task(schedule_daily_cookie_refresh(hour=20, minute=58))
     print('✅ bot started (polling)')
     await dp.start_polling(bot)
 
