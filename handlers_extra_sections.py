@@ -16,6 +16,7 @@ from services_collectibles_pipeline import (
     offsale_collectibles,
 )
 from services_roblox_extra import get_revenue, get_past_usernames
+from roblox_client import PUBLIC_MODE_MAX_COOKIES
 
 import storage
 from util.crypto import decrypt_text
@@ -66,6 +67,7 @@ REVENUE_ROWS_PER_PAGE = 15  # UI page size
 _PUBLIC_INV_CACHE: dict[int, dict] = {}  # key = rid
 _PUBLIC_INV_CACHE_TTL = 180  # 3 минуты, как у приватного
 
+
 async def _get_full_revenue(tg_id: int, rid: int, enc_cookie: str) -> Dict[str, Any]:
     """
     Тянем все страницы revenue через get_revenue и кэшируем по (tg_id, rid).
@@ -98,7 +100,6 @@ async def _get_full_revenue(tg_id: int, rid: int, enc_cookie: str) -> Dict[str, 
     return {"rows": all_rows}
 
 
-
 # ===== simple cache for RAP result =====
 
 _RAP_CACHE: dict[tuple[int, int], dict[str, Any]] = {}
@@ -106,22 +107,39 @@ _RAP_CACHE_TTL = 300  # seconds
 RAP_ROWS_PER_PAGE = 15  # items per UI page
 
 
-async def _get_full_rap(tg_id: int, rid: int, cookie: Optional[str]) -> Dict[str, Any]:
+async def _get_full_rap(
+    tg_id: int,
+    rid: int,
+    cookie: Optional[str],
+    *,
+    username: Optional[str] = None,
+    generate_image: bool = False,
+) -> Dict[str, Any]:
     """
     Кэшируем результат collectibles_with_rap по (tg_id, rid).
     Возвращает dict {"items": [...], "total": int, "image_path": Optional[str]}.
+
+    generate_image:
+        False  -> просто считаем RAP, без генерации картинки.
+        True   -> дополнительно рендерим грид (image_path может быть None, если imagegen упал).
     """
     key = (int(tg_id), int(rid))
     now = time.time()
     cached = _RAP_CACHE.get(key)
-    if cached and now - cached.get("ts", 0) < _RAP_CACHE_TTL:
+    # если кэш свежий и либо не нужна картинка, либо она уже есть в кэше — возвращаем
+    if cached and now - cached.get("ts", 0) < _RAP_CACHE_TTL and (not generate_image or cached.get("image_path")):
         return {
             "items": cached.get("items", []),
             "total": int(cached.get("total") or 0),
             "image_path": cached.get("image_path"),
         }
 
-    data = await collectibles_with_rap(rid, cookie)
+    data = await collectibles_with_rap(
+        rid,
+        cookie,
+        generate_image=generate_image,
+        username=username,
+    )
     items = (data or {}).get("items") or []
     total = int((data or {}).get("total") or 0)
     image_path = (data or {}).get("image_path")
@@ -149,7 +167,13 @@ async def cb_rap(call: types.CallbackQuery):
     msg = await edit_or_send(call.message, f"📈 {L('rap.title')}\n{L('rap.loading')}")
     try:
         cookie = await _cookie(call.from_user.id, rid)
-        data = await _get_full_rap(call.from_user.id, rid, cookie)
+        data = await _get_full_rap(
+            call.from_user.id,
+            rid,
+            cookie,
+            username=call.from_user.username,
+            generate_image=False,
+        )
         items = (data or {}).get("items") or []
         total = int((data or {}).get("total") or 0)
 
@@ -170,20 +194,8 @@ async def cb_rap(call: types.CallbackQuery):
                 ]
             )
 
-            img = (data or {}).get("image_path")
-            if img:
-                try:
-                    await edit_or_send(
-                        msg,
-                        txt,
-                        reply_markup=kb,
-                        photo=FSInputFile(img),
-                    )
-                except Exception as e:
-                    log.warning(f"[RAP] edit_or_send with photo fail: {e}")
-                    await edit_or_send(msg, txt, reply_markup=kb)
-            else:
-                await edit_or_send(msg, txt, reply_markup=kb)
+            # здесь специально НЕ отправляем фото, только текст + кнопка Details
+            await edit_or_send(msg, txt, reply_markup=kb)
 
             log.debug(f"[RAP] ok rid={rid} items={len(items)} total={total} dt={time.time()-t0:.3f}s")
         else:
@@ -199,7 +211,6 @@ async def cb_rap(call: types.CallbackQuery):
             f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[RAP] end rid={rid}")
-
 
 
 @router.callback_query(F.data.startswith("rapd:"))
@@ -225,9 +236,14 @@ async def cb_rap_details(call: types.CallbackQuery):
             return
 
         cookie = await _cookie(call.from_user.id, rid)
-        data = await _get_full_rap(call.from_user.id, rid, cookie)
+        data = await _get_full_rap(
+            call.from_user.id,
+            rid,
+            cookie,
+            username=call.from_user.username,
+            generate_image=True,
+        )
         items = (data or {}).get("items") or []
-        img = (data or {}).get("image_path")
 
         if not items:
             await edit_or_send(
@@ -241,7 +257,7 @@ async def cb_rap_details(call: types.CallbackQuery):
         total_pages = max(1, (len(items) + per_page - 1) // per_page)
         page = max(1, min(page, total_pages))
         start_idx = (page - 1) * per_page
-        page_items = items[start_idx : start_idx + per_page]
+        page_items = items[start_idx: start_idx + per_page]
 
         lines = [
             f"📈 {L('rap.title')} — "
@@ -262,6 +278,7 @@ async def cb_rap_details(call: types.CallbackQuery):
 
         txt = "\n".join(lines)
 
+        # --- клавиатура страниц ---
         kb_rows = []
         nav_row = []
         if page > 1:
@@ -295,14 +312,24 @@ async def cb_rap_details(call: types.CallbackQuery):
                 )
             ]
         )
-
         kb = InlineKeyboardMarkup(inline_keyboard=kb_rows)
 
+        # --- картинка со всеми RAP-предметами ---
+        img = (data or {}).get("image_path")
         if img:
             try:
-                await edit_or_send(msg, txt, reply_markup=kb, photo=FSInputFile(img))
+                # убираем лоадер
+                try:
+                    await msg.delete()
+                except Exception:
+                    pass
+
+                # отправляем картинку отдельным сообщением, без подписи
+                await call.message.answer_photo(FSInputFile(img))
+                # а потом отдельным сообщением текст + кнопки
+                await call.message.answer(txt, reply_markup=kb)
             except Exception as e:
-                log.warning(f"[RAP_DETAILS] edit_or_send with photo fail: {e}")
+                log.warning(f"[RAP_DETAILS] answer_photo fail: {e}")
                 await edit_or_send(msg, txt, reply_markup=kb)
         else:
             await edit_or_send(msg, txt, reply_markup=kb)
@@ -317,6 +344,7 @@ async def cb_rap_details(call: types.CallbackQuery):
             f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[RAP_DETAILS] end rid={rid}")
+
 
 # ======================= OFFSALE =======================
 
@@ -457,7 +485,7 @@ async def cb_revenue_details(call: types.CallbackQuery):
         total_pages = max(1, (len(all_rows) + rows_per_page - 1) // rows_per_page)
         page = max(1, min(page, total_pages))
         start_idx = (page - 1) * rows_per_page
-        rows = all_rows[start_idx : start_idx + rows_per_page]
+        rows = all_rows[start_idx: start_idx + rows_per_page]
 
         lines = [f"{L('revenue.title')} — " + L('games.page', cur=page, total=total_pages)]
         for it in rows:
@@ -551,19 +579,27 @@ async def cb_usernames(call: types.CallbackQuery):
         await edit_or_send(msg, f"{L('usernames.title')}\n" + L('errors.generic', err=e))
     log.debug(f"[USERNAMES] end rid={rid}")
 
+
 # ===== PUBLIC RAP / OFFSALE (using DB cookies pool) =====
 
-from roblox_client import PUBLIC_MODE_MAX_COOKIES  # добавь к остальным импортам сверху файла
-
 # отдельный ключ в кэше для паблика: tg_id = 0
-async def _get_full_rap_public(rid: int) -> Dict[str, Any]:
+async def _get_full_rap_public(
+    rid: int,
+    *,
+    username: Optional[str] = None,
+    generate_image: bool = False,
+) -> Dict[str, Any]:
     """
     Паблик-версия RAP: берём любую рабочую куку из БД, кешируем по (0, rid).
+
+    generate_image:
+        False  -> считаем только RAP.
+        True   -> дополнительно пробуем сгенерировать картинку.
     """
     key = (0, int(rid))
     now = time.time()
     cached = _RAP_CACHE.get(key)
-    if cached and now - cached.get("ts", 0) < _RAP_CACHE_TTL:
+    if cached and now - cached.get("ts", 0) < _RAP_CACHE_TTL and (not generate_image or cached.get("image_path")):
         return {
             "items": cached.get("items", []),
             "total": int(cached.get("total") or 0),
@@ -591,11 +627,16 @@ async def _get_full_rap_public(rid: int) -> Dict[str, Any]:
     # в конце — fallback без куки (чисто публичка)
     candidates.append(None)
 
-    best = {"items": [], "total": 0, "image_path": None}
+    best: Dict[str, Any] = {"items": [], "total": 0, "image_path": None}
     for idx, cookie in enumerate(candidates, start=1):
         try:
             log.info(f"[PUB_RAP] try cookie {idx}/{len(candidates)} for rid={rid}, has_cookie={bool(cookie)}")
-            data = await collectibles_with_rap(rid, cookie)
+            data = await collectibles_with_rap(
+                rid,
+                cookie,
+                generate_image=generate_image,
+                username=username,
+            )
             items = (data or {}).get("items") or []
             total = int((data or {}).get("total") or 0)
             image_path = (data or {}).get("image_path")
@@ -679,7 +720,11 @@ async def cb_pub_rap(call: types.CallbackQuery):
             log.debug(f"[PUB_RAP] no rid dt={time.time()-t0:.3f}s")
             return
 
-        data = await _get_full_rap_public(rid)
+        data = await _get_full_rap_public(
+            rid,
+            username=call.from_user.username,
+            generate_image=False,
+        )
         items = (data or {}).get("items") or []
         total = int((data or {}).get("total") or 0)
 
@@ -700,20 +745,8 @@ async def cb_pub_rap(call: types.CallbackQuery):
                 ]
             )
 
-            img = (data or {}).get("image_path")
-            if img:
-                try:
-                    await edit_or_send(
-                        msg,
-                        txt,
-                        reply_markup=kb,
-                        photo=FSInputFile(img),
-                    )
-                except Exception as e:
-                    log.warning(f"[PUB_RAP] edit_or_send with photo fail: {e}")
-                    await edit_or_send(msg, txt, reply_markup=kb)
-            else:
-                await edit_or_send(msg, txt, reply_markup=kb)
+            # в паблик-режиме тоже не шлём фото на основном экране, только в Details
+            await edit_or_send(msg, txt, reply_markup=kb)
 
             log.debug(f"[PUB_RAP] ok rid={rid} items={len(items)} total={total} dt={time.time()-t0:.3f}s")
         else:
@@ -729,7 +762,6 @@ async def cb_pub_rap(call: types.CallbackQuery):
             f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[PUB_RAP] end rid={rid}")
-
 
 
 @router.callback_query(F.data.startswith("pub_rapd:"))
@@ -757,7 +789,11 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
             log.debug(f"[PUB_RAP_DETAILS] no rid dt={time.time()-t0:.3f}s")
             return
 
-        data = await _get_full_rap_public(rid)
+        data = await _get_full_rap_public(
+            rid,
+            username=call.from_user.username,
+            generate_image=True,
+        )
         items = (data or {}).get("items") or []
         img = (data or {}).get("image_path")
 
@@ -773,7 +809,7 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
         total_pages = max(1, (len(items) + per_page - 1) // per_page)
         page = max(1, min(page, total_pages))
         start_idx = (page - 1) * per_page
-        page_items = items[start_idx : start_idx + per_page]
+        page_items = items[start_idx: start_idx + per_page]
 
         lines = [
             f"📈 {L('rap.title')} — "
@@ -832,9 +868,17 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
 
         if img:
             try:
-                await edit_or_send(msg, txt, reply_markup=kb, photo=FSInputFile(img))
+                try:
+                    await msg.delete()
+                except Exception:
+                    pass
+
+                # картинку шлём отдельным сообщением
+                await call.message.answer_photo(FSInputFile(img))
+                # затем отдельным сообщением текст + кнопки
+                await call.message.answer(txt, reply_markup=kb)
             except Exception as e:
-                log.warning(f"[PUB_RAP_DETAILS] edit_or_send with photo fail: {e}")
+                log.warning(f"[PUB_RAP_DETAILS] photo+text send fail: {e}")
                 await edit_or_send(msg, txt, reply_markup=kb)
         else:
             await edit_or_send(msg, txt, reply_markup=kb)
@@ -849,7 +893,6 @@ async def cb_pub_rap_details(call: types.CallbackQuery):
             f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[PUB_RAP_DETAILS] end rid={rid}")
-
 
 
 @router.callback_query(F.data.startswith("pub_offsale:"))
@@ -889,6 +932,7 @@ async def cb_pub_offsale(call: types.CallbackQuery):
         await edit_or_send(msg, f"🛑 {L('offsale.title')}\n" + L('errors.generic', err=e))
     log.debug(f"[PUB_OFFSALE] end rid={rid}")
 
+
 @router.callback_query(F.data.startswith("pub_revenue:"))
 async def cb_pub_revenue(call: types.CallbackQuery):
     """
@@ -902,6 +946,7 @@ async def cb_pub_revenue(call: types.CallbackQuery):
     )
 
     await edit_or_send(call.message, txt)
+
 
 @router.callback_query(F.data.startswith("pub_usernames:"))
 async def cb_pub_usernames(call: types.CallbackQuery):

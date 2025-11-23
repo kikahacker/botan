@@ -209,7 +209,7 @@
     "heads": "Kafalar"
   },
   "public": {
-    "ask_id": "🆔 Genel bilgileri göstermek için bir Roblox ID gönderin.",
+    "ask_id": "🆔 Kamu bilgilerini göstermek için bir Roblox ID'si veya takma ad gönder.",
     "note_limited": "ℹ️ Genel mod: bazı veriler çerez olmadan kullanılamaz.",
     "bad_id": "⚠️ Geçersiz ID. Bir sayı gönderin (örn. 123456789).",
     "not_found": "❌ Kullanıcı bulunamadı veya kullanılamıyor.",

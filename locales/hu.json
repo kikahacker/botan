@@ -209,7 +209,7 @@
     "heads": "Fejek"
   },
   "public": {
-    "ask_id": "🆔 Küldj egy Roblox ID-t a nyilvános információk megjelenítéséhez.",
+    "ask_id": "🆔 Küldj egy Roblox ID-t vagy becenevet a nyilvános információk megjelenítéséhez.",
     "note_limited": "ℹ️ Nyilvános mód: néhány adat nem elérhető cookie nélkül.",
     "bad_id": "⚠️ Érvénytelen ID. Küldj egy számot (pl.: 123456789).",
     "not_found": "❌ Felhasználó nem található vagy nem elérhető.",

@@ -209,7 +209,7 @@
     "heads": "Têtes"
   },
   "public": {
-    "ask_id": "🆔 Envoyez un ID Roblox pour afficher les informations publiques.",
+    "ask_id": "🆔 Envía una ID de Roblox o un apodo para mostrar información pública.",
     "note_limited": "ℹ️ Mode public : certaines données ne sont pas disponibles sans cookie.",
     "bad_id": "⚠️ ID invalide. Envoyez un nombre (ex: 123456789).",
     "not_found": "❌ Utilisateur non trouvé ou indisponible.",

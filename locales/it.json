@@ -209,7 +209,7 @@
     "heads": "Teste"
   },
   "public": {
-    "ask_id": "🆔 Invia un ID Roblox per mostrare informazioni pubbliche.",
+    "ask_id": "🆔 Invia un ID Roblox o un nickname per mostrare le informazioni pubbliche.",
     "note_limited": "ℹ️ Modalità pubblica: alcuni dati non sono disponibili senza cookie.",
     "bad_id": "⚠️ ID non valido. Invia un numero (es. 123456789).",
     "not_found": "❌ Utente non trovato o non disponibile.",

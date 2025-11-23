@@ -209,7 +209,7 @@
     "heads": "Heads"
   },
   "public": {
-    "ask_id": "🆔 Send a Roblox ID to show public info.",
+    "ask_id": "🆔 Send a Roblox ID or nickname to show public info.",
     "note_limited": "ℹ️ Public mode: some data is unavailable without cookie.",
     "bad_id": "⚠️ Invalid ID. Send a number (e.g., 123456789).",
     "not_found": "❌ User not found or unavailable.",

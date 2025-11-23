@@ -2780,31 +2780,76 @@ def _patch_aiogram_message_methods():
 _patch_aiogram_message_methods()
 
 
-@router.message(F.text.regexp(r'^\d{5,}$'))
+@router.message(F.text.regexp(r'^[A-Za-z0-9_]{3,}$'))
 async def handle_public_id(message: types.Message) -> None:
     await protect_language(message.from_user.id)
     tg = message.from_user.id
+
+    # обработчик вообще ничего не делает, если мы не в режиме "ждём public id"
     if not await _is_public_pending(tg):
         return
+
     await force_set_user_lang(message.from_user.id)
-    rid = int(message.text.strip())
+
+    raw = (message.text or "").strip()
+    rid: Optional[int] = None
+
+    # 1) если пользователь реально отправил ID
+    if raw.isdigit():
+        rid = int(raw)
+    else:
+        # 2) иначе считаем, что это ник и пытаемся получить ID
+        username = raw
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as c:
+                r = await c.post(
+                    "https://users.roblox.com/v1/usernames/users",
+                    json={
+                        "usernames": [username],
+                        "excludeBannedUsers": False,
+                    },
+                )
+            if r.status_code == 200:
+                js = r.json() or {}
+                data = js.get("data") or []
+                if data:
+                    rid = int(data[0].get("id") or 0)
+        except Exception as e:
+            logger.exception(f"[PUBLIC_ID] username resolve failed: {e}")
+            rid = None
+
+    # если так и не получили id — шлём что не нашли и выходим
+    if not rid:
+        await _set_public_pending(tg, False)
+        await edit_or_send(
+            message,
+            L('public.not_found'),
+            reply_markup=await kb_main_i18n(tg),
+        )
+        return
+
+    # дальше всё как было
     await _log_check(tg, rid, scope="public", what="profile")
-    # reset flag
-    await _set_public_pending(tg, False)
+    await _set_public_pending(tg, False)  # сбрасываем флаг
+
     # Fetch minimal public profile (no cookie)
     try:
         await message.answer(LL('status.loading_profile', 'msg.auto_cefe60da21'))
         async with httpx.AsyncClient(timeout=20.0) as c:
             r = await c.get(f'https://users.roblox.com/v1/users/{rid}')
             if r.status_code != 200:
-                await edit_or_send(message, L('public.not_found'), reply_markup=await kb_main_i18n(tg))
+                await edit_or_send(
+                    message,
+                    L('public.not_found'),
+                    reply_markup=await kb_main_i18n(tg),
+                )
                 return
             user = r.json()
             uname = html.escape(user.get('name', L('common.dash')))
             dname = html.escape(user.get('displayName', L('common.dash')))
             created = (user.get('created') or L('common.na')).split('T')[0]
             banned = bool(user.get('isBanned', False))
-            # No-cookie fields → placeholders
+
             country = L('common.dash')
             gender = L('common.dash')
             birthdate = L('common.dash')
@@ -2818,15 +2863,16 @@ async def handle_public_id(message: types.Message) -> None:
             card = render_profile_text_i18n(
                 uname=uname, dname=dname, roblox_id=rid, created=created,
                 country=country, gender_raw=gender, birthdate=birthdate, age=age,
-                email=email, email_verified=email_verified, email_2fa=False, robux=robux,
-                spent_val=spent_val, banned=banned
+                email=email, email_verified=email_verified, email_2fa=False,
+                robux=robux, spent_val=spent_val, banned=banned,
             )
             text = f"{note}\n\n{card}"
 
-            # Avatar via thumbnails (no cookie)
             avatar_url = None
             tr = await c.get(
-                f'https://thumbnails.roblox.com/v1/users/avatar?userIds={rid}&size=420x420&format=Png&isCircular=false')
+                f'https://thumbnails.roblox.com/v1/users/avatar'
+                f'?userIds={rid}&size=420x420&format=Png&isCircular=false'
+            )
             if tr.status_code == 200 and (tr.json() or {}).get('data'):
                 avatar_url = tr.json()['data'][0].get('imageUrl')
 
@@ -2836,16 +2882,31 @@ async def handle_public_id(message: types.Message) -> None:
                     path = f'temp/avatar_public_{rid}.png'
                     os.makedirs('temp', exist_ok=True)
                     open(path, 'wb').write(im.content)
-                    await edit_or_send(message, text, reply_markup=kb_public_navigation(rid), photo=FSInputFile(path))
+                    await edit_or_send(
+                        message,
+                        text,
+                        reply_markup=kb_public_navigation(rid),
+                        photo=FSInputFile(path),
+                    )
                     try:
                         os.remove(path)
                     except Exception:
                         pass
                     return
 
-            await edit_or_send(message, text, reply_markup=kb_public_navigation(rid))
-    except Exception:
-        await edit_or_send(message, L('public.not_found'), reply_markup=await kb_main_i18n(tg))
+            await edit_or_send(
+                message,
+                text,
+                reply_markup=kb_public_navigation(rid),
+            )
+    except Exception as e:
+        logger.exception(f"[PUBLIC_ID] error rid={rid}: {e}")
+        await edit_or_send(
+            message,
+            L('errors.generic', err=str(e)),
+            reply_markup=await kb_main_i18n(tg),
+        )
+
 
 
 @router.message(Command("debug_lang"))

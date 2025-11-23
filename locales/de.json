@@ -209,7 +209,7 @@
     "heads": "Köpfe"
   },
   "public": {
-    "ask_id": "🆔 Sende eine Roblox-ID, um öffentliche Informationen anzuzeigen.",
+    "ask_id": "🆔 Sende eine Roblox-ID oder einen Spitznamen, um öffentliche Informationen anzuzeigen.",
     "note_limited": "ℹ️ Öffentlicher Modus: Einige Daten sind ohne Cookie nicht verfügbar.",
     "bad_id": "⚠️ Ungültige ID. Sende eine Zahl (z.B. 123456789).",
     "not_found": "❌ Benutzer nicht gefunden oder nicht verfügbar.",

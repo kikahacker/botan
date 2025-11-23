@@ -1,4 +1,3 @@
-
 # services_collectibles_pipeline.py
 # Inventory -> filter collectibles -> RAP + Off-sale + images (uses your roblox_client & roblox_imagegen)
 from __future__ import annotations
@@ -38,6 +37,7 @@ HTTP_T = httpx.Timeout(8.0, connect=2.0, read=6.0)
 _INV_CACHE: Dict[tuple[int, int], Dict[str, Any]] = {}
 _INV_CACHE_TTL = int(os.environ.get("COLLECTIBLES_INV_TTL", "300"))
 
+
 def _coerce_int(v) -> int:
     try:
         return int(v)
@@ -46,6 +46,7 @@ def _coerce_int(v) -> int:
             return int(float(v))
         except Exception:
             return 0
+
 
 def _is_collectible(detail: dict) -> bool:
     """
@@ -63,6 +64,7 @@ def _is_collectible(detail: dict) -> bool:
     except Exception:
         return False
 
+
 async def _catalog_details(asset_ids: List[int], cookie: Optional[str]) -> List[dict]:
     # Prefer your client's batch details when available
     t0 = time.time()
@@ -71,7 +73,7 @@ async def _catalog_details(asset_ids: List[int], cookie: Optional[str]) -> List[
         items = [{"itemType": "Asset", "id": int(a)} for a in asset_ids]
         out: List[dict] = []
         for i in range(0, len(items), 100):
-            chunk = items[i:i+100]
+            chunk = items[i:i + 100]
             rows = await details_batch(chunk, cookie, retries=2)
             if rows:
                 out.extend(rows)
@@ -91,6 +93,7 @@ async def _catalog_details(asset_ids: List[int], cookie: Optional[str]) -> List[
     log.debug(f"[details] empty dt={time.time()-t0:.3f}s")
     return []
 
+
 async def _resale_data(asset_id: int, cookie: Optional[str]) -> dict:
     url = f"https://economy.roblox.com/v1/assets/{int(asset_id)}/resale-data"
     try:
@@ -104,11 +107,13 @@ async def _resale_data(asset_id: int, cookie: Optional[str]) -> dict:
         log.debug(f"[resale] {asset_id} fail: {e}")
         return {}
 
+
 def _price_from_detail_or_img(detail: dict) -> int:
     pi = detail.get("priceInfo")
     if isinstance(pi, dict):
         return _coerce_int(pi.get("value"))
     return max(_coerce_int(detail.get("lowestPrice")), _coerce_int(detail.get("price")))
+
 
 # ============= Public API =============
 
@@ -185,9 +190,20 @@ async def inventory_collectibles(uid: int, cookie: Optional[str]) -> Dict[str, A
     _INV_CACHE[key] = {**res, "ts": time.time()}
     return res
 
-async def collectibles_with_rap(uid: int, cookie: Optional[str]) -> Dict[str, Any]:
+
+async def collectibles_with_rap(
+    uid: int,
+    cookie: Optional[str],
+    *,
+    generate_image: bool = False,
+    username: Optional[str] = None,
+) -> Dict[str, Any]:
     """
-    Returns {"items":[{assetId,name,rap,thumbnailUrl}], "total":int, "image_path":str|None}
+    Returns {"items":[{assetId,name,rap,thumbnailUrl}], "total":int, "image_path":str|None}.
+
+    generate_image:
+        False -> только считаем RAP (image_path будет None, картинка не рендерится)
+        True  -> дополнительно рендерим грид, image_path указывает на png (если imagegen не упал)
     """
     t0 = time.time()
     base = await inventory_collectibles(uid, cookie)
@@ -196,11 +212,15 @@ async def collectibles_with_rap(uid: int, cookie: Optional[str]) -> Dict[str, An
 
     # tune concurrency
     sem = asyncio.Semaphore(12)
+
     async def _one(it):
         aid = it["assetId"]
         async with sem:
             rs = await _resale_data(aid, cookie)
-        rap = max(_coerce_int((rs or {}).get("recentAveragePrice")), _price_from_detail_or_img(it["detail"]))
+        rap = max(
+            _coerce_int((rs or {}).get("recentAveragePrice")),
+            _price_from_detail_or_img(it["detail"]),
+        )
         return {
             "assetId": aid,
             "name": it["name"],
@@ -213,21 +233,52 @@ async def collectibles_with_rap(uid: int, cookie: Optional[str]) -> Dict[str, An
         total += _coerce_int(x["rap"])
     log.debug(f"[rap] items={len(out)} total={total} dt={time.time()-t0:.3f}s")
 
-    image_path = None
-    if imggen and hasattr(imggen, "generate_category_sheets") and out:
+    image_path: Optional[str] = None
+    # Рисуем грид так же, как у инвентаря, НО только если generate_image=True
+    if generate_image and imggen and hasattr(imggen, "generate_full_inventory_grids") and out:
         try:
-            render_items = [{
-                "id": x["assetId"],
-                "name": x["name"],
-                "priceInfo": {"value": _coerce_int(x["rap"])},
-                "thumbnailUrl": x["thumbnailUrl"],
-            } for x in out]
-            image_path = await imggen.generate_category_sheets({"Collectibles": render_items})
+            render_items = [
+                {
+                    "assetId": x["assetId"],
+                    "name": x["name"],
+                    "priceInfo": {"value": _coerce_int(x["rap"])},
+                    "thumbnailUrl": x["thumbnailUrl"],
+                }
+                for x in out
+            ]
+
+            # лимиты такие же, как в обычном инвентаре
+            try:
+                cap = max(1, int(os.getenv("MAX_ITEMS_PER_IMAGE", "650")))
+            except Exception:
+                cap = 650
+            try:
+                tile = int(os.getenv("INVENTORY_TILE", "150"))
+            except Exception:
+                tile = 150
+
+            pages = await imggen.generate_full_inventory_grids(
+                render_items,
+                tile=tile,
+                username=username or str(uid),
+                user_id=int(uid),
+                title="RAP",
+                max_items_per_image=cap,
+            )
+
+            if pages:
+                os.makedirs("temp", exist_ok=True)
+                image_path = os.path.abspath(os.path.join("temp", f"rap_{uid}.png"))
+                with open(image_path, "wb") as f:
+                    f.write(pages[0])
+
+            log.debug(f"[rap] image generated path={image_path!r}")
         except Exception as e:
             log.debug(f"[rap] imagegen fail: {e}")
             image_path = None
 
     return {"items": out, "total": total, "image_path": image_path}
+
 
 async def offsale_collectibles(uid: int, cookie: Optional[str]) -> Dict[str, Any]:
     """
@@ -242,27 +293,60 @@ async def offsale_collectibles(uid: int, cookie: Optional[str]) -> Dict[str, Any
         if is_for_sale:
             continue
         rs = await _resale_data(it["assetId"], cookie)
-        rap = max(_coerce_int((rs or {}).get("recentAveragePrice")), _price_from_detail_or_img(d))
-        rows.append({
-            "assetId": it["assetId"],
-            "name": it["name"],
-            "rap": rap,
-            "thumbnailUrl": it["thumbnailUrl"],
-        })
+        rap = max(
+            _coerce_int((rs or {}).get("recentAveragePrice")),
+            _price_from_detail_or_img(d),
+        )
+        rows.append(
+            {
+                "assetId": it["assetId"],
+                "name": it["name"],
+                "rap": rap,
+                "thumbnailUrl": it["thumbnailUrl"],
+            }
+        )
 
     rows.sort(key=lambda x: _coerce_int(x["rap"]), reverse=True)
     log.debug(f"[offsale] items={len(rows)} dt={time.time()-t0:.3f}s")
 
-    image_path = None
-    if imggen and hasattr(imggen, "generate_category_sheets") and rows:
+    image_path: Optional[str] = None
+    if imggen and hasattr(imggen, "generate_full_inventory_grids") and rows:
         try:
-            render_items = [{
-                "id": x["assetId"],
-                "name": x["name"],
-                "priceInfo": {"value": _coerce_int(x["rap"])},
-                "thumbnailUrl": x["thumbnailUrl"],
-            } for x in rows]
-            image_path = await imggen.generate_category_sheets({"Off-sale": render_items})
+            render_items = [
+                {
+                    "assetId": x["assetId"],
+                    "name": x["name"],
+                    "priceInfo": {"value": _coerce_int(x["rap"])},
+                    "thumbnailUrl": x["thumbnailUrl"],
+                }
+                for x in rows
+            ]
+
+            try:
+                cap = max(1, int(os.getenv("MAX_ITEMS_PER_IMAGE", "650")))
+            except Exception:
+                cap = 650
+            try:
+                tile = int(os.getenv("INVENTORY_TILE", "150"))
+            except Exception:
+                tile = 150
+
+            pages = await imggen.generate_full_inventory_grids(
+                render_items,
+                tile=tile,
+                username=str(uid),
+                user_id=int(uid),
+                title="Off-sale",
+                max_items_per_image=cap,
+            )
+
+            if pages:
+                os.makedirs("temp", exist_ok=True)
+                image_path = os.path.abspath(os.path.join("temp", f"offsale_{uid}.png"))
+                with open(image_path, "wb") as f:
+                    f.write(pages[0])
+
+            log.debug(f"[offsale] image generated path={image_path!r}")
         except Exception as e:
             log.debug(f"[offsale] imagegen fail: {e}")
             image_path = None
