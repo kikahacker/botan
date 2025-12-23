@@ -120,8 +120,10 @@ HTTP_CONNECT_TIMEOUT = float(os.getenv('HTTP_CONNECT_TIMEOUT', '2.0'))
 HTTP_READ_TIMEOUT = float(os.getenv('HTTP_READ_TIMEOUT', '8.0'))
 THUMB_DL_CONCURRENCY = int(getattr(CFG, 'THUMB_DL_CONCURRENCY', 24))
 THUMB_BATCH_CONCURRENCY = int(getattr(CFG, 'THUMB_BATCH_CONCURRENCY', 8))
-RENDER_CONCURRENCY = int(os.getenv('RENDER_CONCURRENCY', '8'))
-THUMB_REPOLL_DELAYS = [0.2, 0.5, 1.0, 1.6, 2.5]
+RENDER_CONCURRENCY = int(os.getenv('RENDER_CONCURRENCY', str(max(4, (os.cpu_count() or 8) - 1))))
+
+# Speed-first repoll: helps first-run latency a lot.
+THUMB_REPOLL_DELAYS = [0.15, 0.30, 0.60]
 
 ASSETS_DIR = getattr(CFG, 'ASSETS_DIR', 'assets')
 CANVAS_BG_PATH = getattr(CFG, 'CANVAS_BG', os.path.join(ASSETS_DIR, 'canvas_bg.png'))
@@ -130,8 +132,12 @@ WRITE_READY_ITEM_IMAGES = str(os.getenv('WRITE_READY_ITEM_IMAGES', '0')).lower()
 ROBUX_PREFIX = os.getenv('ROBUX_PREFIX', 'R$')
 KEEP_INPUT_ORDER = str(os.getenv('KEEP_INPUT_ORDER', '0')).lower() in ("1","true","yes","on","y")
 
+# Faster encoding (optimize=True can be very slow on large sheets)
+PNG_OPTIMIZE = str(os.getenv('PNG_OPTIMIZE', '0')).lower() in ("1","true","yes","on","y")
+
 # Main switch: download thumbnails at this size (independent from tile)
 THUMB_SIZE = os.getenv('THUMB_SIZE', '420x420')
+THUMB_SIZE_FORCE = str(os.getenv('THUMB_SIZE_FORCE', '0')).lower() in ("1","true","yes","on","y")
 
 # Layout
 PADDING_CONTENT = int(os.getenv('PADDING_CONTENT', '0'))
@@ -347,6 +353,18 @@ def _write_ready_item(aid: int, im: Image.Image):
 # =========================
 # Network fetch with cache (THUMB_SIZE enforced)
 # =========================
+
+def _proxy_for_url(url: str) -> Optional[str]:
+    """Speed: do NOT use proxies for Roblox CDN / thumbnails.
+    Proxies often add huge latency or timeouts for these hosts.
+    """
+    try:
+        u = (url or '').lower()
+        if 'rbxcdn.com' in u or 'thumbnails.roblox.com' in u:
+            return None
+    except Exception:
+        return None
+    return PROXY_POOL.any()
 async def _download_image_with_cache(url: str) -> Optional[Image.Image]:
     key = 'thumb:' + hashlib.sha1(url.encode()).hexdigest()
     b = await cache.get_bytes(key, THUMB_TTL)
@@ -358,7 +376,7 @@ async def _download_image_with_cache(url: str) -> Optional[Image.Image]:
             _err("[thumb] cache decode fail", e)
     _dbg(f"[thumb] cache MISS url={url}")
     for attempt in range(4):
-        proxy = PROXY_POOL.any()
+        proxy = _proxy_for_url(url)
         client = await get_client(proxy)
         try:
             r = await client.get(url, headers=_auth_headers(), timeout=httpx.Timeout(HTTP_TIMEOUT, connect=HTTP_CONNECT_TIMEOUT, read=HTTP_READ_TIMEOUT))
@@ -391,7 +409,7 @@ async def _fetch_thumbs(ids: List[int], size: str='150x150') -> Dict[int, Image.
     legacy = 'https://www.roblox.com/asset-thumbnail/image'
 
     async def one_batch(ch: List[int]):
-        proxy = PROXY_POOL.any()
+        proxy = _proxy_for_url('https://thumbnails.roblox.com/')
         client = await get_client(proxy)
         try:
             r = await client.get(
@@ -608,21 +626,385 @@ def _tier_color(name: str):
 # Tile rendering (price pill top-right, title bottom, NO stripe)
 # =========================
 
-def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Image:
-    price = _price_of(it)
-    tier  = _tier_by_price(price)
-    name  = str(it.get('name') or it.get('assetId') or '').upper()
+# ---- render caches (for first-run speed) ----
+_LAYOUT_CACHE: Dict[int, Dict[str, Any]] = {}
+_BASE_TILE_CACHE: Dict[tuple, Image.Image] = {}
+_PILL_BG_CACHE: Dict[tuple, Image.Image] = {}
 
-    out = Image.new('RGBA', (tile, tile), (0, 0, 0, 0))
-    out.alpha_composite(_get_tier_bg(tier, tile), (0, 0))
-    d = ImageDraw.Draw(out)
-# Fonts
+try:
+    from collections import OrderedDict
+except Exception:
+    OrderedDict = dict  # type: ignore
+
+_TILE_MEM_MAX = int(os.getenv('TILE_MEM_MAX', '256'))
+_TILE_MEM: "OrderedDict[str, Image.Image]" = OrderedDict()  # type: ignore
+
+def _tile_mem_get(key: str) -> Optional[Image.Image]:
+    try:
+        im = _TILE_MEM.get(key)
+        if im is None:
+            return None
+        # move to end (LRU)
+        try:
+            _TILE_MEM.move_to_end(key)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        return im
+    except Exception:
+        return None
+
+def _tile_mem_put(key: str, im: Image.Image):
+    try:
+        _TILE_MEM[key] = im
+        try:
+            _TILE_MEM.move_to_end(key)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        while len(_TILE_MEM) > _TILE_MEM_MAX:
+            try:
+                _TILE_MEM.popitem(last=False)  # type: ignore[attr-defined]
+            except Exception:
+                # fallback: clear all
+                _TILE_MEM.clear()
+                break
+    except Exception:
+        pass
+
+def _layout_for_tile(tile: int) -> Dict[str, Any]:
+    """Cache all repeated geometry/font calculations for a tile size."""
+    info = _LAYOUT_CACHE.get(tile)
+    if info:
+        return info
+
     title_font = _bold_font(max(12, tile // max(1, TITLE_FONT_TILE_DIV)))
     price_font = _bold_font(max(10, tile // max(1, PRICE_FONT_TILE_DIV)))
 
-    # Bottom title (single or two lines)
+    # measure line height
+    try:
+        line_h = title_font.getbbox('Ag')[3]
+    except Exception:
+        line_h = 18
+
+    # pill height is stable for a given tile
+    pill_h = price_font.getbbox('Ag')[3] + PRICE_PILL_PAD_Y * 2 - 2
+    radius_val = PRICE_PILL_RADIUS_PX if PRICE_PILL_RADIUS_PX > 0 else (pill_h // 2)
+    radius_val = min(radius_val, pill_h // 2)
+
+    # fixed placement anchors
+    right = tile - (PADDING_CONTENT + 2)
+    top = PADDING_CONTENT + PRICE_TOP_PAD_PX
+    bottom = top + pill_h
+
     max_title_w = tile - 14
     max_lines = 1 if TITLE_SINGLE_LINE else 2
+
+    # title area
+    y_bottom = tile - TEXT_BOTTOM_PAD_PX
+
+    # image area depends on actual number of lines; store anchors
+    info = {
+        'title_font': title_font,
+        'price_font': price_font,
+        'line_h': line_h,
+        'pill_h': pill_h,
+        'pill_radius': radius_val,
+        'pill_right': right,
+        'pill_top': top,
+        'pill_bottom': bottom,
+        'max_title_w': max_title_w,
+        'max_lines': max_lines,
+        'y_bottom': y_bottom,
+    }
+    _LAYOUT_CACHE[tile] = info
+    return info
+
+def _get_base_tile(tier: str, tile: int) -> Image.Image:
+    """Base layer: transparent + tier background only."""
+    key = (tier, tile)
+    im = _BASE_TILE_CACHE.get(key)
+    if im is not None:
+        return im
+    base = Image.new('RGBA', (tile, tile), (0, 0, 0, 0))
+    base.alpha_composite(_get_tier_bg(tier, tile), (0, 0))
+    _BASE_TILE_CACHE[key] = base
+    return base
+
+def _get_pill_bg(pill_w: int, pill_h: int, radius: int) -> Image.Image:
+    key = (pill_w, pill_h, radius, PRICE_PILL_FILL, PRICE_PILL_OUTLINE, PRICE_PILL_OUTLINE_PX)
+    im = _PILL_BG_CACHE.get(key)
+    if im is not None:
+        return im
+    p = Image.new('RGBA', (pill_w, pill_h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(p)
+    d.rounded_rectangle([0, 0, pill_w - 1, pill_h - 1], radius=radius,
+                        fill=PRICE_PILL_FILL, outline=PRICE_PILL_OUTLINE, width=PRICE_PILL_OUTLINE_PX)
+    _PILL_BG_CACHE[key] = p
+    return p
+
+def _tile_cache_key(aid: int, tile: int, tier: str, price: int, name: str) -> str:
+    # keep key short-ish but collision-safe
+    h = hashlib.sha1(name.encode('utf-8', errors='ignore')).hexdigest()[:10]
+    theme = 'cb' if THEME_CLASSIC_BLUE else 'd'
+    single = '1' if TITLE_SINGLE_LINE else '2'
+    return f"tile:v3:{aid}:{tile}:{tier}:{price}:{theme}:{single}:{h}"
+    max_title_w = tile - 14
+    max_lines = 1 if TITLE_SINGLE_LINE else 2
+
+    # price pill geometry (depends only on font metrics)
+    pill_h = price_font.getbbox('Ag')[3] + PRICE_PILL_PAD_Y * 2 - 2
+    radius_val = PRICE_PILL_RADIUS_PX if PRICE_PILL_RADIUS_PX > 0 else (pill_h // 2)
+    radius_val = min(radius_val, pill_h // 2)
+    top = PADDING_CONTENT + PRICE_TOP_PAD_PX
+    bottom = top + pill_h
+
+    lay = {
+        'title_font': title_font,
+        'price_font': price_font,
+        'line_h': line_h,
+        'max_title_w': max_title_w,
+        'max_lines': max_lines,
+        'pill_h': pill_h,
+        'pill_radius': radius_val,
+        'pill_top': top,
+        'pill_bottom': bottom,
+        'pill_right': tile - (PADDING_CONTENT + 2),
+    }
+    _LAYOUT_CACHE[tile] = lay
+    return lay
+
+def _get_base_tile(tier: str, tile: int) -> Image.Image:
+    """Base tile = tier background only (precomposited)."""
+    key = (tier, tile, THEME_CLASSIC_BLUE)
+    im = _BASE_TILE_CACHE.get(key)
+    if im is not None:
+        return im
+    out = Image.new('RGBA', (tile, tile), (0, 0, 0, 0))
+    out.alpha_composite(_get_tier_bg(tier, tile), (0, 0))
+    _BASE_TILE_CACHE[key] = out
+    return out
+
+def _get_pill_bg(pill_w: int, pill_h: int, radius: int) -> Image.Image:
+    """Cache just the pill shape (rounded rect) as RGBA."""
+    key = (pill_w, pill_h, radius, PRICE_PILL_FILL, PRICE_PILL_OUTLINE, PRICE_PILL_OUTLINE_PX)
+    im = _PILL_BG_CACHE.get(key)
+    if im is not None:
+        return im
+    im = Image.new('RGBA', (pill_w, pill_h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle(
+        [0, 0, pill_w - 1, pill_h - 1],
+        radius=radius,
+        fill=PRICE_PILL_FILL,
+        outline=PRICE_PILL_OUTLINE,
+        width=PRICE_PILL_OUTLINE_PX,
+    )
+    _PILL_BG_CACHE[key] = im
+    return im
+
+def _tile_cache_key(it: Dict[str, Any], tile: int) -> str:
+    """Stable key for ready-to-use tile PNG."""
+    aid = int(it.get('assetId') or 0)
+    price = _price_of(it)
+    name = str(it.get('name') or '').strip().upper()
+    # small hash for long names
+    name_h = hashlib.sha1(name.encode('utf-8', 'ignore')).hexdigest()[:10]
+    return f"tile:v2:{aid}:{tile}:{price}:{name_h}:{int(TITLE_SINGLE_LINE)}:{int(THEME_CLASSIC_BLUE)}"
+
+def _tile_mem_get(key: str) -> Optional[Image.Image]:
+    im = _TILE_MEM.get(key)
+    if im is None:
+        return None
+    try:
+        _TILE_MEM.move_to_end(key)  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    return im
+
+def _tile_mem_put(key: str, im: Image.Image):
+    if _TILE_MEM_MAX <= 0:
+        return
+    try:
+        _TILE_MEM[key] = im
+        _TILE_MEM.move_to_end(key)  # type: ignore[attr-defined]
+        while len(_TILE_MEM) > _TILE_MEM_MAX:
+            _TILE_MEM.popitem(last=False)  # type: ignore[attr-defined]
+    except Exception:
+        # fallback: best-effort
+        _TILE_MEM.clear()
+
+
+def _layout(tile: int) -> Dict[str, Any]:
+    """Compute layout constants once per tile size."""
+    if tile in _LAYOUT_CACHE:
+        return _LAYOUT_CACHE[tile]
+    title_font = _bold_font(max(12, tile // max(1, TITLE_FONT_TILE_DIV)))
+    price_font = _bold_font(max(10, tile // max(1, PRICE_FONT_TILE_DIV)))
+    # cheap metrics
+    line_h = title_font.getbbox('Ag')[3]
+    price_h = price_font.getbbox('Ag')[3]
+    max_title_w = tile - 14
+    max_lines = 1 if TITLE_SINGLE_LINE else 2
+    lay = {
+        'title_font': title_font,
+        'price_font': price_font,
+        'line_h': line_h,
+        'price_h': price_h,
+        'max_title_w': max_title_w,
+        'max_lines': max_lines,
+    }
+    _LAYOUT_CACHE[tile] = lay
+    return lay
+
+
+def _get_base_tile(tier: str, tile: int) -> Image.Image:
+    """Base tile = tier bg only. Cached as PIL image."""
+    key = (tier, tile)
+    im = _BASE_TILE_CACHE.get(key)
+    if im is not None:
+        return im
+    base = Image.new('RGBA', (tile, tile), (0, 0, 0, 0))
+    base.alpha_composite(_get_tier_bg(tier, tile), (0, 0))
+    _BASE_TILE_CACHE[key] = base
+    return base
+
+
+def _get_pill_bg(pill_w: int, pill_h: int, radius: int) -> Image.Image:
+    """Cached pill background (rounded rectangle)."""
+    key = (pill_w, pill_h, radius, PRICE_PILL_FILL, PRICE_PILL_OUTLINE, PRICE_PILL_OUTLINE_PX)
+    im = _PILL_BG_CACHE.get(key)
+    if im is not None:
+        return im
+    out = Image.new('RGBA', (pill_w, pill_h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(out)
+    d.rounded_rectangle(
+        [0, 0, pill_w - 1, pill_h - 1],
+        radius=radius,
+        fill=PRICE_PILL_FILL,
+        outline=PRICE_PILL_OUTLINE,
+        width=PRICE_PILL_OUTLINE_PX,
+    )
+    _PILL_BG_CACHE[key] = out
+    return out
+
+# In-memory LRU for already-rendered tiles (decoded PIL images)
+_TILE_MEM_MAX = int(os.getenv('TILE_MEM_MAX', '256'))
+_TILE_MEM: Dict[str, Image.Image] = {}
+_TILE_MEM_ORDER: List[str] = []
+
+def _tile_mem_get(key: str) -> Optional[Image.Image]:
+    im = _TILE_MEM.get(key)
+    if im is None:
+        return None
+    try:
+        _TILE_MEM_ORDER.remove(key)
+    except ValueError:
+        pass
+    _TILE_MEM_ORDER.append(key)
+    return im
+
+def _tile_mem_put(key: str, im: Image.Image) -> None:
+    if key in _TILE_MEM:
+        try:
+            _TILE_MEM_ORDER.remove(key)
+        except ValueError:
+            pass
+    _TILE_MEM[key] = im
+    _TILE_MEM_ORDER.append(key)
+    while len(_TILE_MEM_ORDER) > _TILE_MEM_MAX:
+        k = _TILE_MEM_ORDER.pop(0)
+        _TILE_MEM.pop(k, None)
+
+def _get_layout(tile: int) -> Dict[str, Any]:
+    """Cache layout metrics/fonts per tile size."""
+    lay = _LAYOUT_CACHE.get(tile)
+    if lay is not None:
+        return lay
+    title_font = _bold_font(max(12, tile // max(1, TITLE_FONT_TILE_DIV)))
+    price_font = _bold_font(max(10, tile // max(1, PRICE_FONT_TILE_DIV)))
+    line_h = title_font.getbbox('Ag')[3]
+    price_h = price_font.getbbox('Ag')[3]
+    pill_h = price_h + PRICE_PILL_PAD_Y * 2 - 2
+    radius_val = PRICE_PILL_RADIUS_PX if PRICE_PILL_RADIUS_PX > 0 else (pill_h // 2)
+    radius_val = min(radius_val, pill_h // 2)
+    top = PADDING_CONTENT + PRICE_TOP_PAD_PX
+    bottom = top + pill_h
+
+    max_title_w = tile - 14
+    max_lines = 1 if TITLE_SINGLE_LINE else 2
+    y_bottom = tile - TEXT_BOTTOM_PAD_PX
+    # y_top depends on amount of lines; computed per item, but we keep bottom anchor.
+    box_w = tile - PADDING_CONTENT * 2
+
+    lay = {
+        'title_font': title_font,
+        'price_font': price_font,
+        'line_h': line_h,
+        'max_title_w': max_title_w,
+        'max_lines': max_lines,
+        'pill_h': pill_h,
+        'pill_radius': radius_val,
+        'pill_top': top,
+        'pill_bottom': bottom,
+        'box_w': box_w,
+        'y_bottom': y_bottom,
+    }
+    _LAYOUT_CACHE[tile] = lay
+    return lay
+
+def _pill_bg(pill_w: int, pill_h: int, radius: int) -> Image.Image:
+    """Cache pill background image by geometry/colors."""
+    key = (pill_w, pill_h, radius, PRICE_PILL_FILL, PRICE_PILL_OUTLINE, PRICE_PILL_OUTLINE_PX)
+    im = _PILL_BG_CACHE.get(key)
+    if im is not None:
+        return im
+    im = Image.new('RGBA', (pill_w, pill_h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle(
+        [0, 0, pill_w - 1, pill_h - 1],
+        radius=radius,
+        fill=PRICE_PILL_FILL,
+        outline=PRICE_PILL_OUTLINE,
+        width=PRICE_PILL_OUTLINE_PX,
+    )
+    _PILL_BG_CACHE[key] = im
+    return im
+
+def _base_tile(tier: str, tile: int) -> Image.Image:
+    """Cache base tile (tier bg only) to avoid recreating images."""
+    key = (tier, tile)
+    im = _BASE_TILE_CACHE.get(key)
+    if im is not None:
+        return im
+    out = Image.new('RGBA', (tile, tile), (0, 0, 0, 0))
+    out.alpha_composite(_get_tier_bg(tier, tile), (0, 0))
+    _BASE_TILE_CACHE[key] = out
+    return out
+
+def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Image:
+    """CPU-bound tile render.
+
+    Optimized for first-run speed:
+    - reuse cached base tile (tier bg)
+    - reuse cached layout (fonts/geometry)
+    - reuse cached price pill background (rounded rect)
+    """
+    price = _price_of(it)
+    tier = _tier_by_price(price)
+    name = str(it.get('name') or it.get('assetId') or '').strip().upper()
+
+    lay = _get_layout(tile) if '_get_layout' in globals() else _layout_for_tile(tile)
+    title_font = lay.get('title_font')
+    price_font = lay.get('price_font')
+    line_h = int(lay.get('line_h', title_font.getbbox('Ag')[3]))
+    max_title_w = int(lay.get('max_title_w', tile - 14))
+    max_lines = int(lay.get('max_lines', 2))
+
+    # Start from cached base
+    base = _get_base_tile(tier, tile)
+    out = base.copy()
+    d = ImageDraw.Draw(out)
+
+    # Bottom title (single or two lines)
     words = name.split()
     lines: List[str] = []
     cur = ''
@@ -647,9 +1029,8 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
             last = last + '…'
         lines[-1] = last
 
-    line_h = title_font.getbbox('Ag')[3]
     title_total_h = line_h * len(lines)
-    y_bottom = tile - TEXT_BOTTOM_PAD_PX
+    y_bottom = int(lay.get('y_bottom', tile - TEXT_BOTTOM_PAD_PX))
     y_top = y_bottom - title_total_h
     y_top = y_top + 2  # shift title 2px down
 
@@ -667,20 +1048,23 @@ def _render_tile(it: Dict[str, Any], thumb: Image.Image, tile: int) -> Image.Ima
     price_text = f'{price} {ROBUX_PREFIX}'.strip()
     w_text = int(d.textlength(price_text, font=price_font))
     pill_w = w_text + PRICE_PILL_PAD_X * 2
-    pill_h = price_font.getbbox('Ag')[3] + PRICE_PILL_PAD_Y * 2 - 2
-    right = tile - (PADDING_CONTENT + 2)
-    top   = PADDING_CONTENT + PRICE_TOP_PAD_PX
-    bottom= top + pill_h
-    left  = right - pill_w
-    radius_val = PRICE_PILL_RADIUS_PX if PRICE_PILL_RADIUS_PX > 0 else (pill_h // 2)
-    radius_val = min(radius_val, pill_h // 2)  # не даём стать полным овалом
+    pill_h = int(lay.get('pill_h') or (price_font.getbbox('Ag')[3] + PRICE_PILL_PAD_Y * 2 - 2))
+    radius_val = int(lay.get('pill_radius') or (pill_h // 2))
+    right = int(lay.get('pill_right') or (tile - (PADDING_CONTENT + 2)))
+    top = int(lay.get('pill_top') or (PADDING_CONTENT + PRICE_TOP_PAD_PX))
+    bottom = int(lay.get('pill_bottom') or (top + pill_h))
+    left = right - pill_w
 
-    d.rounded_rectangle([left, top, right, bottom],
-                        radius=radius_val,
-                        fill=PRICE_PILL_FILL, outline=PRICE_PILL_OUTLINE, width=PRICE_PILL_OUTLINE_PX)
-    d.text((left + (pill_w - w_text) // 2,
-            top + (pill_h - price_font.getbbox('Ag')[3]) // 2 - 1),
-           price_text, fill=PRICE_TEXT_COLOR, font=price_font)
+    # cached rounded-rect layer
+    pill_bg = _get_pill_bg(pill_w, pill_h, radius_val)
+    out.alpha_composite(pill_bg, (left, top))
+    d.text(
+        (left + (pill_w - w_text) // 2,
+         top + (pill_h - price_font.getbbox('Ag')[3]) // 2 - 1),
+        price_text,
+        fill=PRICE_TEXT_COLOR,
+        font=price_font,
+    )
 
     # Image box (between pill and title)
     box_top    = bottom + GAP_IMAGE_PRICE
@@ -867,16 +1251,29 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
         canvas.alpha_composite(_get_canvas_bg(W, H), (0, 0))
         _draw_header(canvas, 0, title)
         _draw_footer(canvas, username, user_id)
-        out = io.BytesIO()
-        canvas.convert('RGB').save(out, 'PNG', optimize=True, quality=90)
-        _info(f"[grid] placeholder rendered for empty items, bytes={out.tell()}")
-        return out.getvalue()
+        def _save_empty() -> bytes:
+            out = io.BytesIO()
+            canvas.convert('RGB').save(out, 'PNG', optimize=PNG_OPTIMIZE, quality=90)
+            return out.getvalue()
+        blob = await asyncio.to_thread(_save_empty)
+        _info(f"[grid] placeholder rendered for empty items, bytes={len(blob)}")
+        return blob
 
     if not KEEP_INPUT_ORDER:
         items = sorted(items, key=lambda x: x.get('priceInfo', {}).get('value') or 0, reverse=True)
     ids = [int(x['assetId']) for x in items if 'assetId' in x]
 
-    size = THUMB_SIZE
+    # pick smallest reasonable thumb size for this tile unless forced
+    if THUMB_SIZE_FORCE:
+        size = THUMB_SIZE
+    else:
+        # cheap heuristic: 150->150, 250->250, else 420
+        if tile <= 150:
+            size = '150x150'
+        elif tile <= 250:
+            size = '250x250'
+        else:
+            size = '420x420'
     _info(f"[grid] start items={n} tile={tile} size={size}")
     thumbs = await _fetch_thumbs(ids, size=size)
 
@@ -897,27 +1294,93 @@ async def _render_grid(items: List[Dict[str, Any]], tile: int=150, title: str='I
     _draw_header(canvas, n, title)
     _draw_footer(canvas, username, user_id)
 
-    sem = asyncio.Semaphore(RENDER_CONCURRENCY)
-    async def make_tile(it):
-        async with sem:
-            aid = int(it['assetId'])
-            thumb = thumbs.get(aid) or Image.new('RGBA', (tile - 12, tile - 26), (70, 80, 96, 255))
-            return _render_tile(it, thumb, tile)
+    # ---- Render pipeline ----
+    # Stage A: load/decode tile from mem/disk cache (cheap)
+    # Stage B: CPU render (PIL) in worker threads
+    # Stage C: encode tile PNG in worker threads + store in cache
 
-    tiles = await asyncio.gather(*(make_tile(it) for it in items))
+    cpu_sem = asyncio.Semaphore(RENDER_CONCURRENCY)
 
-    k = 0
-    for r in range(rows):
-        for c in range(cols):
-            if k >= n:
-                break
-            canvas.alpha_composite(tiles[k], (c * tile, (HEADER_H if SHOW_HEADER else 0) + r * tile))
-            k += 1
+    async def _decode_png(b: bytes) -> Image.Image:
+        return await asyncio.to_thread(lambda: Image.open(io.BytesIO(b)).convert('RGBA'))
 
-    out = io.BytesIO()
-    canvas.convert('RGB').save(out, 'PNG', optimize=True, quality=90)
-    _info(f"[grid] done items={n} cols={cols} rows={rows} tile={tile} bytes={out.tell()}")
-    return out.getvalue()
+    async def _encode_png(im: Image.Image) -> bytes:
+        def _enc() -> bytes:
+            bio = io.BytesIO()
+            im.save(bio, format='PNG', optimize=False)
+            return bio.getvalue()
+        return await asyncio.to_thread(_enc)
+
+    async def render_one(idx: int, it: Dict[str, Any]) -> tuple[int, Image.Image]:
+        aid = int(it.get('assetId') or 0)
+
+        # tile key (prefer newest helper if exists)
+        try:
+            tkey = _tile_cache_key(it, tile)  # type: ignore
+        except Exception:
+            price = _price_of(it)
+            tier = _tier_by_price(price)
+            name = str(it.get('name') or '').strip().upper()
+            tkey = _tile_cache_key(aid, tile, tier, price, name)  # type: ignore
+
+        # RAM hit
+        hit = _tile_mem_get(tkey)
+        if hit is not None:
+            return idx, hit
+
+        # persistent cache hit
+        b = await cache.get_bytes(tkey, IMG_TTL)
+        if b:
+            try:
+                im = await _decode_png(b)
+                _tile_mem_put(tkey, im)
+                return idx, im
+            except Exception:
+                pass
+
+        # render path (CPU)
+        thumb = thumbs.get(aid)
+        if thumb is None:
+            thumb = Image.new('RGBA', (tile - 12, tile - 26), (70, 80, 96, 255))
+
+        async with cpu_sem:
+            im = await asyncio.to_thread(_render_tile, it, thumb, tile)
+
+        # encode + store (not holding cpu_sem)
+        try:
+            b2 = await _encode_png(im)
+            await cache.set_bytes(tkey, b2)
+        except Exception:
+            pass
+
+        _tile_mem_put(tkey, im)
+        return idx, im
+
+    # render concurrently and composite as results arrive
+    tasks = [asyncio.create_task(render_one(i, it)) for i, it in enumerate(items)]
+
+    # precompute positions
+    y0 = (HEADER_H if SHOW_HEADER else 0)
+    pos: List[tuple[int, int]] = []
+    for i in range(n):
+        r = i // cols
+        c = i % cols
+        pos.append((c * tile, y0 + r * tile))
+
+    for fut in asyncio.as_completed(tasks):
+        idx, im = await fut
+        x, y = pos[idx]
+        canvas.alpha_composite(im, (x, y))
+
+    # encode whole sheet off-thread
+    def _save_canvas() -> bytes:
+        out = io.BytesIO()
+        canvas.convert('RGB').save(out, 'PNG', optimize=PNG_OPTIMIZE, quality=90)
+        return out.getvalue()
+
+    blob = await asyncio.to_thread(_save_canvas)
+    _info(f"[grid] done items={n} cols={cols} rows={rows} tile={tile} bytes={len(blob)}")
+    return blob
 
 
 # =========================

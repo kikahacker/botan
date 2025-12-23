@@ -33,6 +33,7 @@ import pathlib
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import StateFilter
+from aiogram.filters import BaseFilter
 
 from i18n import t, tr, get_user_lang, set_user_lang, set_current_lang
 from aiogram.filters import CommandStart, Command
@@ -164,6 +165,7 @@ from config import CFG
 from assets_manager import assets_manager
 import roblox_client
 from roblox_imagegen import generate_category_sheets
+
 from cache_locks import get_lock
 
 router = Router()
@@ -433,6 +435,13 @@ async def _is_public_pending(tg_id: int) -> bool:
     except Exception:
         return False
 
+
+class PublicPendingFilter(BaseFilter):
+    async def __call__(self, message: types.Message) -> bool:
+        try:
+            return await _is_public_pending(message.from_user.id)
+        except Exception:
+            return False
 
 def L(key: str, **kw) -> str:
     lang = _CURRENT_LANG.get() or 'en'
@@ -3011,8 +3020,13 @@ def _patch_aiogram_message_methods():
 _patch_aiogram_message_methods()
 
 
-@router.message(F.text.regexp(r'^[A-Za-z0-9_]{3,}$'))
+@router.message(PublicPendingFilter(), F.text.regexp(r'^[A-Za-z0-9_]{3,}$'))
 async def handle_public_id(message: types.Message) -> None:
+    import asyncio
+    import html
+    import httpx
+    from typing import Optional
+
     await protect_language(message.from_user.id)
     tg = message.from_user.id
 
@@ -3032,7 +3046,7 @@ async def handle_public_id(message: types.Message) -> None:
         # 2) иначе считаем, что это ник и пытаемся получить ID
         username = raw
         try:
-            async with httpx.AsyncClient(timeout=20.0) as c:
+            async with httpx.AsyncClient(timeout=10.0) as c:
                 r = await c.post(
                     "https://users.roblox.com/v1/usernames/users",
                     json={
@@ -3063,11 +3077,19 @@ async def handle_public_id(message: types.Message) -> None:
     await _log_check(tg, rid, scope="public", what="profile")
     await _set_public_pending(tg, False)  # сбрасываем флаг
 
-    # Fetch minimal public profile (no cookie)
     try:
         await message.answer(LL('status.loading_profile', 'msg.auto_cefe60da21'))
-        async with httpx.AsyncClient(timeout=20.0) as c:
-            r = await c.get(f'https://users.roblox.com/v1/users/{rid}')
+
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            # 🚀 параллельно: профиль + thumbnail meta
+            prof_task = c.get(f'https://users.roblox.com/v1/users/{rid}')
+            thumb_task = c.get(
+                f'https://thumbnails.roblox.com/v1/users/avatar'
+                f'?userIds={rid}&size=420x420&format=Png&isCircular=false'
+            )
+
+            r, tr = await asyncio.gather(prof_task, thumb_task, return_exceptions=False)
+
             if r.status_code != 200:
                 await edit_or_send(
                     message,
@@ -3075,12 +3097,14 @@ async def handle_public_id(message: types.Message) -> None:
                     reply_markup=await kb_main_i18n(tg),
                 )
                 return
-            user = r.json()
+
+            user = r.json() or {}
             uname = html.escape(user.get('name', L('common.dash')))
             dname = html.escape(user.get('displayName', L('common.dash')))
             created = (user.get('created') or L('common.na')).split('T')[0]
             banned = bool(user.get('isBanned', False))
 
+            # public → лимитка
             country = L('common.dash')
             gender = L('common.dash')
             birthdate = L('common.dash')
@@ -3100,36 +3124,29 @@ async def handle_public_id(message: types.Message) -> None:
             text = f"{note}\n\n{card}"
 
             avatar_url = None
-            tr = await c.get(
-                f'https://thumbnails.roblox.com/v1/users/avatar'
-                f'?userIds={rid}&size=420x420&format=Png&isCircular=false'
-            )
             if tr.status_code == 200 and (tr.json() or {}).get('data'):
-                avatar_url = tr.json()['data'][0].get('imageUrl')
+                avatar_url = (tr.json()['data'][0] or {}).get('imageUrl')
 
+            # ✅ НЕ качаем аватар руками (rbxcdn часто таймаутит)
             if avatar_url:
-                im = await c.get(avatar_url)
-                if im.status_code == 200:
-                    path = f'temp/avatar_public_{rid}.png'
-                    os.makedirs('temp', exist_ok=True)
-                    open(path, 'wb').write(im.content)
+                try:
                     await edit_or_send(
                         message,
                         text,
                         reply_markup=kb_public_navigation(rid),
-                        photo=FSInputFile(path),
+                        photo=avatar_url,  # <— телега сама качает
                     )
-                    try:
-                        os.remove(path)
-                    except Exception:
-                        pass
                     return
+                except Exception:
+                    # если телега не смогла скачать — просто текстом
+                    pass
 
             await edit_or_send(
                 message,
                 text,
                 reply_markup=kb_public_navigation(rid),
             )
+
     except Exception as e:
         logger.exception(f"[PUBLIC_ID] error rid={rid}: {e}")
         await edit_or_send(
@@ -3137,6 +3154,7 @@ async def handle_public_id(message: types.Message) -> None:
             L('errors.generic', err=str(e)),
             reply_markup=await kb_main_i18n(tg),
         )
+
 
 
 
