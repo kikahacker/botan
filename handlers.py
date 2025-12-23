@@ -1,4 +1,6 @@
 from aiogram import F, types
+
+from http_shared import get_client, PROXY_POOL
 from i18n import t as T, get_current_lang
 import json
 import os
@@ -1112,19 +1114,40 @@ async def cb_menu(call: types.CallbackQuery) -> None:
 
 @router.message(F.document & F.document.file_name.endswith('.txt'))
 async def handle_txt_upload(message: types.Message) -> None:
+    """
+    Принимает .txt со строками .ROBLOSECURITY (по 1 на строку),
+    добавляет аккаунты и по каждому аккаунту отправляет карточку.
+
+    Ускорение:
+    - НЕ качаем аватар в байты (самое медленное). Телега сама подтянет по URL.
+    - Все доп. запросы (country/email/gender/birthdate/robux/thumb) делаем параллельно.
+    - Не дергаем /v1/users/{id} повторно: имя/created уже есть из validate_and_clean_cookie().
+    """
+    import os
+    import html
+    import asyncio
+    import httpx
+    from datetime import datetime
+    from typing import List, Tuple, Optional, Any
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    from http_shared import PROXY_POOL, get_client
+
     await protect_language(message.from_user.id)
     tg = message.from_user.id
 
     doc = message.document
-    name = (doc.file_name or '').lower()
-    mime = (doc.mime_type or '').lower()
-    if not (name.endswith('.txt') or mime == 'text/plain'):
-        await edit_or_send(message, L('msg.file_not_txt'),
-                           reply_markup=await kb_main_i18n(tg))
+    name = (doc.file_name or "").lower()
+    mime = (doc.mime_type or "").lower()
+    if not (name.endswith(".txt") or mime == "text/plain"):
+        await edit_or_send(message, L("msg.file_not_txt"), reply_markup=await kb_main_i18n(tg))
         return
-    await edit_or_send(message, L('status.file_received'), reply_markup=await kb_main_i18n(tg))
-    os.makedirs('temp', exist_ok=True)
-    tmp_path = f'temp/cookies_{tg}_{doc.file_unique_id}.txt'
+
+    await edit_or_send(message, L("status.file_received"), reply_markup=await kb_main_i18n(tg))
+    os.makedirs("temp", exist_ok=True)
+    tmp_path = f"temp/cookies_{tg}_{doc.file_unique_id}.txt"
+
     try:
         await message.bot.download(doc, destination=tmp_path)
     except Exception:
@@ -1134,8 +1157,9 @@ async def handle_txt_upload(message: types.Message) -> None:
         except Exception as e2:
             await edit_or_send(message, L("err.download_file", error=e2), reply_markup=await kb_main_i18n(tg))
             return
+
     try:
-        with open(tmp_path, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
             lines = [ln.strip() for ln in f if ln.strip()]
     except Exception as e:
         await edit_or_send(message, L("err.read_file", error=e), reply_markup=await kb_main_i18n(tg))
@@ -1145,36 +1169,243 @@ async def handle_txt_upload(message: types.Message) -> None:
             os.remove(tmp_path)
         except Exception:
             pass
+
     if not lines:
         await edit_or_send(message, L("status.file_empty"), reply_markup=await kb_main_i18n(tg))
         return
-    ok, bad = (0, 0)
+
+    # --- retry policy ---
+    RETRYABLE_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+    RETRYABLE_EXC = (
+        httpx.TimeoutException,
+        httpx.NetworkError,
+        httpx.RemoteProtocolError,
+        httpx.ReadError,
+        httpx.ConnectError,
+        httpx.RequestError,
+    )
+
+    def _is_retryable(e: Exception) -> bool:
+        if isinstance(e, RETRYABLE_EXC):
+            return True
+        s = str(e) or ""
+        for code in RETRYABLE_STATUSES:
+            if f"={code}" in s:
+                return True
+        return False
+
+    async def _safe_get(c: httpx.AsyncClient, url: str, headers: dict, *, timeout_s: float = 6.0) -> Optional[httpx.Response]:
+        try:
+            return await asyncio.wait_for(c.get(url, headers=headers), timeout=timeout_s)
+        except Exception:
+            return None
+
+    async def _build_profile_card_fast(cookie_plain: str, rid: int, proxy: Optional[str], user_data: dict) -> tuple[str, Optional[str]]:
+        """
+        Быстрая сборка карточки:
+        - обязательные поля берём из user_data (уже проверено validate_and_clean_cookie)
+        - остальное запрашиваем параллельно
+        """
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Cookie": f".ROBLOSECURITY={cookie_plain}",
+            "Referer": "https://www.roblox.com/",
+        }
+        c = await get_client(proxy)
+
+        uname = html.escape((user_data or {}).get("name") or L("common.dash"))
+        dname = html.escape((user_data or {}).get("displayName") or uname or L("common.dash"))
+        created = ((user_data or {}).get("created") or L("common.na")).split("T")[0]
+        banned = bool((user_data or {}).get("isBanned", False))
+
+        # параллельные запросы (каждый best-effort)
+        t_country = _safe_get(c, "https://accountsettings.roblox.com/v1/account/settings/account-country", headers, timeout_s=5.0)
+        t_email   = _safe_get(c, "https://accountsettings.roblox.com/v1/email", headers, timeout_s=5.0)
+        t_gender  = _safe_get(c, "https://accountinformation.roblox.com/v1/gender", headers, timeout_s=5.0)
+        t_bdate   = _safe_get(c, "https://accountinformation.roblox.com/v1/birthdate", headers, timeout_s=5.0)
+        t_robux   = _safe_get(c, "https://economy.roblox.com/v1/user/currency", headers, timeout_s=5.0)
+        t_thumb   = _safe_get(
+            c,
+            f"https://thumbnails.roblox.com/v1/users/avatar?userIds={rid}&size=420x420&format=Png&isCircular=false",
+            {"User-Agent": "Mozilla/5.0"},
+            timeout_s=6.0,
+        )
+
+        r_country, r_email, r_gender, r_bdate, r_robux, r_thumb = await asyncio.gather(
+            t_country, t_email, t_gender, t_bdate, t_robux, t_thumb, return_exceptions=False
+        )
+
+        # country
+        country = L("common.dash")
+        if r_country is not None:
+            if r_country.status_code == 200:
+                v = (r_country.json() or {}).get("value", {})
+                country = v.get("localizedName") or v.get("countryName") or L("common.dash")
+            elif r_country.status_code in RETRYABLE_STATUSES:
+                raise RuntimeError(f"country_status={r_country.status_code}")
+
+        # email
+        email, email_verified = (L("common.dash"), False)
+        if r_email is not None:
+            if r_email.status_code == 200:
+                ej = r_email.json() or {}
+                email = ej.get("email") or ej.get("emailAddress") or ej.get("contactEmail") or email
+                email_verified = bool(ej.get("verified") or ej.get("isVerified"))
+            elif r_email.status_code in RETRYABLE_STATUSES:
+                raise RuntimeError(f"email_status={r_email.status_code}")
+
+        # 2FA: этот эндпоинт часто 404 у многих аккаунтов → не тратим время вообще
+        email_2fa = False
+
+        # gender
+        gender = L("common.unknown")
+        if r_gender is not None:
+            if r_gender.status_code == 200:
+                g = (r_gender.json() or {}).get("gender")
+                if g == 1:
+                    gender = L("common.female")
+                elif g == 2:
+                    gender = L("common.male")
+            elif r_gender.status_code in RETRYABLE_STATUSES:
+                raise RuntimeError(f"gender_status={r_gender.status_code}")
+
+        # birthdate + age
+        birthdate, age = (L("common.dash"), L("common.dash"))
+        if r_bdate is not None:
+            if r_bdate.status_code == 200:
+                bd = r_bdate.json() or {}
+                d, m, y = (bd.get("birthDay"), bd.get("birthMonth"), bd.get("birthYear"))
+                if all([d, m, y]):
+                    birthdate = f"{int(d):02d}.{int(m):02d}.{int(y)}"
+                    now = datetime.now()
+                    age = now.year - int(y) - (1 if (now.month, now.day) < (int(m), int(d)) else 0)
+            elif r_bdate.status_code in RETRYABLE_STATUSES:
+                raise RuntimeError(f"birthdate_status={r_bdate.status_code}")
+
+        # robux
+        robux = 0
+        if r_robux is not None:
+            if r_robux.status_code == 200:
+                robux = int((r_robux.json() or {}).get("robux", 0) or 0)
+            elif r_robux.status_code in RETRYABLE_STATUSES:
+                raise RuntimeError(f"robux_status={r_robux.status_code}")
+
+        # spent: отдельным таском, жёсткий таймаут (чтоб не тормозило)
+        spent_val = -1
+        try:
+            spent_val = await asyncio.wait_for(roblox_client.get_total_spent_robux(rid, cookie_plain), timeout=1.2)
+        except Exception:
+            spent_val = -1
+
+        # avatar url
+        avatar_url = None
+        if r_thumb is not None:
+            if r_thumb.status_code == 200 and (r_thumb.json() or {}).get("data"):
+                avatar_url = r_thumb.json()["data"][0].get("imageUrl")
+            elif r_thumb.status_code in RETRYABLE_STATUSES:
+                raise RuntimeError(f"thumb_status={r_thumb.status_code}")
+
+        text = render_profile_text_i18n(
+            uname=uname, dname=dname, roblox_id=rid, created=created,
+            country=country, gender_raw=gender, birthdate=birthdate, age=age,
+            email=email, email_verified=email_verified, email_2fa=email_2fa,
+            robux=robux, spent_val=spent_val, banned=banned,
+        )
+        return text, avatar_url
+
+    async def _send_profile_card_fast(rid: int, uname: str, cookie_plain: str, user_data: dict):
+        """
+        Ретраи по прокси, но внутри одной попытки — всё максимально параллельно.
+        Плюс: фотку не качаем, отдаём URL (самое быстрое).
+        """
+        max_retries = 2
+
+        last_err: Optional[Exception] = None
+        for attempt in range(max_retries + 1):
+            proxy = PROXY_POOL.any()
+            try:
+                text, avatar_url = await _build_profile_card_fast(cookie_plain, rid, proxy, user_data)
+
+                if avatar_url:
+                    # ⚡️ главная оптимизация: не скачиваем bytes, просто отдаём URL
+                    await message.answer_photo(avatar_url, caption=text, reply_markup=kb_navigation(rid))
+                else:
+                    await message.answer(text, reply_markup=kb_navigation(rid))
+                return
+
+            except Exception as e:
+                last_err = e
+                if (not _is_retryable(e)) or attempt == max_retries:
+                    break
+                await asyncio.sleep(0.25 + 0.2 * attempt)
+
+        # fallback
+        await message.answer(
+            L(
+                "profile.card",
+                uname=html.escape(uname or L("common.dash")),
+                display_name=html.escape(uname or L("common.dash")),
+                rid=rid,
+                created=L("common.na"),
+                country=L("common.dash"),
+                gender=L("common.unknown"),
+                birthday=L("common.dash"),
+                age=L("common.dash"),
+                email=L("common.dash"),
+                email_verified="❌",
+                email_2fa="❌",
+                robux=0,
+                spent=L("common.dash"),
+                status=L("common.active"),
+            ),
+            reply_markup=kb_navigation(rid),
+        )
+
+    ok, bad = 0, 0
     added: List[Tuple[int, str]] = []
+
     for line in lines[:1000]:
-        is_valid, cleaned_cookie, user_data = await validate_and_clean_cookie(line)
-        if not is_valid:
+        try:
+            is_valid, cleaned_cookie, user_data = await validate_and_clean_cookie(line)
+        except Exception:
+            is_valid, cleaned_cookie, user_data = (False, None, None)
+
+        if not is_valid or not cleaned_cookie or not user_data:
             bad += 1
             continue
-        rid = int(user_data['id'])
-        uname = user_data.get('name') or ''
+
+        rid = int(user_data["id"])
+        uname = (user_data.get("name") or "").strip()
+
         enc = encrypt_text(cleaned_cookie)
         await storage.save_encrypted_cookie(tg, rid, enc)
-        await storage.upsert_user(tg, rid, uname, user_data.get('created'))
-        await storage.log_event('user_linked', telegram_id=tg, roblox_id=rid)
+        await storage.upsert_user(tg, rid, uname, user_data.get("created"))
+        await storage.log_event("user_linked", telegram_id=tg, roblox_id=rid)
         try:
             await storage.upsert_account_snapshot(rid, username=uname)
         except Exception:
             pass
+
         ok += 1
         added.append((rid, uname))
+
+        # отправляем карточку сразу, без лишних sleeps
+        await _send_profile_card_fast(rid, uname, cleaned_cookie, user_data)
+
     if ok == 0:
-        await edit_or_send(message, L('msg.no_valid_cookies'), reply_markup=await kb_main_i18n(tg))
+        await edit_or_send(message, L("msg.no_valid_cookies"), reply_markup=await kb_main_i18n(tg))
         return
-    rows = [[InlineKeyboardButton(text=u if u else f'ID: {r}', callback_data=f'acct:{r}')] for r, u in added]
-    rows.extend([[InlineKeyboardButton(text=L('btn.auto_8cd0fba739'), callback_data='menu:accounts')],
-                 [InlineKeyboardButton(text=LL('buttons.home', 'btn.back'), callback_data='menu:home')]])
+
+    rows = [[InlineKeyboardButton(text=u if u else f"ID: {r}", callback_data=f"acct:{r}")] for r, u in added]
+    rows.extend(
+        [
+            [InlineKeyboardButton(text=L("btn.auto_8cd0fba739"), callback_data="menu:accounts")],
+            [InlineKeyboardButton(text=LL("buttons.home", "btn.back"), callback_data="menu:home")],
+        ]
+    )
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    await edit_or_send(message, L("status.added_result", ok=ok, bad=bad), reply_markup=kb)
+    await message.answer(L("status.added_result", ok=ok, bad=bad), reply_markup=kb)
+
 
 
 @router.callback_query(F.data.startswith('delacct:'))
