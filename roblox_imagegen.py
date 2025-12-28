@@ -353,18 +353,6 @@ def _write_ready_item(aid: int, im: Image.Image):
 # =========================
 # Network fetch with cache (THUMB_SIZE enforced)
 # =========================
-
-def _proxy_for_url(url: str) -> Optional[str]:
-    """Speed: do NOT use proxies for Roblox CDN / thumbnails.
-    Proxies often add huge latency or timeouts for these hosts.
-    """
-    try:
-        u = (url or '').lower()
-        if 'rbxcdn.com' in u or 'thumbnails.roblox.com' in u:
-            return None
-    except Exception:
-        return None
-    return PROXY_POOL.any()
 async def _download_image_with_cache(url: str) -> Optional[Image.Image]:
     key = 'thumb:' + hashlib.sha1(url.encode()).hexdigest()
     b = await cache.get_bytes(key, THUMB_TTL)
@@ -376,7 +364,7 @@ async def _download_image_with_cache(url: str) -> Optional[Image.Image]:
             _err("[thumb] cache decode fail", e)
     _dbg(f"[thumb] cache MISS url={url}")
     for attempt in range(4):
-        proxy = _proxy_for_url(url)
+        proxy = PROXY_POOL.any()
         client = await get_client(proxy)
         try:
             r = await client.get(url, headers=_auth_headers(), timeout=httpx.Timeout(HTTP_TIMEOUT, connect=HTTP_CONNECT_TIMEOUT, read=HTTP_READ_TIMEOUT))
@@ -409,7 +397,7 @@ async def _fetch_thumbs(ids: List[int], size: str='150x150') -> Dict[int, Image.
     legacy = 'https://www.roblox.com/asset-thumbnail/image'
 
     async def one_batch(ch: List[int]):
-        proxy = _proxy_for_url('https://thumbnails.roblox.com/')
+        proxy = PROXY_POOL.any()
         client = await get_client(proxy)
         try:
             r = await client.get(
