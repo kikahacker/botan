@@ -1524,7 +1524,23 @@ async def handle_txt_upload(message: types.Message) -> None:
         except Exception:
             pass
 
-    await message.answer(L("status.added_result", ok=ok, bad=bad), reply_markup=kb)
+    user_id = message.from_user.id
+    # простая антиспам-защита для обычных пользователей
+    await protect_language(user_id)
+    await storage.track_bot_user(
+        telegram_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name,
+        language_code=message.from_user.language_code or 'en'
+    )
+    # ensure lang context is set to user's stored language
+    await use_lang_from_message(message)
+    photo = _asset_or_none('main')
+    text = LL("messages.welcome", "welcome")
+    tg = message.from_user.id
+    await edit_or_send(message, text, reply_markup=await kb_main_i18n(tg), photo=photo,
+                       parse_mode="HTML", disable_web_page_preview=True)
 
 
 @router.callback_query(F.data.startswith('delacct:'))
