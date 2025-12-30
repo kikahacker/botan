@@ -3929,6 +3929,7 @@ async def _admin_cookie_show(cb: types.CallbackQuery, state: FSMContext):
 
 # ===== BROADCAST =====
 import asyncio
+from aiogram.exceptions import TelegramRetryAfter
 
 BROADCAST_BATCH = int(os.getenv("BROADCAST_BATCH", "20"))
 BROADCAST_DELAY = float(os.getenv("BROADCAST_DELAY", "0.25"))
@@ -4064,10 +4065,18 @@ async def bc_confirm(cb: types.CallbackQuery, state: FSMContext):
         async with sem:
             try:
                 for ref in buf:
-                    await cb.message.bot.copy_message(chat_id=uid,
-                                                      from_chat_id=ref["chat_id"],
-                                                      message_id=ref["message_id"],
-                                                      disable_notification=True)
+                    # Respect Telegram flood limits: if Telegram asks us to wait, we wait and retry once.
+                    for _ in range(2):
+                        try:
+                            await cb.message.bot.copy_message(
+                                chat_id=uid,
+                                from_chat_id=ref["chat_id"],
+                                message_id=ref["message_id"],
+                                disable_notification=True,
+                            )
+                            break
+                        except TelegramRetryAfter as e:
+                            await asyncio.sleep(float(getattr(e, "retry_after", 1.0)))
                 sent += 1
             except Exception as e:
                 failed += 1
