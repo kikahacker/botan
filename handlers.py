@@ -14,6 +14,9 @@ import logging
 import inspect
 from datetime import datetime
 
+# aiogram middleware base (must be imported before middleware classes)
+from aiogram.dispatcher.middlewares.base import BaseMiddleware
+
 
 # --- Helper: fetch spending live (no cache) ---
 async def _fetch_spending_live(enc_cookie: str, roblox_id: int, limit: int = 250):
@@ -230,6 +233,84 @@ from cache_locks import get_lock
 
 router = Router()
 
+# ======================= AUDIT LOG (TG CHANNEL) =======================
+
+_AUDIT_CHAT_ID_CACHE: int | str | None = None
+
+
+def _get_audit_chat_id() -> int | str | None:
+    """Chat id / username for audit logs.
+
+    Read from env AUDIT_LOG_CHAT_ID or CFG.AUDIT_LOG_CHAT_ID.
+    Supports numeric (-100...) or @channel.
+    """
+    global _AUDIT_CHAT_ID_CACHE
+    if _AUDIT_CHAT_ID_CACHE is not None:
+        return _AUDIT_CHAT_ID_CACHE
+
+    raw = os.getenv("AUDIT_LOG_CHAT_ID")
+    if not raw:
+        try:
+            raw = getattr(CFG, "AUDIT_LOG_CHAT_ID", None)
+        except Exception:
+            raw = None
+
+    if not raw:
+        _AUDIT_CHAT_ID_CACHE = None
+        return None
+
+    raw = str(raw).strip()
+    if raw.startswith("@"):
+        _AUDIT_CHAT_ID_CACHE = raw
+        return raw
+
+    try:
+        _AUDIT_CHAT_ID_CACHE = int(raw)
+        return _AUDIT_CHAT_ID_CACHE
+    except Exception:
+        _AUDIT_CHAT_ID_CACHE = None
+        return None
+
+
+def _fmt_user(u: types.User | None) -> str:
+    if not u:
+        return "unknown"
+    uname = f"@{u.username}" if u.username else "-"
+    return f"{uname} ({u.id})"
+
+
+async def audit_send(bot, text: str) -> None:
+    chat_id = _get_audit_chat_id()
+    if not chat_id or not bot:
+        return
+    try:
+        await bot.send_message(chat_id, text, disable_web_page_preview=True, parse_mode="HTML")
+    except Exception:
+        logging.getLogger(__name__).warning("audit_send failed", exc_info=True)
+
+
+async def audit_event(
+    bot,
+    *,
+    user: types.User | None,
+    event: str,
+    details: str = "",
+    extra: dict | None = None,
+) -> None:
+    ts = datetime.now().strftime("%d.%m.%y %H:%M:%S")
+    msg = f"🧾 <b>{html.escape(event)}</b>\nПользователь: {_fmt_user(user)}\n🕒 {ts}"
+    if details:
+        msg += f"\n{details}"
+    if extra:
+        try:
+            msg += "\n<pre>" + html.escape(json.dumps(extra, ensure_ascii=False, indent=2)[:3500]) + "</pre>"
+        except Exception:
+            pass
+    await audit_send(bot, msg)
+
+
+# =======================================================================
+
 # === Strong profile cache (text + photo_id), key = (tg, rid, lang) ===
 _PROFILE_TTL_NEW = 10 * 60  # 10 минут
 _PROFILE_MEM_NEW: dict = {}  # {(tg, rid, lang): (exp_ts, {"text": str, "photo_id": Optional[str]})}
@@ -299,9 +380,6 @@ os.makedirs('temp', exist_ok=True)
 from contextvars import ContextVar
 
 _CURRENT_LANG = ContextVar('_CURRENT_LANG', default='en')
-from aiogram.dispatcher.middlewares.base import BaseMiddleware
-
-
 class LangMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
         user = None
@@ -335,6 +413,15 @@ class LangMiddleware(BaseMiddleware):
                 pass
 
         return result
+
+
+# Attach middlewares here so it works even if app.py doesn't attach them
+try:
+    router.message.middleware(LangMiddleware())
+    router.callback_query.middleware(LangMiddleware())
+except Exception:
+    pass
+
 
 
 # === Automatic language enforcement on outgoing messages ===
@@ -1082,6 +1169,26 @@ async def cmd_start(message: types.Message) -> None:
     if not is_admin(user_id) and _check_antiflood(user_id):
         return
     await protect_language(user_id)
+
+    # audit: only first /start from this user (anti-spam)
+    try:
+        seen = await storage.get_cached_data(user_id, "audit_seen_user_v1")
+    except Exception:
+        seen = None
+    if not seen:
+        try:
+            await audit_event(
+                message.bot,
+                user=message.from_user,
+                event="👋 Новый пользователь",
+                details="Команда: <code>/start</code>",
+            )
+            try:
+                await storage.set_cached_data(user_id, "audit_seen_user_v1", True, 60 * 24 * 365 * 2)
+            except Exception:
+                pass
+        except Exception:
+            pass
     await storage.track_bot_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username,
@@ -1490,6 +1597,16 @@ async def handle_txt_upload(message: types.Message) -> None:
 
         # отправляем карточку сразу, без лишних sleeps
         await _send_profile_card_fast(rid, uname, cleaned_cookie, user_data, save_dir=acc_dir)
+
+        # audit: подключен аккаунт (после того, как профиль реально отправлен)
+        try:
+            created = (user_data.get('created') or '').strip() if isinstance(user_data, dict) else ''
+            det = f"Аккаунт: <b>{html.escape(uname or '-')}</b>\nRID: <code>{rid}</code>"
+            if created:
+                det += f"Создан: <code>{html.escape(created)}</code>"
+            await audit_event(message.bot, user=message.from_user, event="🔗 Подключил аккаунт", details=det)
+        except Exception:
+            pass
 
         # 🔁 дальше прям как будто нажали кнопки
         await _send_rap_like_buttons(message, tg, rid, cleaned_cookie, save_dir=acc_dir)

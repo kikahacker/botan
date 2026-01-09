@@ -33,6 +33,7 @@ def _rid(data: str) -> Optional[int]:
         return None
 
 
+
 async def _enc_cookie(tg_id: int, rid: int) -> Optional[str]:
     """
     Вернуть зашифрованную cookie из storage для (tg_id, rid).
@@ -164,6 +165,7 @@ async def cb_rap(call: types.CallbackQuery):
     rid = _rid(call.data)
     t0 = time.time()
     log.debug(f"[RAP] start rid={rid}")
+    success = False
     msg = await edit_or_send(call.message, f"📈 {L('rap.title')}\n{L('rap.loading')}")
     try:
         cookie = await _cookie(call.from_user.id, rid)
@@ -204,6 +206,8 @@ async def cb_rap(call: types.CallbackQuery):
                 f"📈 {L('rap.title')}\n{LL('rap.empty_generic', 'rap.no_items')}",
             )
             log.debug(f"[RAP] empty rid={rid} dt={time.time()-t0:.3f}s")
+
+        success = True
     except Exception as e:
         log.exception(f"[RAP] error rid={rid}: {e}")
         await edit_or_send(
@@ -211,6 +215,8 @@ async def cb_rap(call: types.CallbackQuery):
             f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[RAP] end rid={rid}")
+
+
 
 
 @router.callback_query(F.data.startswith("rapd:"))
@@ -354,6 +360,7 @@ async def cb_offsale(call: types.CallbackQuery):
     rid = _rid(call.data)
     t0 = time.time()
     log.debug(f"[OFFSALE] start rid={rid}")
+    success = False
     msg = await edit_or_send(call.message, f"🛑 {L('offsale.title')}\n{L('offsale.loading')}")
     try:
         cookie = await _cookie(call.from_user.id, rid)
@@ -373,10 +380,13 @@ async def cb_offsale(call: types.CallbackQuery):
         else:
             await edit_or_send(msg, f"🛑 {L('offsale.title')}\n{LL('offsale.empty_generic', 'offsale.empty')}")
             log.debug(f"[OFFSALE] empty rid={rid} dt={time.time()-t0:.3f}s")
+
+        success = True
     except Exception as e:
         log.exception(f"[OFFSALE] error rid={rid}: {e}")
         await edit_or_send(msg, f"🛑 {L('offsale.title')}\n" + L('errors.generic', err=e))
     log.debug(f"[OFFSALE] end rid={rid}")
+
 
 
 # ======================= REVENUE SUMMARY =======================
@@ -387,6 +397,7 @@ async def cb_revenue(call: types.CallbackQuery):
     rid = _rid(call.data)
     t0 = time.time()
     log.debug(f"[REVENUE] start rid={rid}")
+    success = False
     msg = await edit_or_send(call.message, f"{L('revenue.title')}\n{L('revenue.loading')}")
     try:
         if rid is None:
@@ -433,10 +444,12 @@ async def cb_revenue(call: types.CallbackQuery):
         )
         await edit_or_send(msg, txt, reply_markup=kb)
         log.debug(f"[REVENUE] ok rid={rid} items={len(all_rows)} total_sum={total_sum} dt={time.time()-t0:.3f}s")
+        success = True
     except Exception as e:
         log.exception(f"[REVENUE] error rid={rid}: {e}")
         await edit_or_send(msg, f"{L('revenue.title')}\n" + L('errors.generic', err=e))
     log.debug(f"[REVENUE] end rid={rid}")
+
 
 
 # ======================= REVENUE DETAILS (PAGINATED) =======================
@@ -549,6 +562,7 @@ async def cb_usernames(call: types.CallbackQuery):
     rid = _rid(call.data)
     t0 = time.time()
     log.debug(f"[USERNAMES] start rid={rid}")
+    success = False
     msg = await edit_or_send(call.message, f"{L('usernames.title')}\n{L('usernames.loading')}")
     try:
         if rid is None:
@@ -574,10 +588,14 @@ async def cb_usernames(call: types.CallbackQuery):
         else:
             await edit_or_send(msg, f"{L('usernames.title')}\n" + LL('usernames.empty_generic', 'usernames.empty'))
             log.debug(f"[USERNAMES] empty rid={rid} dt={time.time()-t0:.3f}s")
+
+        success = True
     except Exception as e:
         log.exception(f"[USERNAMES] error rid={rid}: {e}")
         await edit_or_send(msg, f"{L('usernames.title')}\n" + L('errors.generic', err=e))
     log.debug(f"[USERNAMES] end rid={rid}")
+
+
 
 
 # ===== PUBLIC RAP / OFFSALE (using DB cookies pool) =====
@@ -713,6 +731,7 @@ async def cb_pub_rap(call: types.CallbackQuery):
     rid = _rid(call.data)
     t0 = time.time()
     log.debug(f"[PUB_RAP] start rid={rid}")
+    success = False
     msg = await edit_or_send(call.message, f"📈 {L('rap.title')}\n{L('rap.loading')}")
     try:
         if rid is None:
@@ -755,6 +774,7 @@ async def cb_pub_rap(call: types.CallbackQuery):
                 f"📈 {L('rap.title')}\n{LL('rap.empty_generic', 'rap.no_items')}",
             )
             log.debug(f"[PUB_RAP] empty rid={rid} dt={time.time()-t0:.3f}s")
+        success = True
     except Exception as e:
         log.exception(f"[PUB_RAP] error rid={rid}: {e}")
         await edit_or_send(
@@ -762,6 +782,8 @@ async def cb_pub_rap(call: types.CallbackQuery):
             f"📈 {L('rap.title')}\n" + L('errors.generic', err=str(e)),
         )
     log.debug(f"[PUB_RAP] end rid={rid}")
+
+
 
 
 @router.callback_query(F.data.startswith("pub_rapd:"))
@@ -904,6 +926,7 @@ async def cb_pub_offsale(call: types.CallbackQuery):
     rid = _rid(call.data)
     t0 = time.time()
     log.debug(f"[PUB_OFFSALE] start rid={rid}")
+    success = False
     msg = await edit_or_send(call.message, f"🛑 {L('offsale.title')}\n{L('offsale.loading')}")
     try:
         if rid is None:
@@ -927,10 +950,14 @@ async def cb_pub_offsale(call: types.CallbackQuery):
         else:
             await edit_or_send(msg, f"🛑 {L('offsale.title')}\n{LL('offsale.empty_generic', 'offsale.empty')}")
             log.debug(f"[PUB_OFFSALE] empty rid={rid} dt={time.time()-t0:.3f}s")
+
+        success = True
     except Exception as e:
         log.exception(f"[PUB_OFFSALE] error rid={rid}: {e}")
         await edit_or_send(msg, f"🛑 {L('offsale.title')}\n" + L('errors.generic', err=e))
     log.debug(f"[PUB_OFFSALE] end rid={rid}")
+
+
 
 
 @router.callback_query(F.data.startswith("pub_revenue:"))
@@ -939,6 +966,7 @@ async def cb_pub_revenue(call: types.CallbackQuery):
     Паблик-режим Revenue: всегда показывает сообщение, что нужна кука.
     """
     await call.answer(cache_time=1)
+    rid = _rid(call.data)
 
     txt = (
         f"{L('revenue.title')}\n"
@@ -957,6 +985,7 @@ async def cb_pub_usernames(call: types.CallbackQuery):
     rid = _rid(call.data)
     t0 = time.time()
     log.debug(f"[PUB_USERNAMES] start rid={rid}")
+    success = False
     msg = await edit_or_send(call.message, f"{L('usernames.title')}\n{L('usernames.loading')}")
     try:
         if rid is None:
@@ -985,7 +1014,10 @@ async def cb_pub_usernames(call: types.CallbackQuery):
                 f"{L('usernames.title')}\n" + LL('usernames.empty_generic', 'usernames.empty'),
             )
             log.debug(f"[PUB_USERNAMES] empty rid={rid} dt={time.time()-t0:.3f}s")
+
+        success = True
     except Exception as e:
         log.exception(f"[PUB_USERNAMES] error rid={rid}: {e}")
         await edit_or_send(msg, f"{L('usernames.title')}\n" + L('errors.generic', err=e))
     log.debug(f"[PUB_USERNAMES] end rid={rid}")
+
